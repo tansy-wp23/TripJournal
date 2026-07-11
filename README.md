@@ -1,17 +1,162 @@
-# tripjournal
+# TripJournal
 
-A new Flutter project.
+A Flutter mobile app that combines **travel journaling** with **health tracking**.
+Users record daily journal entries during a trip — text, photos, mood — while
+logging steps, meals, and calories alongside them, with AI-assisted daily
+wellbeing advice.
 
-## Getting Started
+Built for **BMSE3004 — Collaborative Development** (TAR UMT).
 
-This project is a starting point for a Flutter application.
+---
 
-A few resources to get you started if this is your first Flutter project:
+## Quick Start
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+```bash
+# 1. Clone and enter the project
+git clone https://github.com/tansy-wp23/TripJournal.git
+cd TripJournal
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+# 2. Install dependencies
+flutter pub get
+
+# 3. Set up your environment file  (see "Environment Setup" below — REQUIRED)
+copy .env.example .env      # Windows
+# cp .env.example .env      # macOS/Linux
+
+# 4. Run
+flutter run
+```
+
+> ⚠️ **The app will not start without a valid `.env` file.** See below.
+
+---
+
+## Environment Setup (required)
+
+The Supabase credentials are **not** in this repo (they're gitignored — never
+commit them).
+
+1. Copy `.env.example` → `.env`
+2. **Ask Sang You for the two values** (sent privately, not via the repo)
+3. Paste them in:
+   ```
+   SUPABASE_URL=...
+   SUPABASE_ANON_KEY=...
+   ```
+
+Without this, `dotenv.load()` fails on startup and the app crashes immediately.
+If you get a startup error, check this first.
+
+---
+
+## Read This Before You Start Coding
+
+The project has a documented architecture and a set of design decisions that are
+already settled. **Please skim these before writing code** — they'll save you
+from building something that has to be redone:
+
+| File | What it covers |
+|---|---|
+| `CLAUDE.md` | Project context, module list, settled decisions, tech stack |
+| `IMPLEMENTATION_PLAN.md` | Wellness Journal module (models, repos, controllers, UI) |
+| `IMPLEMENTATION_PLAN_HOMEPAGE.md` | Homepage dashboard + trip day-by-day timeline |
+| `IMPLEMENTATION_PLAN_ENHANCEMENTS.md` | Health platform data, dual-calorie model, photos |
+| `IMPLEMENTATION_PLAN_VALIDATION.md` | **All validation rules + warning messages** (app-wide) |
+| `IMPLEMENTATION_PLAN_UX_AI.md` | AI daily advice, portion sizes, save flow |
+| `IMPLEMENTATION_PLAN_UX_POLISH.md` | AI food detection, thumbnails, save/discard guards |
+| `IMPLEMENTATION_PLAN_INLINE_PHOTO.md` | Inline notes editing, full-screen photo viewer |
+| `IMPLEMENTATION_PLAN_HEALTH.md` | Health Connect / HealthKit integration |
+| `tripjournal_schema.sql` | The database schema (already applied to Supabase) |
+
+---
+
+## Architecture (important — please follow)
+
+### Repository pattern — UI never talks to a data source directly
+
+All data access goes through an **interface**. The UI and controllers depend on
+the interface, never on a concrete implementation:
+
+```dart
+abstract class JournalRepository { ... }     // the contract
+class MockJournalRepository     implements JournalRepository { ... }   // dev/tests
+class SupabaseJournalRepository implements JournalRepository { ... }   // real
+```
+
+Swapping mock → Supabase is a **one-line change** in the provider/locator.
+**Do not** call Supabase directly from a widget or controller.
+
+### Mock-first development
+
+Build and test against the **mock** implementations first, then swap in the real
+data source. This keeps the app runnable in an emulator without a network or a
+physical device.
+
+### State management
+
+**Riverpod.** Please stick with it — don't introduce a second state solution.
+
+---
+
+## Database
+
+Supabase (PostgreSQL). The schema is already applied — see `tripjournal_schema.sql`.
+
+**Existing tables:** `trips`, `journal_entries`, `health_logs`, `meals`
+
+### If you're adding tables, follow these conventions:
+
+- **`user_id uuid references auth.users(id)`** — every user-owned table has one.
+  (⚠️ If we later add a `profiles` table and standardise on it, these foreign
+  keys get migrated. Flagged in the schema file.)
+- **Enable Row Level Security (RLS)** on every table, with policies scoping rows
+  to `auth.uid() = user_id`. Copy the pattern from `tripjournal_schema.sql`.
+  **Do not skip this** — without it, either your data is public or your queries
+  silently return nothing.
+- `snake_case` column names.
+- Photos are **not** stored in tables — files go to Supabase **Storage**, and
+  only the resulting URL string is saved in the DB.
+
+---
+
+## Module Ownership
+
+| Module | Owner | Status |
+|---|---|---|
+| **Wellness Journal** (entries, health logging, meals, AI advice) | Tan Sang You | ✅ Built |
+| **Trip Management** (create/edit/delete trip, homepage CRUD) | Tan Sang You | ✅ Built (foundation) |
+| **Trip Recap** (location/date tagging, AI trip summary) | Siow Wei Juin | 🔲 Open |
+| **Authentication / User Management** | 🔲 Unassigned | 🔲 Open |
+| **Admin** | 🔲 Unassigned | 🔲 Open |
+
+### Notes for whoever picks up the open modules
+
+- The `Trip` model and `TripRepository` interface are the **single source of
+  truth** — build on top of them, don't declare a second `Trip` class.
+- **Auth:** the app currently has no logged-in user, which means RLS blocks
+  queries. Wiring up Supabase Auth is what makes the real (non-mock)
+  repositories actually work end-to-end.
+- Follow the existing repository-interface pattern for your module's data layer.
+
+---
+
+## Testing Notes
+
+- Most of the app runs fine in an **emulator** using the mock data sources.
+- **Health Connect / HealthKit do NOT work on emulators.** The health
+  integration must be verified on a **physical phone** (a wearable is not
+  required — phones count steps natively).
+- Manual entry is always available as a fallback, so a missing health platform
+  never blocks the app.
+
+---
+
+## Things That Will Bite You
+
+- **No `.env`** → app crashes on startup. Copy `.env.example` and get the keys.
+- **Never commit `.env`.** It's gitignored — keep it that way. A leaked key in
+  commit history can't be cleanly removed.
+- **RLS + no auth** → inserts/selects get rejected. This is expected until the
+  Auth module is built; use the mock repositories in the meantime.
+- **Don't bypass the repository interfaces** — direct Supabase calls in widgets
+  will break the mock/real swap and the tests.
