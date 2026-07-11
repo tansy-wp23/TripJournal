@@ -1,0 +1,228 @@
+import 'package:flutter_test/flutter_test.dart';
+
+import 'package:tripjournal/models/geo_tag.dart';
+import 'package:tripjournal/models/health_log.dart';
+import 'package:tripjournal/models/journal_entry.dart';
+import 'package:tripjournal/models/meal.dart';
+import 'package:tripjournal/models/meal_type.dart';
+import 'package:tripjournal/models/mood.dart';
+import 'package:tripjournal/models/portion_size.dart';
+
+void main() {
+  group('Meal', () {
+    const meal = Meal(id: 'meal-1', name: 'Ramen', calories: 650, mealType: MealType.lunch);
+
+    test('portion defaults to regular when not specified', () {
+      expect(meal.portion, PortionSize.regular);
+    });
+
+    test('toJson/fromJson round-trip preserves portion', () {
+      const large = Meal(
+        id: 'meal-2',
+        name: 'Kaiseki dinner',
+        calories: 950,
+        mealType: MealType.dinner,
+        portion: PortionSize.large,
+      );
+      final restored = Meal.fromJson(large.toJson());
+      expect(restored.id, large.id);
+      expect(restored.name, large.name);
+      expect(restored.calories, large.calories);
+      expect(restored.mealType, large.mealType);
+      expect(restored.portion, PortionSize.large);
+    });
+
+    test('fromJson defaults to regular when portion is missing (backward compatibility)', () {
+      final json = meal.toJson()..remove('portion');
+      final restored = Meal.fromJson(json);
+      expect(restored.portion, PortionSize.regular);
+    });
+
+    test('copyWith overrides only given fields', () {
+      final updated = meal.copyWith(calories: 700);
+      expect(updated.id, meal.id);
+      expect(updated.name, meal.name);
+      expect(updated.mealType, meal.mealType);
+      expect(updated.calories, 700);
+      expect(updated.portion, meal.portion);
+    });
+
+    test('copyWith overrides portion', () {
+      final updated = meal.copyWith(portion: PortionSize.small);
+      expect(updated.portion, PortionSize.small);
+      expect(updated.calories, meal.calories);
+    });
+  });
+
+  group('PortionSize calorieMultiplier', () {
+    test('small is 0.7, regular is 1.0, large is 1.4', () {
+      expect(PortionSize.small.calorieMultiplier, 0.7);
+      expect(PortionSize.regular.calorieMultiplier, 1.0);
+      expect(PortionSize.large.calorieMultiplier, 1.4);
+    });
+  });
+
+  group('GeoTag', () {
+    const tag = GeoTag(latitude: 35.0116, longitude: 135.7681, placeName: 'Gion, Kyoto');
+
+    test('toJson/fromJson round-trip', () {
+      final restored = GeoTag.fromJson(tag.toJson());
+      expect(restored.latitude, tag.latitude);
+      expect(restored.longitude, tag.longitude);
+      expect(restored.placeName, tag.placeName);
+    });
+
+    test('fromJson tolerates integer-valued lat/lng (num, not double)', () {
+      final restored = GeoTag.fromJson({'latitude': 35, 'longitude': 135, 'placeName': null});
+      expect(restored.latitude, 35.0);
+      expect(restored.longitude, 135.0);
+      expect(restored.placeName, isNull);
+    });
+
+    test('copyWith overrides only given fields', () {
+      final updated = tag.copyWith(placeName: 'Somewhere else');
+      expect(updated.latitude, tag.latitude);
+      expect(updated.longitude, tag.longitude);
+      expect(updated.placeName, 'Somewhere else');
+    });
+  });
+
+  group('HealthLog', () {
+    const log = HealthLog(
+      id: 'health-1',
+      entryId: 'entry-1',
+      steps: 8200,
+      caloriesEaten: 1950,
+      caloriesBurned: 2350,
+      meals: [
+        Meal(id: 'meal-1a', name: 'Onigiri set', calories: 350, mealType: MealType.breakfast),
+        Meal(id: 'meal-1b', name: 'Ramen', calories: 650, mealType: MealType.lunch),
+      ],
+      aiAdvice: 'Solid balance today.',
+    );
+
+    test('toJson/fromJson round-trip', () {
+      final restored = HealthLog.fromJson(log.toJson());
+      expect(restored.id, log.id);
+      expect(restored.entryId, log.entryId);
+      expect(restored.steps, log.steps);
+      expect(restored.caloriesEaten, log.caloriesEaten);
+      expect(restored.caloriesBurned, log.caloriesBurned);
+      expect(restored.meals.length, log.meals.length);
+      expect(restored.meals.first.name, log.meals.first.name);
+      expect(restored.aiAdvice, log.aiAdvice);
+    });
+
+    test('round-trip with null aiAdvice, null caloriesBurned, and empty meals', () {
+      const noAdvice = HealthLog(id: 'h', entryId: 'e', steps: 0, caloriesEaten: 0, meals: []);
+      final restored = HealthLog.fromJson(noAdvice.toJson());
+      expect(restored.aiAdvice, isNull);
+      expect(restored.caloriesBurned, isNull);
+      expect(restored.meals, isEmpty);
+    });
+
+    test('copyWith overrides only given fields', () {
+      final updated = log.copyWith(steps: 9000);
+      expect(updated.steps, 9000);
+      expect(updated.caloriesEaten, log.caloriesEaten);
+      expect(updated.caloriesBurned, log.caloriesBurned);
+      expect(updated.meals, log.meals);
+      expect(updated.aiAdvice, log.aiAdvice);
+    });
+
+    test('copyWith clearCaloriesBurned sets it back to null', () {
+      final updated = log.copyWith(clearCaloriesBurned: true);
+      expect(updated.caloriesBurned, isNull);
+      expect(updated.caloriesEaten, log.caloriesEaten);
+    });
+  });
+
+  group('JournalEntry', () {
+    final entry = JournalEntry(
+      id: 'entry-1',
+      tripId: 'trip-001',
+      title: 'Arrival in Kyoto',
+      body: 'Landed in Kansai and took the train straight to Kyoto.',
+      mood: Mood.excited,
+      photoPaths: const ['assets/mock/kyoto_arrival_1.jpg'],
+      location: const GeoTag(latitude: 35.0116, longitude: 135.7681, placeName: 'Gion, Kyoto'),
+      createdAt: DateTime(2026, 4, 10, 19, 30),
+      updatedAt: DateTime(2026, 4, 10, 19, 30),
+      healthLog: const HealthLog(
+        id: 'health-1',
+        entryId: 'entry-1',
+        steps: 8200,
+        caloriesEaten: 1950,
+        meals: [Meal(id: 'meal-1a', name: 'Onigiri set', calories: 350, mealType: MealType.breakfast)],
+        aiAdvice: 'Solid balance today.',
+      ),
+    );
+
+    test('toJson/fromJson round-trip', () {
+      final restored = JournalEntry.fromJson(entry.toJson());
+      expect(restored.id, entry.id);
+      expect(restored.tripId, entry.tripId);
+      expect(restored.title, entry.title);
+      expect(restored.body, entry.body);
+      expect(restored.mood, entry.mood);
+      expect(restored.photoPaths, entry.photoPaths);
+      expect(restored.location?.placeName, entry.location?.placeName);
+      expect(restored.createdAt, entry.createdAt);
+      expect(restored.updatedAt, entry.updatedAt);
+      expect(restored.healthLog?.steps, entry.healthLog?.steps);
+      expect(restored.healthLog?.meals.length, entry.healthLog?.meals.length);
+    });
+
+    test('round-trip with null location and null healthLog', () {
+      final noOptional = JournalEntry(
+        id: entry.id,
+        tripId: entry.tripId,
+        title: entry.title,
+        body: entry.body,
+        mood: entry.mood,
+        photoPaths: entry.photoPaths,
+        createdAt: entry.createdAt,
+        updatedAt: entry.updatedAt,
+      );
+      final restored = JournalEntry.fromJson(noOptional.toJson());
+      expect(restored.location, isNull);
+      expect(restored.healthLog, isNull);
+    });
+
+    test('copyWith overrides only given fields', () {
+      final updated = entry.copyWith(title: 'Updated title', mood: Mood.happy);
+      expect(updated.title, 'Updated title');
+      expect(updated.mood, Mood.happy);
+      expect(updated.id, entry.id);
+      expect(updated.body, entry.body);
+      expect(updated.healthLog, entry.healthLog);
+    });
+
+    group('displayTitle', () {
+      test('uses the title when present', () {
+        expect(entry.displayTitle, 'Arrival in Kyoto');
+      });
+
+      test('falls back to a body snippet for a body-only entry (title OR body rule)', () {
+        final bodyOnly = entry.copyWith(title: '', body: 'Short body.');
+        expect(bodyOnly.displayTitle, 'Short body.');
+      });
+
+      test('truncates a long body snippet to 40 chars plus an ellipsis', () {
+        final longBody = 'a' * 60;
+        final bodyOnly = entry.copyWith(title: '', body: longBody);
+        expect(bodyOnly.displayTitle, '${'a' * 40}…');
+      });
+
+      test('falls back to a placeholder when both title and body are empty', () {
+        final empty = entry.copyWith(title: '', body: '');
+        expect(empty.displayTitle, '(Untitled entry)');
+      });
+
+      test('whitespace-only title is treated as empty', () {
+        final whitespaceTitle = entry.copyWith(title: '   ', body: 'Real content.');
+        expect(whitespaceTitle.displayTitle, 'Real content.');
+      });
+    });
+  });
+}
