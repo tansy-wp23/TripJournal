@@ -10,6 +10,7 @@ import '../journal/widgets/format_utils.dart';
 import '../journal/widgets/mood_display.dart';
 import 'controller/trip_controller.dart';
 import 'mock_user.dart';
+import 'screens/trip_wellness_screen.dart';
 import 'trip_day_groups.dart';
 import 'trip_form_screen.dart';
 import 'trip_notes_editor_screen.dart';
@@ -43,7 +44,9 @@ class _TripViewScreenState extends ConsumerState<TripViewScreen> {
       await tripController.loadTrips(kMockUserId);
     }
     if (!mounted) return;
-    await ref.read(journalControllerProvider.notifier).loadEntries(widget.tripId);
+    await ref
+        .read(journalControllerProvider.notifier)
+        .loadEntries(widget.tripId);
   }
 
   Trip? _findTrip(List<Trip> trips) {
@@ -79,7 +82,10 @@ class _TripViewScreenState extends ConsumerState<TripViewScreen> {
       return const Scaffold(body: Center(child: Text('Trip not found.')));
     }
 
-    final stats = computeTripStats(entries: journalController.entries, totalDays: trip.durationDays);
+    final stats = computeTripStats(
+      entries: journalController.entries,
+      totalDays: trip.durationDays,
+    );
     final dayGroups = buildDayGroups(trip, journalController.entries);
 
     return Scaffold(
@@ -91,7 +97,9 @@ class _TripViewScreenState extends ConsumerState<TripViewScreen> {
             icon: const Icon(Icons.edit),
             onPressed: () => Navigator.push(
               context,
-              MaterialPageRoute(builder: (_) => TripFormScreen(existingTrip: trip)),
+              MaterialPageRoute(
+                builder: (_) => TripFormScreen(existingTrip: trip),
+              ),
             ),
           ),
           IconButton(
@@ -104,29 +112,72 @@ class _TripViewScreenState extends ConsumerState<TripViewScreen> {
       body: ListView.builder(
         itemCount: dayGroups.length + 1,
         itemBuilder: (context, index) {
-          if (index == 0) return _buildHeader(context, trip, stats);
+          if (index == 0) {
+            return _buildHeader(
+              context,
+              trip,
+              stats,
+              journalController.entries,
+            );
+          }
           return _DayGroupTile(trip: trip, group: dayGroups[index - 1]);
         },
       ),
     );
   }
 
-  Widget _buildHeader(BuildContext context, Trip trip, TripStats stats) {
+  Widget _buildHeader(
+    BuildContext context,
+    Trip trip,
+    TripStats stats,
+    List<JournalEntry> entries,
+  ) {
     final notes = trip.notes;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        TripCoverPhoto(photoPath: trip.coverPhotoPath, height: 160, width: double.infinity),
+        TripCoverPhoto(
+          photoPath: trip.coverPhotoPath,
+          height: 160,
+          width: double.infinity,
+        ),
         Padding(
           padding: const EdgeInsets.all(16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(trip.title, style: Theme.of(context).textTheme.headlineMedium),
+              Text(
+                trip.title,
+                style: Theme.of(context).textTheme.headlineMedium,
+              ),
               const SizedBox(height: 4),
-              Text('${formatDate(trip.startDate)} - ${formatDate(trip.endDate)}'),
+              Text(
+                '${formatDate(trip.startDate)} - ${formatDate(trip.endDate)}',
+              ),
               const SizedBox(height: 12),
-              WellnessStatsRow(stats: stats),
+              InkWell(
+                key: const Key('trip-wellness-link'),
+                borderRadius: BorderRadius.circular(8),
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) =>
+                        TripWellnessScreen(trip: trip, entries: entries),
+                  ),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Row(
+                    children: [
+                      Expanded(child: WellnessStatsRow(stats: stats)),
+                      Icon(
+                        Icons.chevron_right,
+                        color: Theme.of(context).colorScheme.outline,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
               const SizedBox(height: 16),
               Card(
                 color: Theme.of(context).colorScheme.secondaryContainer,
@@ -135,7 +186,9 @@ class _TripViewScreenState extends ConsumerState<TripViewScreen> {
                   key: const Key('trip-notes-card'),
                   onTap: () => Navigator.push(
                     context,
-                    MaterialPageRoute(builder: (_) => TripNotesEditorScreen(trip: trip)),
+                    MaterialPageRoute(
+                      builder: (_) => TripNotesEditorScreen(trip: trip),
+                    ),
                   ),
                   child: Padding(
                     padding: const EdgeInsets.all(12),
@@ -147,14 +200,23 @@ class _TripViewScreenState extends ConsumerState<TripViewScreen> {
                             const Icon(Icons.sticky_note_2_outlined, size: 18),
                             const SizedBox(width: 8),
                             Expanded(
-                              child: Text('Notes & Reminders', style: Theme.of(context).textTheme.titleSmall),
+                              child: Text(
+                                'Notes & Reminders',
+                                style: Theme.of(context).textTheme.titleSmall,
+                              ),
                             ),
-                            Icon(Icons.edit_outlined, size: 16, color: Theme.of(context).colorScheme.outline),
+                            Icon(
+                              Icons.edit_outlined,
+                              size: 16,
+                              color: Theme.of(context).colorScheme.outline,
+                            ),
                           ],
                         ),
                         const SizedBox(height: 8),
                         Text(
-                          notes != null && notes.trim().isNotEmpty ? notes : 'No notes yet — tap to add.',
+                          notes != null && notes.trim().isNotEmpty
+                              ? notes
+                              : 'No notes yet — tap to add.',
                           style: notes != null && notes.trim().isNotEmpty
                               ? null
                               : TextStyle(
@@ -195,7 +257,9 @@ class _DayGroupTile extends StatelessWidget {
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        border: isToday ? Border.all(color: colorScheme.primary, width: 2) : null,
+        border: isToday
+            ? Border.all(color: colorScheme.primary, width: 2)
+            : null,
         borderRadius: BorderRadius.circular(12),
         color: colorScheme.surfaceContainerLow,
       ),
@@ -205,21 +269,32 @@ class _DayGroupTile extends StatelessWidget {
           Text(
             'Day ${group.dayNumber} — ${formatWeekday(group.date)} ${formatDate(group.date)}',
             style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                  fontWeight: isToday ? FontWeight.bold : FontWeight.normal,
-                ),
+              fontWeight: isToday ? FontWeight.bold : FontWeight.normal,
+            ),
           ),
           const SizedBox(height: 8),
           if (isFuture)
-            Text('Upcoming', style: TextStyle(color: colorScheme.outline, fontStyle: FontStyle.italic))
+            Text(
+              'Upcoming',
+              style: TextStyle(
+                color: colorScheme.outline,
+                fontStyle: FontStyle.italic,
+              ),
+            )
           else if (group.isEmpty)
-            Text('No entry logged', style: TextStyle(color: colorScheme.outline))
+            Text(
+              'No entry logged',
+              style: TextStyle(color: colorScheme.outline),
+            )
           else
             for (final entry in group.entries)
               _EntryTile(
                 entry: entry,
                 onTap: () => Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (_) => EntryDetailScreen(entryId: entry.id)),
+                  MaterialPageRoute(
+                    builder: (_) => EntryDetailScreen(entryId: entry.id),
+                  ),
                 ),
               ),
           if (isWritable) ...[
@@ -229,7 +304,11 @@ class _DayGroupTile extends StatelessWidget {
               onPressed: () => Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (_) => CreateEditEntryScreen(tripId: trip.id, initialDate: group.date, trip: trip),
+                  builder: (_) => CreateEditEntryScreen(
+                    tripId: trip.id,
+                    initialDate: group.date,
+                    trip: trip,
+                  ),
                 ),
               ),
               icon: const Icon(Icons.add),
@@ -297,10 +376,9 @@ class _EntryTile extends StatelessWidget {
                       const SizedBox(height: 2),
                       Text(
                         quickStats,
-                        style: Theme.of(context)
-                            .textTheme
-                            .bodySmall
-                            ?.copyWith(color: colorScheme.onSurfaceVariant),
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: colorScheme.onSurfaceVariant,
+                        ),
                       ),
                     ],
                   ),
