@@ -16,6 +16,7 @@ import 'trip_form_screen.dart';
 import 'trip_notes_editor_screen.dart';
 import 'trip_summary_stats.dart';
 import 'widgets/delete_trip_confirmation_dialog.dart';
+import 'widgets/journal_search_bar.dart';
 import 'widgets/trip_cover_photo.dart';
 import 'widgets/wellness_stats_row.dart';
 
@@ -31,6 +32,8 @@ class TripViewScreen extends ConsumerStatefulWidget {
 }
 
 class _TripViewScreenState extends ConsumerState<TripViewScreen> {
+  bool _searchVisible = false;
+
   @override
   void initState() {
     super.initState();
@@ -88,10 +91,28 @@ class _TripViewScreenState extends ConsumerState<TripViewScreen> {
     );
     final dayGroups = buildDayGroups(trip, journalController.entries);
 
+    final filter = journalController.filter;
+    final displayDayGroups = filter.isActive
+        ? buildDayGroups(
+            trip,
+            journalController.filteredEntries,
+          ).where((g) => !g.isEmpty).toList()
+        : dayGroups;
+
     return Scaffold(
       appBar: AppBar(
         title: Text(trip.title),
         actions: [
+          IconButton(
+            key: const Key('trip-view-search-toggle'),
+            icon: Icon(_searchVisible ? Icons.search_off : Icons.search),
+            onPressed: () {
+              setState(() => _searchVisible = !_searchVisible);
+              if (!_searchVisible) {
+                ref.read(journalControllerProvider.notifier).clearFilter();
+              }
+            },
+          ),
           IconButton(
             key: const Key('trip-view-edit-button'),
             icon: const Icon(Icons.edit),
@@ -109,19 +130,46 @@ class _TripViewScreenState extends ConsumerState<TripViewScreen> {
           ),
         ],
       ),
-      body: ListView.builder(
-        itemCount: dayGroups.length + 1,
-        itemBuilder: (context, index) {
-          if (index == 0) {
-            return _buildHeader(
-              context,
-              trip,
-              stats,
-              journalController.entries,
-            );
-          }
-          return _DayGroupTile(trip: trip, group: dayGroups[index - 1]);
-        },
+      body: Column(
+        children: [
+          if (_searchVisible)
+            JournalSearchBar(
+              filter: filter,
+              onChanged: (f) =>
+                  ref.read(journalControllerProvider.notifier).setFilter(f),
+            ),
+          Expanded(
+            child: filter.isActive && displayDayGroups.isEmpty
+                ? ListView(
+                    children: [
+                      _buildHeader(
+                        context,
+                        trip,
+                        stats,
+                        journalController.entries,
+                      ),
+                      const _NoMatchingEntriesState(),
+                    ],
+                  )
+                : ListView.builder(
+                    itemCount: displayDayGroups.length + 1,
+                    itemBuilder: (context, index) {
+                      if (index == 0) {
+                        return _buildHeader(
+                          context,
+                          trip,
+                          stats,
+                          journalController.entries,
+                        );
+                      }
+                      return _DayGroupTile(
+                        trip: trip,
+                        group: displayDayGroups[index - 1],
+                      );
+                    },
+                  ),
+          ),
+        ],
       ),
     );
   }
@@ -389,6 +437,39 @@ class _EntryTile extends StatelessWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _NoMatchingEntriesState extends StatelessWidget {
+  const _NoMatchingEntriesState();
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 48, horizontal: 24),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.search_off,
+            size: 48,
+            color: Theme.of(context).colorScheme.outline,
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'No matching entries',
+            style: Theme.of(context).textTheme.titleMedium,
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Try a different search term, mood, or date range.',
+            style: Theme.of(context).textTheme.bodyMedium,
+            textAlign: TextAlign.center,
+          ),
+        ],
       ),
     );
   }

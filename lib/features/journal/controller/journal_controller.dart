@@ -10,6 +10,7 @@ import '../../../validation/meal_validation.dart';
 import '../../../validation/steps_validation.dart';
 import '../ai/daily_advice_locator.dart';
 import '../ai/daily_advice_service.dart';
+import '../journal_filter.dart';
 
 class JournalController extends ChangeNotifier {
   JournalController(this._repository, this._dailyAdviceService);
@@ -21,12 +22,35 @@ class JournalController extends ChangeNotifier {
   List<JournalEntry> _entries = [];
   bool _loading = false;
   String? _error;
+  JournalFilter _filter = const JournalFilter();
 
   List<JournalEntry> get entries => _entries;
   bool get loading => _loading;
   String? get error => _error;
 
+  /// Current search/filter criteria (IMPLEMENTATION_PLAN_EXTRA_FEATURES.md
+  /// #2). View-only — never mutates or persists [_entries].
+  JournalFilter get filter => _filter;
+
+  /// [entries] narrowed by [filter]. Equal to [entries] when the filter is
+  /// inactive, so callers can always render this instead of [entries]
+  /// without special-casing the unfiltered case.
+  List<JournalEntry> get filteredEntries =>
+      filterJournalEntries(_entries, _filter);
+
+  void setFilter(JournalFilter filter) {
+    _filter = filter;
+    notifyListeners();
+  }
+
+  void clearFilter() {
+    _filter = const JournalFilter();
+    notifyListeners();
+  }
+
   Future<void> loadEntries(String tripId) async {
+    // Switching trips should never carry a stale search/filter over.
+    if (_tripId != null && _tripId != tripId) _filter = const JournalFilter();
     _tripId = tripId;
     _loading = true;
     _error = null;
@@ -49,7 +73,11 @@ class JournalController extends ChangeNotifier {
   /// editing never changes an entry's day, so re-validating an unrelated
   /// field edit against dates that may have shifted since creation would be
   /// a usability harm, not a real invariant.
-  String? _validateEntry(JournalEntry entry, {required bool checkDate, Trip? trip}) {
+  String? _validateEntry(
+    JournalEntry entry, {
+    required bool checkDate,
+    Trip? trip,
+  }) {
     final contentError = validateEntryContent(entry.title, entry.body);
     if (contentError != null) return contentError;
 
@@ -59,7 +87,10 @@ class JournalController extends ChangeNotifier {
     final bodyError = validateEntryBodyLength(entry.body);
     if (bodyError != null) return bodyError;
 
-    final totalTextError = validateEntryTotalTextLength(entry.title, entry.body);
+    final totalTextError = validateEntryTotalTextLength(
+      entry.title,
+      entry.body,
+    );
     if (totalTextError != null) return totalTextError;
 
     final healthLog = entry.healthLog;
@@ -76,7 +107,11 @@ class JournalController extends ChangeNotifier {
     }
 
     if (checkDate) {
-      final dateError = validateEntryDate(entry.createdAt, now: DateTime.now(), trip: trip);
+      final dateError = validateEntryDate(
+        entry.createdAt,
+        now: DateTime.now(),
+        trip: trip,
+      );
       if (dateError != null) return dateError;
     }
 
@@ -156,7 +191,9 @@ class JournalController extends ChangeNotifier {
         caloriesEaten: healthLog.caloriesEaten,
         caloriesBurned: healthLog.caloriesBurned,
       );
-      await _repository.updateEntry(entry.copyWith(healthLog: healthLog.copyWith(aiAdvice: advice)));
+      await _repository.updateEntry(
+        entry.copyWith(healthLog: healthLog.copyWith(aiAdvice: advice)),
+      );
       await _refresh();
       return advice;
     } catch (_) {
