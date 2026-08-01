@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:printing/printing.dart';
 
 import '../../../models/journal_entry.dart';
 import '../controller/journal_controller.dart';
+import '../pdf/journal_pdf_export.dart';
 import '../widgets/delete_confirmation_dialog.dart';
 import '../widgets/format_utils.dart' show formatDate, formatThousands;
 import '../widgets/meal_display.dart';
@@ -23,6 +25,31 @@ class EntryDetailScreen extends ConsumerWidget {
     return null;
   }
 
+  Future<void> _exportPdf(BuildContext context, JournalEntry entry) async {
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(child: CircularProgressIndicator()),
+    );
+    try {
+      final bytes = await buildEntryPdf(entry);
+      if (context.mounted) Navigator.pop(context); // close the loading dialog
+      await Printing.sharePdf(
+        bytes: bytes,
+        filename: pdfFileNameFor(entry.displayTitle),
+      );
+    } catch (_) {
+      if (context.mounted) Navigator.pop(context);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Could not export this entry as a PDF.'),
+          ),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final controller = ref.watch(journalControllerProvider);
@@ -39,20 +66,33 @@ class EntryDetailScreen extends ConsumerWidget {
         title: Text(entry.displayTitle),
         actions: [
           IconButton(
+            key: const Key('export-entry-pdf-button'),
+            icon: const Icon(Icons.picture_as_pdf_outlined),
+            tooltip: 'Export as PDF',
+            onPressed: () => _exportPdf(context, entry),
+          ),
+          IconButton(
             key: const Key('edit-entry-button'),
             icon: const Icon(Icons.edit),
             onPressed: () => Navigator.push(
               context,
-              MaterialPageRoute(builder: (_) => CreateEditEntryScreen(existingEntry: entry)),
+              MaterialPageRoute(
+                builder: (_) => CreateEditEntryScreen(existingEntry: entry),
+              ),
             ),
           ),
           IconButton(
             key: const Key('delete-entry-button'),
             icon: const Icon(Icons.delete_outline),
             onPressed: () async {
-              final confirmed = await showDeleteConfirmationDialog(context, entryTitle: entry.displayTitle);
+              final confirmed = await showDeleteConfirmationDialog(
+                context,
+                entryTitle: entry.displayTitle,
+              );
               if (!confirmed || !context.mounted) return;
-              await ref.read(journalControllerProvider.notifier).remove(entry.id);
+              await ref
+                  .read(journalControllerProvider.notifier)
+                  .remove(entry.id);
               if (context.mounted) Navigator.pop(context);
             },
           ),
@@ -85,7 +125,10 @@ class EntryDetailScreen extends ConsumerWidget {
                     onTap: () => Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (_) => PhotoViewerScreen(photoPaths: entry.photoPaths, initialIndex: i),
+                        builder: (_) => PhotoViewerScreen(
+                          photoPaths: entry.photoPaths,
+                          initialIndex: i,
+                        ),
                       ),
                     ),
                   ),
@@ -102,7 +145,10 @@ class EntryDetailScreen extends ConsumerWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Health Log', style: Theme.of(context).textTheme.titleMedium),
+                    Text(
+                      'Health Log',
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
                     const SizedBox(height: 8),
                     Text(
                       '${formatThousands(healthLog.steps)} steps · '
@@ -110,7 +156,10 @@ class EntryDetailScreen extends ConsumerWidget {
                       'Burned: ${healthLog.caloriesBurned != null ? '${formatThousands(healthLog.caloriesBurned!)} kcal' : '— (no health data)'}',
                     ),
                     const SizedBox(height: 12),
-                    Text('Meals', style: Theme.of(context).textTheme.titleSmall),
+                    Text(
+                      'Meals',
+                      style: Theme.of(context).textTheme.titleSmall,
+                    ),
                     for (final meal in healthLog.meals)
                       ListTile(
                         contentPadding: EdgeInsets.zero,
@@ -121,7 +170,10 @@ class EntryDetailScreen extends ConsumerWidget {
                         ),
                       ),
                     const Divider(),
-                    Text('AI advice', style: Theme.of(context).textTheme.titleSmall),
+                    Text(
+                      'AI advice',
+                      style: Theme.of(context).textTheme.titleSmall,
+                    ),
                     const SizedBox(height: 4),
                     Text(healthLog.aiAdvice ?? 'No AI advice yet.'),
                   ],

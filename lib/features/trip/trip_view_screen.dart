@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:printing/printing.dart';
 
 import '../../models/journal_entry.dart';
 import '../../models/trip.dart';
 import '../journal/controller/journal_controller.dart';
+import '../journal/pdf/journal_pdf_export.dart';
 import '../journal/screens/create_edit_entry_screen.dart';
 import '../journal/screens/entry_detail_screen.dart';
 import '../journal/widgets/format_utils.dart';
@@ -80,6 +82,29 @@ class _TripViewScreenState extends ConsumerState<TripViewScreen> {
     if (mounted) Navigator.pop(context);
   }
 
+  Future<void> _exportTripPdf(Trip trip, List<JournalEntry> entries) async {
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(child: CircularProgressIndicator()),
+    );
+    try {
+      final bytes = await buildTripPdf(trip, entries);
+      if (mounted) Navigator.pop(context); // close the loading dialog
+      await Printing.sharePdf(
+        bytes: bytes,
+        filename: pdfFileNameFor(trip.title),
+      );
+    } catch (_) {
+      if (mounted) Navigator.pop(context);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not export this trip as a PDF.')),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final tripController = ref.watch(tripControllerProvider);
@@ -108,6 +133,12 @@ class _TripViewScreenState extends ConsumerState<TripViewScreen> {
       appBar: AppBar(
         title: Text(trip.title),
         actions: [
+          IconButton(
+            key: const Key('trip-view-export-pdf-button'),
+            icon: const Icon(Icons.picture_as_pdf_outlined),
+            tooltip: 'Export trip as PDF',
+            onPressed: () => _exportTripPdf(trip, journalController.entries),
+          ),
           IconButton(
             key: const Key('trip-view-search-toggle'),
             icon: Icon(_searchVisible ? Icons.search_off : Icons.search),
