@@ -34,6 +34,11 @@ class TripViewScreen extends ConsumerStatefulWidget {
 class _TripViewScreenState extends ConsumerState<TripViewScreen> {
   bool _searchVisible = false;
 
+  /// First-use hint dismissal, in-memory only for this screen instance --
+  /// reappears next time the trip is opened, which is fine for a low-stakes
+  /// discoverability nudge (IMPLEMENTATION_PLAN_EXTRA_FEATURES.md #4).
+  bool _tapToEditHintDismissed = false;
+
   @override
   void initState() {
     super.initState();
@@ -148,7 +153,11 @@ class _TripViewScreenState extends ConsumerState<TripViewScreen> {
                         stats,
                         journalController.entries,
                       ),
-                      const _NoMatchingEntriesState(),
+                      _NoMatchingEntriesState(
+                        onClearFilters: () => ref
+                            .read(journalControllerProvider.notifier)
+                            .clearFilter(),
+                      ),
                     ],
                   )
                 : ListView.builder(
@@ -226,6 +235,18 @@ class _TripViewScreenState extends ConsumerState<TripViewScreen> {
                   ),
                 ),
               ),
+              if (entries.isEmpty) ...[
+                const SizedBox(height: 12),
+                _NoEntriesYetHint(
+                  tripHasStarted: !trip.startDate.isAfter(DateTime.now()),
+                ),
+              ] else if (!_tapToEditHintDismissed) ...[
+                const SizedBox(height: 12),
+                _TapToEditHint(
+                  onDismiss: () =>
+                      setState(() => _tapToEditHintDismissed = true),
+                ),
+              ],
               const SizedBox(height: 16),
               Card(
                 color: Theme.of(context).colorScheme.secondaryContainer,
@@ -442,8 +463,82 @@ class _EntryTile extends StatelessWidget {
   }
 }
 
+class _NoEntriesYetHint extends StatelessWidget {
+  const _NoEntriesYetHint({required this.tripHasStarted});
+
+  /// Whether at least one day of the trip is today or in the past. A future
+  /// trip has no writable day yet, so the hint must not claim there's an
+  /// action to take right now (also avoids the literal text "Add entry" --
+  /// see trip_view_screen_test.dart's "no Add entry action" assertion for
+  /// fully-future trips, which this text must not accidentally satisfy).
+  final bool tripHasStarted;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final message = tripHasStarted
+        ? 'No entries yet — tap a day below to start journaling this trip.'
+        : "No entries yet — you'll be able to journal once this trip begins.";
+    return Container(
+      key: const Key('no-entries-yet-hint'),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerHigh,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            Icons.auto_stories_outlined,
+            size: 20,
+            color: colorScheme.outline,
+          ),
+          const SizedBox(width: 10),
+          Expanded(child: Text(message)),
+        ],
+      ),
+    );
+  }
+}
+
+class _TapToEditHint extends StatelessWidget {
+  const _TapToEditHint({required this.onDismiss});
+
+  final VoidCallback onDismiss;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Container(
+      key: const Key('tap-to-edit-hint'),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerHigh,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.lightbulb_outline, size: 18, color: colorScheme.outline),
+          const SizedBox(width: 10),
+          const Expanded(child: Text('Tip: tap an entry to view or edit it.')),
+          IconButton(
+            key: const Key('dismiss-tap-to-edit-hint'),
+            icon: const Icon(Icons.close, size: 18),
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(),
+            onPressed: onDismiss,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _NoMatchingEntriesState extends StatelessWidget {
-  const _NoMatchingEntriesState();
+  const _NoMatchingEntriesState({required this.onClearFilters});
+
+  final VoidCallback onClearFilters;
 
   @override
   Widget build(BuildContext context) {
@@ -468,6 +563,12 @@ class _NoMatchingEntriesState extends StatelessWidget {
             'Try a different search term, mood, or date range.',
             style: Theme.of(context).textTheme.bodyMedium,
             textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 12),
+          TextButton(
+            key: const Key('clear-journal-filters-button'),
+            onPressed: onClearFilters,
+            child: const Text('Clear filters'),
           ),
         ],
       ),

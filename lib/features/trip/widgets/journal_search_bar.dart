@@ -32,6 +32,18 @@ class _JournalSearchBarState extends State<JournalSearchBar> {
   Timer? _debounce;
 
   @override
+  void didUpdateWidget(covariant JournalSearchBar oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Keeps the visible text in sync when the filter is cleared/changed from
+    // outside this widget (e.g. the "Clear filters" button on the empty
+    // state) -- typing itself never hits this branch, since the value here
+    // already matches what the field already shows.
+    if (widget.filter.query != _textController.text) {
+      _textController.text = widget.filter.query;
+    }
+  }
+
+  @override
   void dispose() {
     _debounce?.cancel();
     _textController.dispose();

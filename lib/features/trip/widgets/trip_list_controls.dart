@@ -99,3 +99,38 @@ class TripListControls extends StatelessWidget {
     );
   }
 }
+
+/// Shown instead of the trip list when a status filter narrows the result
+/// to zero trips (IMPLEMENTATION_PLAN_EXTRA_FEATURES.md #4 — empty state
+/// with a friendly message and a clear action).
+class TripListNoMatchesState extends StatelessWidget {
+  const TripListNoMatchesState({super.key, required this.onClearFilter});
+
+  final VoidCallback onClearFilter;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      key: const Key('trip-list-no-matches'),
+      padding: const EdgeInsets.symmetric(vertical: 24),
+      child: Center(
+        child: Column(
+          children: [
+            Icon(
+              Icons.filter_alt_off_outlined,
+              size: 40,
+              color: Theme.of(context).colorScheme.outline,
+            ),
+            const SizedBox(height: 8),
+            const Text('No trips match this filter.'),
+            TextButton(
+              key: const Key('clear-trip-status-filter-button'),
+              onPressed: onClearFilter,
+              child: const Text('Clear filter'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}

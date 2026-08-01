@@ -152,10 +152,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         ),
         const SizedBox(height: 8),
         if (orderedTrips.isEmpty)
-          const Padding(
-            key: Key('trip-list-no-matches'),
-            padding: EdgeInsets.symmetric(vertical: 24),
-            child: Center(child: Text('No trips match this filter.')),
+          TripListNoMatchesState(
+            onClearFilter: () =>
+                setState(() => _statusFilter = TripStatusFilter.all),
           )
         else
           for (final trip in orderedTrips)
