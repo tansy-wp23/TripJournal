@@ -9,7 +9,7 @@ Widget _wrapped(String tripId) {
 }
 
 void main() {
-  Future<void> _setUpScreen(WidgetTester tester) async {
+  Future<void> setUpScreen(WidgetTester tester) async {
     tester.view.physicalSize = const Size(1200, 2600);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.resetPhysicalSize);
@@ -23,7 +23,7 @@ void main() {
   }
 
   testWidgets('the search bar is hidden until the search icon is tapped', (tester) async {
-    await _setUpScreen(tester);
+    await setUpScreen(tester);
 
     expect(find.byKey(const Key('journal-search-field')), findsNothing);
 
@@ -36,7 +36,7 @@ void main() {
   testWidgets('typing a query narrows the timeline to matching entries after the debounce', (
     tester,
   ) async {
-    await _setUpScreen(tester);
+    await setUpScreen(tester);
 
     await tester.tap(find.byKey(const Key('trip-view-search-toggle')));
     await tester.pumpAndSettle();
@@ -52,7 +52,7 @@ void main() {
   });
 
   testWidgets('a mood chip filters the timeline immediately, no debounce needed', (tester) async {
-    await _setUpScreen(tester);
+    await setUpScreen(tester);
 
     await tester.tap(find.byKey(const Key('trip-view-search-toggle')));
     await tester.pumpAndSettle();
@@ -67,7 +67,7 @@ void main() {
   testWidgets('a query with no matches shows the "No matching entries" empty state', (
     tester,
   ) async {
-    await _setUpScreen(tester);
+    await setUpScreen(tester);
 
     await tester.tap(find.byKey(const Key('trip-view-search-toggle')));
     await tester.pumpAndSettle();
@@ -82,7 +82,7 @@ void main() {
   testWidgets('closing the search bar clears the filter and restores the full timeline', (
     tester,
   ) async {
-    await _setUpScreen(tester);
+    await setUpScreen(tester);
 
     await tester.tap(find.byKey(const Key('trip-view-search-toggle')));
     await tester.pumpAndSettle();

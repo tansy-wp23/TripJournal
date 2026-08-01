@@ -9,8 +9,10 @@ import '../trip/controller/trip_controller.dart';
 import '../trip/mock_user.dart';
 import '../trip/trip_summary_stats.dart';
 import '../trip/trip_form_screen.dart';
+import '../trip/trip_list_sort.dart';
 import '../trip/trip_view_screen.dart';
 import '../trip/widgets/trip_cover_photo.dart';
+import '../trip/widgets/trip_list_controls.dart';
 import '../trip/widgets/wellness_stats_row.dart';
 import '../../models/journal_entry.dart';
 import '../../models/trip.dart';
@@ -27,6 +29,8 @@ class HomeScreen extends ConsumerStatefulWidget {
 
 class _HomeScreenState extends ConsumerState<HomeScreen> {
   Map<String, int> _entryCounts = {};
+  TripSortOption _sort = TripSortOption.defaultOrder;
+  TripStatusFilter _statusFilter = TripStatusFilter.all;
 
   @override
   void initState() {
@@ -50,14 +54,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
     final activeTrip = ref.read(tripControllerProvider).activeTrip;
     if (activeTrip != null) {
-      await ref.read(journalControllerProvider.notifier).loadEntries(activeTrip.id);
+      await ref
+          .read(journalControllerProvider.notifier)
+          .loadEntries(activeTrip.id);
     }
   }
 
   void _showComingSoon(String feature) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('$feature is not wired up yet.')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text('$feature is not wired up yet.')));
   }
 
   void _openTripView(Trip trip) {
@@ -84,7 +90,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         title: const Text('TripJournal'),
         actions: [
           PopupMenuButton<String>(
-            onSelected: (value) => _showComingSoon(value == 'settings' ? 'Settings' : 'Log out'),
+            onSelected: (value) =>
+                _showComingSoon(value == 'settings' ? 'Settings' : 'Log out'),
             itemBuilder: (context) => const [
               PopupMenuItem(value: 'settings', child: Text('Settings')),
               PopupMenuItem(value: 'logout', child: Text('Log out')),
@@ -120,14 +127,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       return _buildEmptyState(context);
     }
 
-    final now = DateTime.now();
     final activeTrip = tripController.activeTrip;
-    final active = tripController.trips.where((t) => t.isActiveOn(now)).toList();
-    final upcoming = tripController.trips.where((t) => !t.isActiveOn(now) && t.startDate.isAfter(now)).toList()
-      ..sort((a, b) => a.startDate.compareTo(b.startDate));
-    final past = tripController.trips.where((t) => !t.isActiveOn(now) && t.endDate.isBefore(now)).toList()
-      ..sort((a, b) => b.endDate.compareTo(a.endDate));
-    final orderedTrips = [...active, ...upcoming, ...past];
+    final orderedTrips = sortAndFilterTrips(
+      tripController.trips,
+      sort: _sort,
+      statusFilter: _statusFilter,
+    );
 
     return ListView(
       padding: const EdgeInsets.all(16),
@@ -138,15 +143,30 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         ],
         Text('Your Trips', style: Theme.of(context).textTheme.titleLarge),
         const SizedBox(height: 8),
-        for (final trip in orderedTrips)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: _TripCard(
-              trip: trip,
-              entryCount: _entryCounts[trip.id] ?? 0,
-              onTap: () => _openTripView(trip),
+        TripListControls(
+          sort: _sort,
+          statusFilter: _statusFilter,
+          onSortChanged: (sort) => setState(() => _sort = sort),
+          onStatusFilterChanged: (filter) =>
+              setState(() => _statusFilter = filter),
+        ),
+        const SizedBox(height: 8),
+        if (orderedTrips.isEmpty)
+          const Padding(
+            key: Key('trip-list-no-matches'),
+            padding: EdgeInsets.symmetric(vertical: 24),
+            child: Center(child: Text('No trips match this filter.')),
+          )
+        else
+          for (final trip in orderedTrips)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: _TripCard(
+                trip: trip,
+                entryCount: _entryCounts[trip.id] ?? 0,
+                onTap: () => _openTripView(trip),
+              ),
             ),
-          ),
       ],
     );
   }
@@ -166,12 +186,22 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     JournalController journalController,
   ) {
     final today = DateTime.now();
-    final dayNumber = DateTime(today.year, today.month, today.day)
-            .difference(DateTime(trip.startDate.year, trip.startDate.month, trip.startDate.day))
+    final dayNumber =
+        DateTime(today.year, today.month, today.day)
+            .difference(
+              DateTime(
+                trip.startDate.year,
+                trip.startDate.month,
+                trip.startDate.day,
+              ),
+            )
             .inDays +
         1;
     final todaysEntry = _findTodaysEntry(journalController.entries);
-    final stats = computeTripStats(entries: journalController.entries, totalDays: trip.durationDays);
+    final stats = computeTripStats(
+      entries: journalController.entries,
+      totalDays: trip.durationDays,
+    );
 
     return Card(
       clipBehavior: Clip.antiAlias,
@@ -187,7 +217,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(trip.title, style: Theme.of(context).textTheme.headlineSmall),
+                  Text(
+                    trip.title,
+                    style: Theme.of(context).textTheme.headlineSmall,
+                  ),
                   Text('Day $dayNumber of ${trip.durationDays}'),
                   const SizedBox(height: 12),
                   if (todaysEntry == null) ...[
@@ -198,7 +231,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                       onPressed: () => Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (_) => CreateEditEntryScreen(tripId: trip.id, initialDate: today, trip: trip),
+                          builder: (_) => CreateEditEntryScreen(
+                            tripId: trip.id,
+                            initialDate: today,
+                            trip: trip,
+                          ),
                         ),
                       ),
                       icon: const Icon(Icons.edit_note),
@@ -209,7 +246,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                       children: [
                         const Icon(Icons.check_circle, color: Colors.green),
                         const SizedBox(width: 8),
-                        Expanded(child: Text("Today's entry: ${todaysEntry.displayTitle}")),
+                        Expanded(
+                          child: Text(
+                            "Today's entry: ${todaysEntry.displayTitle}",
+                          ),
+                        ),
                       ],
                     ),
                     const SizedBox(height: 4),
@@ -218,7 +259,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                         if (todaysEntry.healthLog != null) ...[
                           const Icon(Icons.directions_walk, size: 18),
                           const SizedBox(width: 4),
-                          Text('${formatThousands(todaysEntry.healthLog!.steps)} steps'),
+                          Text(
+                            '${formatThousands(todaysEntry.healthLog!.steps)} steps',
+                          ),
                           const SizedBox(width: 16),
                         ],
                         Icon(moodIcon(todaysEntry.mood), size: 18),
@@ -279,7 +322,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 }
 
 class _TripCard extends StatelessWidget {
-  const _TripCard({required this.trip, required this.entryCount, required this.onTap});
+  const _TripCard({
+    required this.trip,
+    required this.entryCount,
+    required this.onTap,
+  });
 
   final Trip trip;
   final int entryCount;
@@ -295,7 +342,11 @@ class _TripCard extends StatelessWidget {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              TripCoverPhoto(photoPath: trip.coverPhotoPath, width: 88, height: 88),
+              TripCoverPhoto(
+                photoPath: trip.coverPhotoPath,
+                width: 88,
+                height: 88,
+              ),
               Expanded(
                 child: Padding(
                   padding: const EdgeInsets.all(12),
@@ -303,9 +354,14 @@ class _TripCard extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Text(trip.title, style: Theme.of(context).textTheme.titleMedium),
+                      Text(
+                        trip.title,
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
                       const SizedBox(height: 4),
-                      Text('${formatDate(trip.startDate)} - ${formatDate(trip.endDate)}'),
+                      Text(
+                        '${formatDate(trip.startDate)} - ${formatDate(trip.endDate)}',
+                      ),
                       const SizedBox(height: 4),
                       Text(entryCount == 1 ? '1 entry' : '$entryCount entries'),
                     ],
