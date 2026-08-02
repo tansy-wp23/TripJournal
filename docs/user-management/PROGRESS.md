@@ -135,3 +135,90 @@ Implement the four mock repositories in `lib/data/`
 `mock_account_lifecycle_repository.dart`), plus a DI locator
 (`lib/data/user_management_repository_locator.dart`, mirroring
 `lib/data/repository_locator.dart`) so screens depend on interfaces only.
+
+---
+
+## Phase 1 — Mock Repositories (complete)
+
+### What was built
+
+In-memory fakes for all 4 repository interfaces, so UI work in Phases 2–5
+never blocks on a backend.
+
+- **`MockAuthRepository`** (`lib/data/mock_auth_repository.dart`) — simulates
+  a Google sign-in with a configurable result
+  (`MockAuthResult.success` / `.failure` / `.cancelled`) and exposes a fake
+  `authStateChanges()` broadcast stream so screens react to sign-in/sign-out
+  the same way they would with the real Supabase stream.
+- **`MockProfileRepository`** (`lib/data/mock_profile_repository.dart`) —
+  seeded with a configurable profile state
+  (`MockProfileState.firstTime` / `.active` / `.deactivated`); supports
+  `getProfile` / `createProfileIfMissing` / `updateProfile`.
+- **`MockVerificationCodeRepository`**
+  (`lib/data/mock_verification_code_repository.dart`) — generates a fixed
+  code (`"123456"`, printed to console), tracks `attempt_count`, enforces
+  expiry via a configurable `codeLifetime`, locks out after `maxAttempts`
+  wrong attempts, and `resendCode` invalidates the previous code (a fresh
+  one with a unique `codeID` replaces it).
+- **`MockAccountLifecycleRepository`**
+  (`lib/data/mock_account_lifecycle_repository.dart`) — deactivate/reactivate
+  state transitions on the mock profile, calling into the mock verification
+  repo for code validation. Throws `CodeValidationException` on wrong/expired
+  codes.
+- **DI locator** (`lib/data/user_management_repository_locator.dart`) — the
+  one place the app resolves its user-management repositories from, mirroring
+  `repository_locator.dart` / `trip_repository_locator.dart`. All four are
+  wired to mocks; Phase 7 swaps each `Mock*` for the real `Supabase*` in one
+  line here.
+
+### Files touched (Phase 1)
+
+- `lib/data/mock_auth_repository.dart` (new)
+- `lib/data/mock_profile_repository.dart` (new)
+- `lib/data/mock_verification_code_repository.dart` (new)
+- `lib/data/mock_account_lifecycle_repository.dart` (new)
+- `lib/data/user_management_repository_locator.dart` (new)
+- `lib/models/profile.dart` (modified — added `clearDeactivatedAt` flag to
+  `copyWith` so reactivation can null out `deactivatedAt`)
+- `test/mock_auth_repository_test.dart` (new — 5 tests)
+- `test/mock_profile_repository_test.dart` (new — 6 tests)
+- `test/mock_verification_code_repository_test.dart` (new — 8 tests)
+- `test/mock_account_lifecycle_repository_test.dart` (new — 6 tests)
+
+### Deviations from plan
+
+- **`Profile.copyWith` gained a `clearDeactivatedAt` boolean flag.** The
+  standard `copyWith` pattern can't set a nullable field back to `null`
+  (passing `null` means "keep the existing value"). Reactivation needs to
+  clear `deactivatedAt`, so the flag was added. This is a Phase 0 entity
+  change, noted here because it was discovered during Phase 1 testing.
+- **`MockVerificationCodeRepository` uses a monotonic `_codeCounter`** in
+  addition to `now.millisecondsSinceEpoch` for `codeID`, so two `sendCode`
+  calls in the same millisecond (e.g. in tests) still produce distinct IDs.
+  Discovered during Phase 1 testing.
+- **`MockAccountLifecycleRepository` exposes its dependencies as public
+  fields** (`profileRepository`, `verificationCodeRepository`) rather than
+  private, to satisfy the `prefer_initializing_formals` lint while keeping
+  the constructor API stable. Tests use these to inspect state.
+
+### Verification
+
+- `flutter analyze` — no issues found.
+- `flutter test` (the 4 new test files) — 25 tests, all passed.
+
+### Definition of Done
+
+- [x] All 4 mocks implemented and unit-testable
+- [x] Mock auth repo can simulate: success, failure, cancelled sign-in
+- [x] Mock profile repo can simulate: first-time (no profile → create),
+      active, and deactivated states
+- [x] A single config flag/file controls mock vs. real (the DI locator
+      `user_management_repository_locator.dart`; real doesn't exist yet)
+
+### Next phase (Phase 2) should start with
+
+Build the login screen + authentication flow against the mocks:
+`AuthRepository.signInWithGoogle()` → `ProfileRepository.createProfileIfMissing()`
+→ branch on `Profile.status` (active → navigate in; deactivated → route to
+reactivation screen). Listen to `authStateChanges()` for session persistence.
+Screens go in `lib/features/auth/` and `lib/features/profile/`.
