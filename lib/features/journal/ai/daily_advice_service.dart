@@ -28,12 +28,12 @@ abstract class DailyAdviceService {
 /// Canned, rule-based advice covering the food/steps/mood cases below — no
 /// network call. See the tone/safety constraint on [DailyAdviceService];
 /// every branch here was written to uphold it.
-// TODO(later AI phase): replace with a real implementation
-// (OpenAiDailyAdviceService / GeminiDailyAdviceService) calling the OpenAI or
-// Gemini text API (see CLAUDE.md tech stack). The system prompt for that
-// implementation MUST encode the same tone/safety constraints documented on
-// [DailyAdviceService] — supportive, non-prescriptive, non-clinical, no
-// restrictive-eating framing. Same interface, so this is a locator swap.
+///
+/// The real implementation is [GeminiDailyAdviceService]
+/// (`gemini_daily_advice_service.dart`), selected automatically by
+/// `daily_advice_locator.dart` when `GEMINI_API_KEY` is set in `.env`. This
+/// mock stays as the default (no key, offline, tests) and is never deleted —
+/// same interface, so the swap is a one-line locator change.
 class MockDailyAdviceService implements DailyAdviceService {
   @override
   Future<String> adviceFor({
@@ -44,13 +44,13 @@ class MockDailyAdviceService implements DailyAdviceService {
     int? caloriesBurned,
   }) async {
     final wellbeingSentence = _wellbeingSentence(mood: mood, steps: steps);
-    final foodSentence = _foodSentence(meals: meals, caloriesEaten: caloriesEaten);
+    final foodSentence = _foodSentence(
+      meals: meals,
+      caloriesEaten: caloriesEaten,
+    );
 
     // One short, friendly paragraph — not a list of separate commands.
-    return [
-      ?wellbeingSentence,
-      foodSentence,
-    ].join(' ');
+    return [?wellbeingSentence, foodSentence].join(' ');
   }
 
   /// Mood takes priority over steps when both are notable — a low/tired mood
@@ -84,7 +84,10 @@ class MockDailyAdviceService implements DailyAdviceService {
     return null;
   }
 
-  String _foodSentence({required List<Meal> meals, required int? caloriesEaten}) {
+  String _foodSentence({
+    required List<Meal> meals,
+    required int? caloriesEaten,
+  }) {
     if (meals.isEmpty || caloriesEaten == null || caloriesEaten == 0) {
       return 'No meals logged yet today — add what you ate to get a fuller picture.';
     }
