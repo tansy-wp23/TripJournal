@@ -453,6 +453,19 @@ touching UI code.
 
 ---
 
+## Known Issues
+
+- **OTP auto-advance focus (Phase 2):** The `OtpCodeInput` widget
+  (`lib/features/auth/widgets/otp_code_input.dart`) does not automatically
+  advance focus to the next digit box after a digit is entered. The
+  `KeyboardListener` wrapping each `TextField` holds the `FocusNode`, but
+  the `TextField` inside manages its own internal focus — calling
+  `requestFocus()` on the `KeyboardListener`'s node does not move the
+  `TextField`'s cursor. **Fix in Phase 4:** pass the `FocusNode` to the
+  `TextField` directly (or replace `KeyboardListener` with
+  `onEditingComplete`/`onSubmitted` on the `TextField`), so auto-advance
+  and backspace-to-previous work correctly.
+
 ## Traceability Reference
 
 | Sprint Item | Phase |
