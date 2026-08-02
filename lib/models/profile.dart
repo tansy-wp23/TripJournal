@@ -78,6 +78,7 @@ class Profile {
     UserRole? role,
     AccountStatus? status,
     DateTime? deactivatedAt,
+    bool clearDeactivatedAt = false,
     DateTime? lastLoginAt,
     DateTime? createdAt,
     DateTime? updatedAt,
@@ -88,7 +89,8 @@ class Profile {
       displayName: displayName ?? this.displayName,
       role: role ?? this.role,
       status: status ?? this.status,
-      deactivatedAt: deactivatedAt ?? this.deactivatedAt,
+      deactivatedAt:
+          clearDeactivatedAt ? null : (deactivatedAt ?? this.deactivatedAt),
       lastLoginAt: lastLoginAt ?? this.lastLoginAt,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
