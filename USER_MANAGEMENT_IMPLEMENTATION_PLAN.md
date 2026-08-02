@@ -185,9 +185,9 @@ never blocks on a backend.
    (new user with no profile yet / active / deactivated), supports
    get/create/update with basic validation.
 3. Implement `MockVerificationCodeRepository`: generates a fixed/logged
-   code (e.g. always `"123456"` in mock mode, printed to console),
-   tracks `attempt_count`, expiry via a short configurable timer, resend
-   invalidates the previous code.
+   **6-digit** code (e.g. always `"123456"` in mock mode, printed to
+   console), tracks `attempt_count`, expiry via a short configurable
+   timer, resend invalidates the previous code.
 4. Implement `MockAccountLifecycleRepository`: deactivate/reactivate state
    transitions on the mock profile, calling into the mock verification
    repo.
@@ -271,8 +271,8 @@ Maps to PB-15 through PB-18, plus PB-06 (detection).
 deactivation and reactivation depend on it.
 
 **Tasks:**
-1. Code entry screen (reusable widget, takes a `purpose` so it can be
-   used for both deactivation and reactivation).
+1. Code entry screen (reusable 6-digit OTP input widget, takes a `purpose`
+   so it can be used for both deactivation and reactivation).
 2. Send code / resend code UI + logic against
    `VerificationCodeRepository`.
 3. Validate code logic, including wrong-code and expired-code error
@@ -355,8 +355,9 @@ infrastructure.
 6. Edge Functions or Postgres RPC functions (only where privileged logic
    or hashing is needed):
    - `verification-send` / `verification-validate` / `verification-resend`
-     — OTP generation, hashing (never store plaintext), `attempt_count`
-     lockout after a defined threshold, `expires_at` check, email sending.
+     — OTP generation (6-digit), hashing (never store plaintext),
+     `attempt_count` lockout after a defined threshold, `expires_at`
+     check, email sending.
    - `account-deactivate-confirm` — validates the code, sets
      `Profile.status = deactivated`, calls
      `auth.admin.signOut(userId)` (requires service role — this is why it
@@ -422,9 +423,9 @@ touching UI code.
    to the other module owners** (Trip Management, Journal, Trip Recap,
    Admin) so their RLS policies/Edge Functions also exclude deactivated
    users — this module cannot enforce that for them.
-2. Security pass: OTP length + entropy, timing-safe comparison for code
-   hashing, rate limiting on `verification-send`/`resend` (not just
-   `attempt_count` on validate).
+2. Security pass: OTP length (6 digits) + entropy, timing-safe comparison
+   for code hashing, rate limiting on `verification-send`/`resend` (not
+   just `attempt_count` on validate).
 3. (Stretch, optional) Evaluate a Supabase Auth Hook to reject token
    issuance for deactivated accounts server-side, as a stronger
    alternative/complement to the client-side + RLS approach above.

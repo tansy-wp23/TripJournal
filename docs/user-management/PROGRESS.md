@@ -222,3 +222,99 @@ Build the login screen + authentication flow against the mocks:
 → branch on `Profile.status` (active → navigate in; deactivated → route to
 reactivation screen). Listen to `authStateChanges()` for session persistence.
 Screens go in `lib/features/auth/` and `lib/features/profile/`.
+
+---
+
+## Phase 2 — Sprint 1: Core Authentication (mock) (complete)
+
+### What was built
+
+The full mock Google sign-in flow: a guest can sign in, land in the app, and
+stay signed in — with deactivated accounts correctly diverted to the
+reactivation screen instead of let in.
+
+- **`AuthController`** (`lib/features/auth/controller/auth_controller.dart`) —
+  the authentication flow controller. Calls `signInWithGoogle()` →
+  `createProfileIfMissing()` → branches on `Profile.status`. Exposes an
+  `AuthStatus` enum (`signedOut` / `loading` / `authenticated` /
+  `deactivated`) that the UI routes on. Listens to
+  `authStateChanges()` for session persistence (PB-08). Handles all 3
+  sign-in outcomes: success, failure (error message), cancelled (error
+  message). Derives a display name from the email for first-time users.
+- **`LoginScreen`** (`lib/features/auth/screens/login_screen.dart`) — the
+  Social Login Component UI. A single "Sign in with Google" button, a
+  loading spinner during sign-in, and an error banner for failure/cancel.
+- **`ReactivationScreen`** (`lib/features/auth/screens/reactivation_screen.dart`)
+  — a **Phase 2 stub**. Shown when a deactivated user signs in (PB-06
+  detection). Has a code-entry field, confirm button (stub), and a cancel
+  button that calls `signOut()` (Architecture Decision 7 — don't leave a
+  gated session hanging). Full code-entry logic lands in Phase 4/5.
+- **`AuthGate`** (`lib/features/auth/auth_gate.dart`) — the top-level
+  routing widget. Watches `authControllerProvider.status` and routes to
+  `LoginScreen` / `HomeScreen` / `ReactivationScreen` / a loading spinner.
+  This is the "Session Management" component (PB-08) — keeps navigation in
+  sync with auth state.
+
+### Files touched (Phase 2)
+
+- `lib/features/auth/controller/auth_controller.dart` (new)
+- `lib/features/auth/screens/login_screen.dart` (new)
+- `lib/features/auth/screens/reactivation_screen.dart` (new)
+- `lib/features/auth/auth_gate.dart` (new)
+- `test/auth_controller_test.dart` (new — 8 tests)
+- `docs/user-management/PROGRESS.md` (this entry)
+
+### Deviations from plan
+
+- **`AuthController` does not take `AccountLifecycleRepository`** as a
+  constructor parameter (the plan's Phase 2 didn't specify this, but the
+  initial implementation did). It was removed because Phase 2 only needs
+  `AuthRepository` + `ProfileRepository`; the lifecycle repo will be wired
+  in Phase 5 when reactivation confirmation is implemented. The
+  `onReactivated()` method is stubbed for Phase 5 to call after
+  `confirmReactivation()`.
+- **`AuthGate` is not yet wired into `main.dart`** as the app's root widget.
+  The plan says this is Phase 7's job ("not yet wired as the app's actual
+  home route"). The existing `HomeScreen` with `kMockUserId` remains the
+  default. `AuthGate` is ready to be swapped in but deliberately isn't, to
+  avoid breaking the existing journal/trip flows that depend on
+  `kMockUserId`.
+- **`ReactivationScreen` is a stub** — the code-entry field and confirm
+  button don't do anything yet. Phase 4 replaces the field with the real
+  OTP widget; Phase 5 wires `confirmReactivation()`.
+
+### Verification
+
+- `flutter analyze` — no issues found.
+- `flutter test test/auth_controller_test.dart` — 8 tests, all passed.
+
+### Manual test steps (for reference / Phase 7 re-verification)
+
+1. **Success:** With `MockAuthResult.success` + `MockProfileState.active`,
+   tapping "Sign in with Google" → `AuthStatus.authenticated` → `HomeScreen`.
+2. **First-time:** With `MockProfileState.firstTime`, sign-in creates a
+   profile → `AuthStatus.authenticated` → `HomeScreen`.
+3. **Deactivated:** With `MockProfileState.deactivated`, sign-in →
+   `AuthStatus.deactivated` → `ReactivationScreen` (not `HomeScreen`).
+4. **Failure:** With `MockAuthResult.failure`, sign-in → error banner
+   "Sign-in failed: …" → stays on `LoginScreen`.
+5. **Cancelled:** With `MockAuthResult.cancelled`, sign-in → error banner
+   "Sign-in cancelled." → stays on `LoginScreen`.
+6. **Session persistence:** After a successful sign-in, the `AuthGate`
+   keeps showing `HomeScreen` (driven by `authStateChanges()` listener).
+   After `signOut()`, it returns to `LoginScreen`.
+
+### Definition of Done
+
+- [x] All 3 mock auth outcomes (success/fail/cancel) are reachable and
+      visibly handled in the UI
+- [x] Mock "deactivated" profile correctly routes away from the main app
+- [x] Signed-in state persists across screen navigation
+- [x] Manual test steps documented in `PROGRESS.md`
+
+### Next phase (Phase 3) should start with
+
+Logout component (button → `signOut()` → back to login, driven by
+`authStateChanges()`), profile view screen (`getProfile()`), profile edit
+screen (`updateProfile()`), and validation rules for editable profile
+fields. Screens go in `lib/features/profile/`.
