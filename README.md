@@ -49,6 +49,32 @@ If you get a startup error, check this first.
 
 ---
 
+## Optional: Real AI (Gemini)
+
+The AI daily advice and food-photo detection features work out of the box with
+**no key at all** — they fall back to built-in mock implementations, fully
+offline. Only add a key if you want the real model responses.
+
+1. Get a free key from [Google AI Studio](https://aistudio.google.com/).
+2. Add it to your `.env`:
+   ```
+   GEMINI_API_KEY=your-key-here
+   ```
+3. Restart the app. `daily_advice_locator.dart` and `food_detection_locator.dart`
+   pick it up automatically at startup — nothing else to wire up.
+
+Leave it blank (or omit it) to keep using `MockDailyAdviceService` /
+`MockFoodDetectionService`. See `IMPLEMENTATION_PLAN_REAL_AI.md` for the full
+design (why it's dotenv-based, the safety/tone constraints sent to the model,
+etc.).
+
+> ⚠️ A valid key isn't a guarantee of working calls — a Google Cloud project
+> with zero free-tier quota for `generateContent` will still fail (gracefully;
+> the UI falls back to a "tap to retry" affordance). If real advice never
+> comes back, check quota/billing on the project the key belongs to.
+
+---
+
 ## Read This Before You Start Coding
 
 The project has a documented architecture and a set of design decisions that are
@@ -66,6 +92,8 @@ from building something that has to be redone:
 | `IMPLEMENTATION_PLAN_UX_POLISH.md` | AI food detection, thumbnails, save/discard guards |
 | `IMPLEMENTATION_PLAN_INLINE_PHOTO.md` | Inline notes editing, full-screen photo viewer |
 | `IMPLEMENTATION_PLAN_HEALTH.md` | Health Connect / HealthKit integration |
+| `IMPLEMENTATION_PLAN_EXTRA_FEATURES.md` | Wellness stats, journal search/filter, trip sort/filter, PDF export |
+| `IMPLEMENTATION_PLAN_REAL_AI.md` | Swapping mock AI services for real Gemini calls |
 | `tripjournal_schema.sql` | The database schema (already applied to Supabase) |
 
 ---
