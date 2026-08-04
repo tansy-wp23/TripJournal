@@ -52,7 +52,9 @@ class ClaimGateway implements PurgeGateway {
 
   claimExpiredTrips(cutoff: string): Promise<PurgeClaim[]> {
     this.cutoffs.push(cutoff);
-    return Promise.resolve(this.claims);
+    const claimed = this.claims;
+    this.claims = [];
+    return Promise.resolve(claimed);
   }
 
   removeObjects(bucket: string, paths: string[]): Promise<void> {
@@ -72,6 +74,20 @@ class ClaimGateway implements PurgeGateway {
   }
 }
 
+class BatchGateway extends ClaimGateway {
+  claimCalls = 0;
+
+  constructor(private readonly batches: PurgeClaim[][]) {
+    super();
+  }
+
+  override claimExpiredTrips(cutoff: string): Promise<PurgeClaim[]> {
+    this.cutoffs.push(cutoff);
+    this.claimCalls++;
+    return Promise.resolve(this.batches.shift() ?? []);
+  }
+}
+
 Deno.test("uses the durable claim snapshot and exact token for final deletion", async () => {
   const gateway = new ClaimGateway();
   gateway.claims = [claim()];
@@ -87,6 +103,62 @@ Deno.test("uses the durable claim snapshot and exact token for final deletion", 
   ]);
 });
 
+Deno.test("drains past 100 failed claims so a later batch can still succeed", async () => {
+  const failedClaims = Array.from({ length: 100 }, (_, index) => {
+    const id = `failed-trip-${index}`;
+    return claim({
+      tripId: id,
+      claimToken: `failed-token-${index}`,
+      coverPhotoUrl: null,
+      journalPhotoUrls: [],
+    });
+  });
+  const successfulClaim = claim({
+    tripId: "later-success",
+    claimToken: "later-token",
+    coverPhotoUrl: null,
+    journalPhotoUrls: [],
+  });
+  const gateway = new BatchGateway([
+    failedClaims,
+    [successfulClaim],
+    [],
+  ]);
+  for (const failedClaim of failedClaims) {
+    gateway.acceptedTokens.set(failedClaim.tripId, "different-token");
+  }
+
+  const summary = await purgeExpiredTrips({ gateway, cutoffIso, supabaseUrl });
+
+  assertEquals(summary, { processed: 101, deleted: 1, failed: 100 });
+  assertEquals(gateway.claimCalls, 3);
+});
+
+Deno.test("stops draining immediately when the claim RPC returns an empty batch", async () => {
+  const gateway = new BatchGateway([[], [claim()]]);
+
+  const summary = await purgeExpiredTrips({ gateway, cutoffIso, supabaseUrl });
+
+  assertEquals(summary, { processed: 0, deleted: 0, failed: 0 });
+  assertEquals(gateway.claimCalls, 1);
+  assertEquals(gateway.events, []);
+});
+
+Deno.test("caps one invocation at ten claim batches even while work remains", async () => {
+  const batches = Array.from({ length: 11 }, (_, index) => [claim({
+    tripId: `trip-${index}`,
+    claimToken: `token-${index}`,
+    coverPhotoUrl: null,
+    journalPhotoUrls: [],
+  })]);
+  const gateway = new BatchGateway(batches);
+
+  const summary = await purgeExpiredTrips({ gateway, cutoffIso, supabaseUrl });
+
+  assertEquals(summary, { processed: 10, deleted: 10, failed: 0 });
+  assertEquals(gateway.claimCalls, 10);
+});
+
 Deno.test("retries a failed durable claim with the same immutable snapshot", async () => {
   const gateway = new ClaimGateway();
   gateway.claims = [claim()];
@@ -95,11 +167,17 @@ Deno.test("retries a failed durable claim with the same immutable snapshot", asy
 
   const failed = await purgeExpiredTrips({ gateway, cutoffIso, supabaseUrl });
   gateway.removalFailures.clear();
+  gateway.claims = [claim()];
   const retried = await purgeExpiredTrips({ gateway, cutoffIso, supabaseUrl });
 
   assertEquals(failed, { processed: 1, deleted: 0, failed: 1 });
   assertEquals(retried, { processed: 1, deleted: 1, failed: 0 });
-  assertEquals(gateway.cutoffs, [cutoffIso, cutoffIso]);
+  assertEquals(gateway.cutoffs, [
+    cutoffIso,
+    cutoffIso,
+    cutoffIso,
+    cutoffIso,
+  ]);
   assertEquals(
     gateway.events.filter((event) => event.startsWith("delete:")).length,
     1,

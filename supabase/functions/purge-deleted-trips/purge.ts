@@ -3,6 +3,7 @@ export const JOURNAL_PHOTOS_BUCKET = "journal-photos";
 
 const RETENTION_MILLISECONDS = 30 * 24 * 60 * 60 * 1000;
 const PUBLIC_OBJECT_PREFIX = ["storage", "v1", "object", "public"];
+const MAX_CLAIM_BATCHES_PER_INVOCATION = 10;
 
 export interface PurgeClaim {
   tripId: string;
@@ -38,25 +39,37 @@ interface PurgeOptions {
 export async function purgeExpiredTrips(
   { gateway, cutoffIso, supabaseUrl }: PurgeOptions,
 ): Promise<PurgeSummary> {
-  const claims = await gateway.claimExpiredTrips(cutoffIso);
   const summary: PurgeSummary = {
-    processed: claims.length,
+    processed: 0,
     deleted: 0,
     failed: 0,
   };
 
-  for (const claim of claims) {
-    try {
-      const objects = managedObjectsForClaim(claim, supabaseUrl);
+  // A claim's active lease excludes it from later RPC calls in this
+  // invocation, so failed rows cannot starve later unclaimed batches. The
+  // hard cap bounds runtime; any remaining backlog waits for the next run.
+  for (
+    let batchNumber = 0;
+    batchNumber < MAX_CLAIM_BATCHES_PER_INVOCATION;
+    batchNumber++
+  ) {
+    const claims = await gateway.claimExpiredTrips(cutoffIso);
+    if (claims.length === 0) break;
+    summary.processed += claims.length;
 
-      for (const object of objects) {
-        await gateway.removeObjects(object.bucket, [object.path]);
+    for (const claim of claims) {
+      try {
+        const objects = managedObjectsForClaim(claim, supabaseUrl);
+
+        for (const object of objects) {
+          await gateway.removeObjects(object.bucket, [object.path]);
+        }
+
+        await gateway.permanentlyDeleteTrip(claim.tripId, claim.claimToken);
+        summary.deleted++;
+      } catch {
+        summary.failed++;
       }
-
-      await gateway.permanentlyDeleteTrip(claim.tripId, claim.claimToken);
-      summary.deleted++;
-    } catch {
-      summary.failed++;
     }
   }
 

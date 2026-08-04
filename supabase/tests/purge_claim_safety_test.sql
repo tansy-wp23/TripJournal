@@ -3,8 +3,49 @@
 begin;
 
 insert into auth.users (id)
-values ('00000000-0000-0000-0000-000000000001')
+values
+  ('00000000-0000-0000-0000-000000000001'),
+  ('00000000-0000-0000-0000-000000000002')
 on conflict (id) do nothing;
+
+insert into public.trips (
+  id,
+  user_id,
+  title,
+  start_date,
+  end_date,
+  created_at,
+  updated_at
+) values (
+  'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+  '00000000-0000-0000-0000-000000000002',
+  'Foreign trip',
+  date '2026-10-01',
+  date '2026-10-02',
+  now(),
+  now()
+);
+
+-- Seed invalid/foreign objects as the database owner so authenticated DELETE
+-- policy behavior can be tested independently from INSERT policy behavior.
+insert into storage.objects (bucket_id, name, owner_id)
+values (
+  'trip-covers',
+  '00000000-0000-0000-0000-000000000001/not-a-uuid/malformed-delete.jpg',
+  '00000000-0000-0000-0000-000000000001'
+), (
+  'trip-covers',
+  '00000000-0000-0000-0000-000000000001/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb/foreign-parent.jpg',
+  '00000000-0000-0000-0000-000000000001'
+), (
+  'trip-covers',
+  '00000000-0000-0000-0000-000000000002/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/cross-owner.jpg',
+  '00000000-0000-0000-0000-000000000002'
+), (
+  'journal-photos',
+  '00000000-0000-0000-0000-000000000001/cccccccc-cccc-4ccc-8ccc-cccccccccccc/orphan-delete.jpg',
+  '00000000-0000-0000-0000-000000000001'
+);
 
 -- A cover is uploaded before its trip row is created by Task 6. The INSERT
 -- policy must allow that canonical owner/trip path without weakening later
@@ -18,6 +59,42 @@ values (
   '00000000-0000-0000-0000-000000000001/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/pre-row.jpg',
   '00000000-0000-0000-0000-000000000001'
 );
+
+delete from storage.objects
+where bucket_id = 'trip-covers'
+  and name = '00000000-0000-0000-0000-000000000001/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/pre-row.jpg';
+
+do $$
+begin
+  if exists (
+    select 1 from storage.objects
+    where bucket_id = 'trip-covers'
+      and name = '00000000-0000-0000-0000-000000000001/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/pre-row.jpg'
+  ) then
+    raise exception 'pre-row cover rollback DELETE was blocked';
+  end if;
+
+  delete from storage.objects
+  where bucket_id = 'trip-covers'
+    and name = '00000000-0000-0000-0000-000000000001/not-a-uuid/malformed-delete.jpg';
+  if found then raise exception 'malformed cover DELETE succeeded'; end if;
+
+  delete from storage.objects
+  where bucket_id = 'trip-covers'
+    and name = '00000000-0000-0000-0000-000000000001/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb/foreign-parent.jpg';
+  if found then raise exception 'foreign-parent cover DELETE succeeded'; end if;
+
+  delete from storage.objects
+  where bucket_id = 'trip-covers'
+    and name = '00000000-0000-0000-0000-000000000002/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/cross-owner.jpg';
+  if found then raise exception 'cross-owner cover DELETE succeeded'; end if;
+
+  delete from storage.objects
+  where bucket_id = 'journal-photos'
+    and name = '00000000-0000-0000-0000-000000000001/cccccccc-cccc-4ccc-8ccc-cccccccccccc/orphan-delete.jpg';
+  if found then raise exception 'orphan journal-photo DELETE succeeded'; end if;
+end;
+$$;
 
 do $$
 begin
@@ -133,6 +210,58 @@ insert into public.journal_entries (
 );
 
 set local role authenticated;
+
+-- Journal ownership must be derived from the parent trip, not merely from a
+-- client-supplied journal_entries.user_id value.
+insert into public.journal_entries (
+  id,
+  trip_id,
+  user_id,
+  title,
+  photo_urls,
+  entry_date
+) values (
+  '44444444-4444-4444-8444-444444444444',
+  'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+  '00000000-0000-0000-0000-000000000001',
+  'Owned entry',
+  '{}',
+  date '2026-09-01'
+);
+
+do $$
+begin
+  begin
+    insert into public.journal_entries (
+      id,
+      trip_id,
+      user_id,
+      title,
+      photo_urls,
+      entry_date
+    ) values (
+      '55555555-5555-4555-8555-555555555555',
+      'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+      '00000000-0000-0000-0000-000000000001',
+      'Cross-owner entry',
+      '{}',
+      date '2026-10-01'
+    );
+    raise exception 'cross-owner journal INSERT succeeded';
+  exception
+    when foreign_key_violation then null;
+  end;
+
+  begin
+    update public.journal_entries
+    set trip_id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
+    where id = '44444444-4444-4444-8444-444444444444';
+    raise exception 'cross-owner journal reassignment succeeded';
+  exception
+    when foreign_key_violation then null;
+  end;
+end;
+$$;
 
 -- An existing, unclaimed parent still allows canonical post-row object
 -- mutations. This guards the normal cover replacement and journal upload

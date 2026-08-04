@@ -397,6 +397,22 @@ create table public.trip_purge_claims (
 create index trip_purge_claims_lease_idx
   on public.trip_purge_claims (lease_expires_at, trip_id);
 
+-- Bind every journal row to a trip owned by the same user. NOT VALID keeps
+-- the FK write-safe while it is installed; validation then fails the
+-- schema application rather than preserving any cross-owner rows.
+create unique index trips_id_user_id_uidx
+  on public.trips (id, user_id);
+
+alter table public.journal_entries
+  add constraint journal_entries_trip_owner_fkey
+  foreign key (trip_id, user_id)
+  references public.trips (id, user_id)
+  on delete cascade
+  not valid;
+
+alter table public.journal_entries
+  validate constraint journal_entries_trip_owner_fkey;
+
 alter table public.trip_purge_claims enable row level security;
 revoke all on table public.trip_purge_claims
   from public, anon, authenticated, service_role;
@@ -691,7 +707,7 @@ create policy "trip_covers_delete_own" on storage.objects
   for delete to authenticated
   using (
     bucket_id = 'trip-covers'
-    and public.storage_trip_mutation_allowed(name, false)
+    and public.storage_trip_mutation_allowed(name, true)
   );
 
 create policy "journal_photos_insert_own" on storage.objects
