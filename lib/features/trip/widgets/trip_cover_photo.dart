@@ -1,15 +1,23 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
+
+import '../../../data/trip_cover_storage.dart';
+import 'trip_cover_local_image.dart';
 
 /// Cover photo surface that renders public HTTP URLs or real device files.
 /// Seeded mock trips still use paths like `assets/mock/...` with no file behind
 /// them, so local paths are checked before loading and otherwise fall back to
 /// the placeholder.
 class TripCoverPhoto extends StatelessWidget {
-  const TripCoverPhoto({super.key, this.photoPath, this.width, this.height});
+  const TripCoverPhoto({
+    super.key,
+    this.photoPath,
+    this.coverDraft,
+    this.width,
+    this.height,
+  });
 
   final String? photoPath;
+  final TripCoverDraft? coverDraft;
   final double? width;
   final double? height;
 
@@ -21,10 +29,17 @@ class TripCoverPhoto extends StatelessWidget {
         uri != null &&
         uri.hasAuthority &&
         (uri.scheme == 'http' || uri.scheme == 'https');
-    final file = path == null || isNetworkUrl ? null : File(path);
 
     final Widget cover;
-    if (path != null && isNetworkUrl) {
+    if (coverDraft?.previewBytes != null) {
+      cover = Image.memory(
+        coverDraft!.previewBytes!,
+        width: width,
+        height: height,
+        fit: BoxFit.cover,
+        errorBuilder: (context, error, stackTrace) => _placeholderIcon(context),
+      );
+    } else if (path != null && isNetworkUrl) {
       cover = Image.network(
         path,
         width: width,
@@ -32,14 +47,16 @@ class TripCoverPhoto extends StatelessWidget {
         fit: BoxFit.cover,
         errorBuilder: (context, error, stackTrace) => _placeholderIcon(context),
       );
-    } else if (file != null && file.existsSync()) {
-      cover = Image.file(
-        file,
-        width: width,
-        height: height,
-        fit: BoxFit.cover,
-        errorBuilder: (context, error, stackTrace) => _placeholderIcon(context),
-      );
+    } else if (path != null) {
+      cover =
+          buildTripCoverLocalImage(
+            path,
+            width: width,
+            height: height,
+            errorBuilder: (context, error, stackTrace) =>
+                _placeholderIcon(context),
+          ) ??
+          _placeholderIcon(context);
     } else {
       cover = _placeholderIcon(context);
     }

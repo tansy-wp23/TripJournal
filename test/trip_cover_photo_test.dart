@@ -1,8 +1,11 @@
 import 'dart:io';
+import 'dart:typed_data';
 
+import 'package:cross_file/cross_file.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:tripjournal/data/trip_cover_storage.dart';
 import 'package:tripjournal/features/trip/widgets/trip_cover_photo.dart';
 
 Future<Container> _buildDirectly(
@@ -99,6 +102,30 @@ void main() {
     expect(image.fit, BoxFit.cover);
     expect(image.width, 160);
     expect(image.height, 90);
+  });
+
+  testWidgets('renders browser-backed XFile bytes with a memory image', (
+    tester,
+  ) async {
+    final bytes = Uint8List.fromList([1, 2, 3, 4]);
+    final draft = await TripCoverDraft.fromXFile(
+      XFile.fromData(
+        bytes,
+        path: 'browser-cover.png',
+        name: 'browser-cover.png',
+        mimeType: 'image/png',
+      ),
+    );
+
+    final container = await _buildDirectly(
+      tester,
+      TripCoverPhoto(coverDraft: draft, width: 160, height: 90),
+    );
+
+    final image = container.child! as Image;
+    expect(image.image, isA<MemoryImage>());
+    expect((image.image as MemoryImage).bytes, bytes);
+    expect(image.fit, BoxFit.cover);
   });
 
   testWidgets('image errors use the placeholder fallback', (tester) async {

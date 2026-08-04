@@ -451,10 +451,10 @@ final class _RecordingTripCoverStorage implements TripCoverStorage {
   Future<String> uploadCover({
     required String userId,
     required String tripId,
-    required String localPath,
+    required TripCoverDraft cover,
   }) async {
     uploads.add(
-      _UploadCall(userId: userId, tripId: tripId, localPath: localPath),
+      _UploadCall(userId: userId, tripId: tripId, localPath: cover.path),
     );
     events.add('upload');
     await uploadGate?.future;

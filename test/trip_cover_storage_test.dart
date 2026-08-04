@@ -13,6 +13,10 @@ import 'package:uuid/uuid.dart';
 
 import 'package:tripjournal/data/mock_trip_cover_storage.dart';
 import 'package:tripjournal/data/supabase_trip_cover_storage.dart';
+import 'package:tripjournal/data/trip_cover_storage.dart';
+import 'package:tripjournal/data/trip_cover_upload.dart';
+import 'package:tripjournal/data/trip_cover_upload_preparer_web.dart'
+    as web_preparer;
 
 const _baseUrl = 'https://example.supabase.co';
 const _userId = '00000000-0000-0000-0000-000000000001';
@@ -126,15 +130,72 @@ void main() {
       final result = await storage.uploadCover(
         userId: _userId,
         tripId: _tripId,
-        localPath: r'C:\photos\cover.JPG',
+        cover: TripCoverDraft.fromPath(r'C:\photos\cover.JPG'),
       );
       await storage.deleteCoverUrl('https://example.com/cover.jpg');
 
       expect(result, r'C:\photos\cover.JPG');
     });
+
+    test('does not persist a browser blob URL', () async {
+      final storage = MockTripCoverStorage();
+      final draft = await TripCoverDraft.fromXFile(
+        XFile.fromData(
+          Uint8List.fromList([1, 2, 3]),
+          path: 'blob:https://tripjournal.test/browser-cover-id',
+          name: 'browser-cover.png',
+          mimeType: 'image/png',
+        ),
+      );
+
+      final result = await storage.uploadCover(
+        userId: _userId,
+        tripId: _tripId,
+        cover: draft,
+      );
+
+      expect(result, startsWith('mock-cover://'));
+      expect(result, isNot(startsWith('blob:')));
+    });
   });
 
   group('SupabaseTripCoverStorage upload', () {
+    test(
+      'uploads browser XFile bytes with the correct MIME and object path',
+      () async {
+        final sourceBytes = Uint8List.fromList([9, 8, 7, 6]);
+        final draft = await TripCoverDraft.fromXFile(
+          XFile.fromData(
+            sourceBytes,
+            path: 'browser-cover.PNG',
+            name: 'browser-cover.PNG',
+            mimeType: 'image/png',
+          ),
+        );
+        const objectPath = '$_userId/$_tripId/cover-$_coverId.png';
+        final storage = _storage(
+          MockClient((request) async {
+            expect(
+              request.url.path,
+              '/storage/v1/object/trip-covers/$objectPath',
+            );
+            expect(
+              latin1.decode(request.bodyBytes).toLowerCase(),
+              contains('content-type: image/png'),
+            );
+            expect(_uploadedFileBytes(request), sourceBytes);
+            return _jsonResponse({'Key': objectPath}, request: request);
+          }),
+        );
+
+        await storage.uploadCover(
+          userId: _userId,
+          tripId: _tripId,
+          cover: draft,
+        );
+      },
+    );
+
     test(
       'normalizes a supported extension and uploads to the owner/trip path',
       () async {
@@ -160,7 +221,7 @@ void main() {
         final publicUrl = await storage.uploadCover(
           userId: _userId,
           tripId: _tripId,
-          localPath: file.path,
+          cover: TripCoverDraft.fromPath(file.path),
         );
 
         expect(
@@ -187,7 +248,7 @@ void main() {
         await storage.uploadCover(
           userId: _userId,
           tripId: _tripId,
-          localPath: file.path,
+          cover: TripCoverDraft.fromPath(file.path),
         );
       }
     });
@@ -227,7 +288,7 @@ void main() {
       await storage.uploadCover(
         userId: _userId,
         tripId: _tripId,
-        localPath: file.path,
+        cover: TripCoverDraft.fromPath(file.path),
       );
 
       expect(platform.calls, 1);
@@ -274,7 +335,7 @@ void main() {
       await storage.uploadCover(
         userId: _userId,
         tripId: _tripId,
-        localPath: file.path,
+        cover: TripCoverDraft.fromPath(file.path),
       );
 
       expect(platform.calls, 1);
@@ -304,7 +365,7 @@ void main() {
         storage.uploadCover(
           userId: _userId,
           tripId: _tripId,
-          localPath: file.path,
+          cover: TripCoverDraft.fromPath(file.path),
         ),
         throwsA(isA<FileSystemException>()),
       );
@@ -346,7 +407,7 @@ void main() {
         storage.uploadCover(
           userId: _userId,
           tripId: _tripId,
-          localPath: file.path,
+          cover: TripCoverDraft.fromPath(file.path),
         ),
         throwsStateError,
       );
@@ -358,6 +419,55 @@ void main() {
       expect(
         FileSystemEntity.identicalSync(remainingFiles.single.path, file.path),
         isTrue,
+      );
+    });
+  });
+
+  group('web cover preparation', () {
+    test('preserves bytes and MIME for every supported extension', () async {
+      for (final entry in {
+        'jpg': 'image/jpeg',
+        'jpeg': 'image/jpeg',
+        'png': 'image/png',
+        'webp': 'image/webp',
+      }.entries) {
+        final bytes = Uint8List.fromList([4, 3, 2, 1]);
+        final draft = await TripCoverDraft.fromXFile(
+          XFile.fromData(
+            bytes,
+            path: 'cover.${entry.key}',
+            name: 'cover.${entry.key}',
+            mimeType: entry.value,
+          ),
+        );
+
+        final prepared = await web_preparer.prepareTripCoverUpload(draft);
+
+        expect(prepared.extension, entry.key);
+        expect(prepared.contentType, entry.value);
+        expect(prepared.bytes, bytes);
+      }
+    });
+
+    test('rejects unsupported input instead of renaming raw bytes', () async {
+      final draft = await TripCoverDraft.fromXFile(
+        XFile.fromData(
+          Uint8List.fromList(ascii.encode('GIF89a')),
+          path: 'cover.gif',
+          name: 'cover.gif',
+          mimeType: 'image/gif',
+        ),
+      );
+
+      await expectLater(
+        web_preparer.prepareTripCoverUpload(draft),
+        throwsA(
+          isA<UnsupportedTripCoverFormatException>().having(
+            (error) => error.toString(),
+            'message',
+            contains('Choose a JPG, PNG, or WebP image'),
+          ),
+        ),
       );
     });
   });

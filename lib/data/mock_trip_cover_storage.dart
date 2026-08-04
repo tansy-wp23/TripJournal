@@ -5,9 +5,17 @@ final class MockTripCoverStorage implements TripCoverStorage {
   Future<String> uploadCover({
     required String userId,
     required String tripId,
-    required String localPath,
+    required TripCoverDraft cover,
   }) async {
-    return localPath;
+    final scheme = Uri.tryParse(cover.path)?.scheme.toLowerCase();
+    if (cover.path.isEmpty || scheme == 'blob' || scheme == 'data') {
+      return Uri(
+        scheme: 'mock-cover',
+        host: userId,
+        pathSegments: [tripId, cover.name],
+      ).toString();
+    }
+    return cover.path;
   }
 
   @override

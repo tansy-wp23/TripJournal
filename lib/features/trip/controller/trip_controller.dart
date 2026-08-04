@@ -114,7 +114,7 @@ class TripController extends ChangeNotifier {
 
   /// Creates [trip], or returns a validation/save error message without
   /// persisting anything.
-  Future<String?> createTrip(Trip trip) async {
+  Future<String?> createTrip(Trip trip, {TripCoverDraft? coverDraft}) async {
     final validationError = _validate(trip);
     if (validationError != null) return validationError;
     if (_saving) return 'A trip save is already in progress.';
@@ -128,11 +128,12 @@ class TripController extends ChangeNotifier {
       String? uploadedCoverUrl;
       var tripToPersist = trip;
       try {
-        if (_isLocalCover(trip.coverPhotoPath)) {
+        final pendingCover = _pendingCoverDraft(trip, coverDraft);
+        if (pendingCover != null) {
           uploadedCoverUrl = await _tripCoverStorage.uploadCover(
             userId: trip.userId,
             tripId: trip.id,
-            localPath: trip.coverPhotoPath!,
+            cover: pendingCover,
           );
           tripToPersist = _copyWithCover(trip, uploadedCoverUrl);
         }
@@ -159,7 +160,7 @@ class TripController extends ChangeNotifier {
   /// Edits [trip], or returns a validation/save error message without
   /// persisting anything. [trip] never collides with its own current dates
   /// — it's excluded from the overlap check by its own id.
-  Future<String?> editTrip(Trip trip) async {
+  Future<String?> editTrip(Trip trip, {TripCoverDraft? coverDraft}) async {
     final validationError = _validate(trip, excludingTripId: trip.id);
     if (validationError != null) return validationError;
     if (_saving) return 'A trip save is already in progress.';
@@ -174,11 +175,12 @@ class TripController extends ChangeNotifier {
       String? uploadedCoverUrl;
       var tripToPersist = trip;
       try {
-        if (_isLocalCover(trip.coverPhotoPath)) {
+        final pendingCover = _pendingCoverDraft(trip, coverDraft);
+        if (pendingCover != null) {
           uploadedCoverUrl = await _tripCoverStorage.uploadCover(
             userId: trip.userId,
             tripId: trip.id,
-            localPath: trip.coverPhotoPath!,
+            cover: pendingCover,
           );
           tripToPersist = _copyWithCover(trip, uploadedCoverUrl);
         }
@@ -249,10 +251,18 @@ class TripController extends ChangeNotifier {
   bool _isRemoteCover(String? cover) {
     if (cover == null) return false;
     final scheme = Uri.tryParse(cover)?.scheme.toLowerCase();
-    return scheme == 'http' || scheme == 'https';
+    return scheme == 'http' || scheme == 'https' || scheme == 'mock-cover';
   }
 
   bool _isLocalCover(String? cover) => cover != null && !_isRemoteCover(cover);
+
+  TripCoverDraft? _pendingCoverDraft(Trip trip, TripCoverDraft? selectedCover) {
+    if (selectedCover != null) return selectedCover;
+    final localPath = trip.coverPhotoPath;
+    return _isLocalCover(localPath)
+        ? TripCoverDraft.fromPath(localPath!)
+        : null;
+  }
 
   Trip _copyWithCover(Trip trip, String? coverPhotoPath) {
     return Trip(

@@ -4,6 +4,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../data/current_user_id_provider.dart';
+import '../../data/trip_cover_storage.dart';
 import '../../data/trip_repository_locator.dart';
 import '../../models/trip.dart';
 import '../../validation/photo_validation.dart';
@@ -13,6 +14,7 @@ import 'controller/trip_controller.dart';
 import 'controller/trip_trash_controller.dart';
 import 'trip_view_screen.dart';
 import 'widgets/delete_trip_confirmation_dialog.dart';
+import 'widgets/trip_cover_photo.dart';
 
 /// Create/Edit Trip form (IMPLEMENTATION_PLAN_HOMEPAGE.md Phase 6).
 class TripFormScreen extends ConsumerStatefulWidget {
@@ -38,6 +40,7 @@ class _TripFormScreenState extends ConsumerState<TripFormScreen> {
   late DateTime _startDate;
   late DateTime _endDate;
   String? _coverPhotoPath;
+  TripCoverDraft? _coverPhotoDraft;
   String? _dateRangeError;
   bool _saving = false;
 
@@ -133,7 +136,8 @@ class _TripFormScreenState extends ConsumerState<TripFormScreen> {
       final picked = await ImagePicker().pickImage(source: source);
       if (picked == null) return; // user backed out of the OS picker
 
-      final sizeError = validatePhotoSize(await picked.length());
+      final draft = await TripCoverDraft.fromXFile(picked);
+      final sizeError = validatePhotoSize(draft.previewBytes!.length);
       if (sizeError != null) {
         if (!mounted) return;
         ScaffoldMessenger.of(
@@ -142,7 +146,10 @@ class _TripFormScreenState extends ConsumerState<TripFormScreen> {
         return;
       }
 
-      setState(() => _coverPhotoPath = picked.path);
+      setState(() {
+        _coverPhotoPath = null;
+        _coverPhotoDraft = draft;
+      });
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -155,7 +162,10 @@ class _TripFormScreenState extends ConsumerState<TripFormScreen> {
     }
   }
 
-  void _removeCoverPhoto() => setState(() => _coverPhotoPath = null);
+  void _removeCoverPhoto() => setState(() {
+    _coverPhotoPath = null;
+    _coverPhotoDraft = null;
+  });
 
   Future<void> _save() async {
     if (_saving) return;
@@ -166,6 +176,13 @@ class _TripFormScreenState extends ConsumerState<TripFormScreen> {
     final dateRangeError = validateTripDateRange(_startDate, _endDate);
     setState(() => _dateRangeError = dateRangeError);
     if (!titleValid || dateRangeError != null) return;
+    if (_isRestoring && _coverPhotoDraft != null) {
+      setState(() {
+        _dateRangeError =
+            'Restore this trip before choosing a new cover photo.';
+      });
+      return;
+    }
     setState(() => _saving = true);
 
     final now = DateTime.now();
@@ -223,8 +240,8 @@ class _TripFormScreenState extends ConsumerState<TripFormScreen> {
 
     final controller = ref.read(tripControllerProvider.notifier);
     final error = _isEditing
-        ? await controller.editTrip(trip)
-        : await controller.createTrip(trip);
+        ? await controller.editTrip(trip, coverDraft: _coverPhotoDraft)
+        : await controller.createTrip(trip, coverDraft: _coverPhotoDraft);
     if (!mounted) return;
     if (error != null) {
       setState(() {
@@ -347,13 +364,27 @@ class _TripFormScreenState extends ConsumerState<TripFormScreen> {
                 ),
               ],
             ),
-            if (_coverPhotoPath == null)
+            if (_coverPhotoPath == null && _coverPhotoDraft == null)
               const Text('No cover photo added.')
             else
-              Chip(
-                avatar: const Icon(Icons.photo, size: 18),
-                label: Text(basename(_coverPhotoPath!)),
-                onDeleted: _removeCoverPhoto,
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  TripCoverPhoto(
+                    photoPath: _coverPhotoPath,
+                    coverDraft: _coverPhotoDraft,
+                    height: 160,
+                    width: double.infinity,
+                  ),
+                  const SizedBox(height: 8),
+                  Chip(
+                    avatar: const Icon(Icons.photo, size: 18),
+                    label: Text(
+                      _coverPhotoDraft?.name ?? basename(_coverPhotoPath!),
+                    ),
+                    onDeleted: _removeCoverPhoto,
+                  ),
+                ],
               ),
             const SizedBox(height: 16),
             TextFormField(
