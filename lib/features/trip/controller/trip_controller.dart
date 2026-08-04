@@ -25,17 +25,27 @@ class TripController extends ChangeNotifier {
   String? _userId;
   List<Trip> _trips = [];
   bool _loading = false;
+  bool _saving = false;
   String? _error;
   String? _cleanupWarning;
+  String? _refreshWarning;
 
   List<Trip> get trips => _trips;
   bool get loading => _loading;
+  bool get saving => _saving;
   String? get error => _error;
   String? get cleanupWarning => _cleanupWarning;
+  String? get refreshWarning => _refreshWarning;
 
   void clearCleanupWarning() {
     if (_cleanupWarning == null) return;
     _cleanupWarning = null;
+    notifyListeners();
+  }
+
+  void clearRefreshWarning() {
+    if (_refreshWarning == null) return;
+    _refreshWarning = null;
     notifyListeners();
   }
 
@@ -56,6 +66,7 @@ class TripController extends ChangeNotifier {
 
     try {
       _trips = await _tripRepository.getTrips(userId);
+      _refreshWarning = null;
     } catch (e) {
       _error = e.toString();
     } finally {
@@ -106,31 +117,43 @@ class TripController extends ChangeNotifier {
   Future<String?> createTrip(Trip trip) async {
     final validationError = _validate(trip);
     if (validationError != null) return validationError;
+    if (_saving) return 'A trip save is already in progress.';
 
-    _error = null;
-    _cleanupWarning = null;
-    String? uploadedCoverUrl;
-    var tripToPersist = trip;
+    _saving = true;
+    notifyListeners();
     try {
-      if (_isLocalCover(trip.coverPhotoPath)) {
-        uploadedCoverUrl = await _tripCoverStorage.uploadCover(
-          userId: trip.userId,
-          tripId: trip.id,
-          localPath: trip.coverPhotoPath!,
-        );
-        tripToPersist = _copyWithCover(trip, uploadedCoverUrl);
+      _error = null;
+      _cleanupWarning = null;
+      _refreshWarning = null;
+      String? uploadedCoverUrl;
+      var tripToPersist = trip;
+      try {
+        if (_isLocalCover(trip.coverPhotoPath)) {
+          uploadedCoverUrl = await _tripCoverStorage.uploadCover(
+            userId: trip.userId,
+            tripId: trip.id,
+            localPath: trip.coverPhotoPath!,
+          );
+          tripToPersist = _copyWithCover(trip, uploadedCoverUrl);
+        }
+        await _tripRepository.addTrip(tripToPersist);
+      } catch (e) {
+        if (uploadedCoverUrl != null) {
+          await _cleanupCover(uploadedCoverUrl);
+        }
+        _error = e.toString();
+        notifyListeners();
+        return _error;
       }
-      await _tripRepository.addTrip(tripToPersist);
-    } catch (e) {
-      if (uploadedCoverUrl != null) {
-        await _cleanupCover(uploadedCoverUrl);
-      }
-      _error = e.toString();
-      notifyListeners();
-      return _error;
-    }
 
-    return _refreshAfterSave();
+      _trips = [..._trips, tripToPersist];
+      notifyListeners();
+      await _refreshAfterMutation();
+      return null;
+    } finally {
+      _saving = false;
+      notifyListeners();
+    }
   }
 
   /// Edits [trip], or returns a validation/save error message without
@@ -139,37 +162,57 @@ class TripController extends ChangeNotifier {
   Future<String?> editTrip(Trip trip) async {
     final validationError = _validate(trip, excludingTripId: trip.id);
     if (validationError != null) return validationError;
+    if (_saving) return 'A trip save is already in progress.';
 
-    _error = null;
-    _cleanupWarning = null;
-    final previousCover = _coverForTrip(trip.id);
-    String? uploadedCoverUrl;
-    var tripToPersist = trip;
+    _saving = true;
+    notifyListeners();
     try {
-      if (_isLocalCover(trip.coverPhotoPath)) {
-        uploadedCoverUrl = await _tripCoverStorage.uploadCover(
-          userId: trip.userId,
-          tripId: trip.id,
-          localPath: trip.coverPhotoPath!,
-        );
-        tripToPersist = _copyWithCover(trip, uploadedCoverUrl);
+      _error = null;
+      _cleanupWarning = null;
+      _refreshWarning = null;
+      final previousCover = _coverForTrip(trip.id);
+      String? uploadedCoverUrl;
+      var tripToPersist = trip;
+      try {
+        if (_isLocalCover(trip.coverPhotoPath)) {
+          uploadedCoverUrl = await _tripCoverStorage.uploadCover(
+            userId: trip.userId,
+            tripId: trip.id,
+            localPath: trip.coverPhotoPath!,
+          );
+          tripToPersist = _copyWithCover(trip, uploadedCoverUrl);
+        }
+        await _tripRepository.updateTrip(tripToPersist);
+      } catch (e) {
+        if (uploadedCoverUrl != null) {
+          await _cleanupCover(uploadedCoverUrl);
+        }
+        _error = e.toString();
+        notifyListeners();
+        return _error;
       }
-      await _tripRepository.updateTrip(tripToPersist);
-    } catch (e) {
-      if (uploadedCoverUrl != null) {
-        await _cleanupCover(uploadedCoverUrl);
+
+      final index = _trips.indexWhere(
+        (candidate) => candidate.id == tripToPersist.id,
+      );
+      if (index == -1) {
+        _trips = [..._trips, tripToPersist];
+      } else {
+        _trips = [..._trips]..[index] = tripToPersist;
       }
-      _error = e.toString();
       notifyListeners();
-      return _error;
-    }
 
-    if (_isRemoteCover(previousCover) &&
-        previousCover != tripToPersist.coverPhotoPath) {
-      await _cleanupCover(previousCover);
-    }
+      if (_isRemoteCover(previousCover) &&
+          previousCover != tripToPersist.coverPhotoPath) {
+        await _cleanupCover(previousCover);
+      }
 
-    return _refreshAfterSave();
+      await _refreshAfterMutation();
+      return null;
+    } finally {
+      _saving = false;
+      notifyListeners();
+    }
   }
 
   /// Number of journal entries under [tripId] for dashboard statistics.
@@ -181,15 +224,19 @@ class TripController extends ChangeNotifier {
   /// Moves the trip to recoverable trash without touching journal entries.
   Future<String?> moveToTrash(String id) async {
     _error = null;
+    _refreshWarning = null;
     try {
       await _tripRepository.moveToTrash(id);
-      await _refresh();
-      return null;
     } catch (e) {
       _error = e.toString();
       notifyListeners();
       return _error;
     }
+
+    _trips = _trips.where((trip) => trip.id != id).toList();
+    notifyListeners();
+    await _refreshAfterMutation();
+    return null;
   }
 
   String? _coverForTrip(String tripId) {
@@ -231,14 +278,13 @@ class TripController extends ChangeNotifier {
     }
   }
 
-  Future<String?> _refreshAfterSave() async {
+  Future<void> _refreshAfterMutation() async {
     try {
       await _refresh();
-      return null;
+      _refreshWarning = null;
     } catch (e) {
-      _error = e.toString();
+      _refreshWarning = e.toString();
       notifyListeners();
-      return _error;
     }
   }
 

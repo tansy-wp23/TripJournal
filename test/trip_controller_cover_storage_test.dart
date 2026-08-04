@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:tripjournal/data/journal_repository.dart';
@@ -65,6 +67,28 @@ void main() {
     expect(storage.deletedUrls, [storage.uploadedUrl]);
     expect(repository.trips, isEmpty);
   });
+
+  test(
+    'create remains successful when only the post-write refresh fails',
+    () async {
+      repository.failNextGetTrips = true;
+      final trip = _trip(
+        id: 'new-trip',
+        coverPhotoPath: r'C:\photos\cover.jpg',
+      );
+
+      final error = await controller.createTrip(trip);
+
+      expect(error, isNull);
+      expect(repository.addedTrips, hasLength(1));
+      expect(storage.deletedUrls, isEmpty);
+      expect(controller.trips.single.coverPhotoPath, storage.uploadedUrl);
+      expect(controller.refreshWarning, contains('refresh failed'));
+
+      controller.clearRefreshWarning();
+      expect(controller.refreshWarning, isNull);
+    },
+  );
 
   test('http and https covers are persisted without another upload', () async {
     for (final remoteCover in [
@@ -147,6 +171,26 @@ void main() {
   );
 
   test(
+    'edit remains successful when only the post-write refresh fails',
+    () async {
+      final original = _trip(id: 'existing', coverPhotoPath: _oldCoverUrl);
+      repository.trips.add(original);
+      await controller.loadTrips(kMockUserId);
+      repository.failNextGetTrips = true;
+
+      final error = await controller.editTrip(
+        _trip(id: 'existing', coverPhotoPath: r'C:\photos\replacement.png'),
+      );
+
+      expect(error, isNull);
+      expect(repository.updatedTrips, hasLength(1));
+      expect(controller.trips.single.coverPhotoPath, storage.uploadedUrl);
+      expect(storage.deletedUrls, [_oldCoverUrl]);
+      expect(controller.refreshWarning, contains('refresh failed'));
+    },
+  );
+
+  test(
     'removing a cover persists null before deleting the previous URL',
     () async {
       final original = _trip(id: 'existing', coverPhotoPath: _oldCoverUrl);
@@ -196,6 +240,75 @@ void main() {
     expect(repository.movedToTrashIds, ['existing']);
     expect(journalRepository.deletedEntryIds, isEmpty);
   });
+
+  test('moveToTrash remains successful when only the refresh fails', () async {
+    final original = _trip(id: 'existing');
+    repository.trips.add(original);
+    await controller.loadTrips(kMockUserId);
+    repository.failNextGetTrips = true;
+
+    final error = await controller.moveToTrash(original.id);
+
+    expect(error, isNull);
+    expect(controller.trips, isEmpty);
+    expect(controller.refreshWarning, contains('refresh failed'));
+  });
+
+  test(
+    'moveToTrash reports a real mutation failure and retains local state',
+    () async {
+      final original = _trip(id: 'existing');
+      repository.trips.add(original);
+      await controller.loadTrips(kMockUserId);
+      repository.failMove = true;
+
+      final error = await controller.moveToTrash(original.id);
+
+      expect(error, contains('move failed'));
+      expect(controller.trips.single.id, original.id);
+      expect(controller.refreshWarning, isNull);
+    },
+  );
+
+  test('concurrent creates upload and persist only once', () async {
+    storage.uploadGate = Completer<void>();
+    final trip = _trip(id: 'new-trip', coverPhotoPath: r'C:\photos\cover.jpg');
+
+    final first = controller.createTrip(trip);
+    await Future<void>.delayed(Duration.zero);
+    final second = controller.createTrip(trip);
+    await Future<void>.delayed(Duration.zero);
+    storage.uploadGate!.complete();
+    final results = await Future.wait([first, second]);
+
+    expect(storage.uploads, hasLength(1));
+    expect(repository.addedTrips, hasLength(1));
+    expect(results.where((result) => result == null), hasLength(1));
+    expect(results.where((result) => result != null), hasLength(1));
+  });
+
+  test('concurrent edits cannot double-upload a replacement cover', () async {
+    final original = _trip(id: 'existing', coverPhotoPath: _oldCoverUrl);
+    repository.trips.add(original);
+    await controller.loadTrips(kMockUserId);
+    storage.uploadGate = Completer<void>();
+    final replacement = _trip(
+      id: 'existing',
+      coverPhotoPath: r'C:\photos\replacement.png',
+    );
+
+    final first = controller.editTrip(replacement);
+    await Future<void>.delayed(Duration.zero);
+    final second = controller.editTrip(replacement);
+    await Future<void>.delayed(Duration.zero);
+    storage.uploadGate!.complete();
+    final results = await Future.wait([first, second]);
+
+    expect(storage.uploads, hasLength(1));
+    expect(repository.updatedTrips, hasLength(1));
+    expect(results.where((result) => result == null), hasLength(1));
+    expect(results.where((result) => result != null), hasLength(1));
+  });
 }
 
 const _oldCoverUrl =
@@ -229,11 +342,19 @@ final class _RecordingTripRepository implements TripRepository {
   final List<String> events;
   bool failAdd = false;
   bool failUpdate = false;
+  bool failMove = false;
+  bool failNextGetTrips = false;
 
   @override
-  Future<List<Trip>> getTrips(String userId) async => trips
-      .where((trip) => trip.userId == userId && trip.deletedAt == null)
-      .toList();
+  Future<List<Trip>> getTrips(String userId) async {
+    if (failNextGetTrips) {
+      failNextGetTrips = false;
+      throw StateError('refresh failed');
+    }
+    return trips
+        .where((trip) => trip.userId == userId && trip.deletedAt == null)
+        .toList();
+  }
 
   @override
   Future<List<Trip>> getDeletedTrips(String userId) async => const [];
@@ -265,6 +386,7 @@ final class _RecordingTripRepository implements TripRepository {
   @override
   Future<void> moveToTrash(String id) async {
     movedToTrashIds.add(id);
+    if (failMove) throw StateError('move failed');
     trips.removeWhere((trip) => trip.id == id);
   }
 
@@ -304,6 +426,7 @@ final class _RecordingTripCoverStorage implements TripCoverStorage {
   final List<String?> deletedUrls = [];
   final Set<String> failDeletesFor = {};
   final List<String> events;
+  Completer<void>? uploadGate;
 
   @override
   Future<String> uploadCover({
@@ -315,6 +438,7 @@ final class _RecordingTripCoverStorage implements TripCoverStorage {
       _UploadCall(userId: userId, tripId: tripId, localPath: localPath),
     );
     events.add('upload');
+    await uploadGate?.future;
     return uploadedUrl;
   }
 

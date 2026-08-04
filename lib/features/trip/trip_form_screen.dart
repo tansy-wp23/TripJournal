@@ -32,6 +32,7 @@ class _TripFormScreenState extends ConsumerState<TripFormScreen> {
   late DateTime _endDate;
   String? _coverPhotoPath;
   String? _dateRangeError;
+  bool _saving = false;
 
   bool get _isEditing => widget.existingTrip != null;
 
@@ -149,12 +150,15 @@ class _TripFormScreenState extends ConsumerState<TripFormScreen> {
   void _removeCoverPhoto() => setState(() => _coverPhotoPath = null);
 
   Future<void> _save() async {
+    if (_saving) return;
+
     // Immediate UI-level feedback — the controller re-checks all of this
     // (plus overlap) as the authoritative backstop before persisting.
     final titleValid = _formKey.currentState?.validate() ?? false;
     final dateRangeError = validateTripDateRange(_startDate, _endDate);
     setState(() => _dateRangeError = dateRangeError);
     if (!titleValid || dateRangeError != null) return;
+    setState(() => _saving = true);
 
     final now = DateTime.now();
     final existing = widget.existingTrip;
@@ -165,7 +169,10 @@ class _TripFormScreenState extends ConsumerState<TripFormScreen> {
           existing?.userId ??
           (widget.userIdProvider ?? currentUserIdProvider).requireUserId();
     } on UnauthenticatedTripUserException catch (e) {
-      setState(() => _dateRangeError = e.toString());
+      setState(() {
+        _dateRangeError = e.toString();
+        _saving = false;
+      });
       return;
     }
     final notes = _notesController.text.trim();
@@ -186,20 +193,25 @@ class _TripFormScreenState extends ConsumerState<TripFormScreen> {
     final error = _isEditing
         ? await controller.editTrip(trip)
         : await controller.createTrip(trip);
+    if (!mounted) return;
     if (error != null) {
-      setState(() => _dateRangeError = error);
+      setState(() {
+        _dateRangeError = error;
+        _saving = false;
+      });
       return;
     }
-    if (!mounted) return;
 
     if (_isEditing) {
       Navigator.pop(context);
     } else {
       // Fresh trip — go straight to its timeline instead of back to the form.
-      Navigator.pushReplacement(
+      final movedToTrash = await Navigator.push<bool>(
         context,
         MaterialPageRoute(builder: (_) => TripViewScreen(tripId: tripId)),
       );
+      if (!mounted) return;
+      Navigator.pop(context, movedToTrash == true ? true : null);
     }
   }
 
@@ -318,7 +330,7 @@ class _TripFormScreenState extends ConsumerState<TripFormScreen> {
             const SizedBox(height: 24),
             FilledButton(
               key: const Key('save-trip-button'),
-              onPressed: _save,
+              onPressed: _saving ? null : _save,
               child: const Text('Save'),
             ),
           ],

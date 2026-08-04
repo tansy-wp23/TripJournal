@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -164,6 +166,94 @@ void main() {
     expect(updated?.userId, existing.userId);
     expect(updated?.title, 'Updated title');
   });
+
+  testWidgets('double-tapping Save starts only one create operation', (
+    tester,
+  ) async {
+    final repository = _DelayedAddTripRepository();
+    final controller = TripController(
+      repository,
+      MockJournalRepository(),
+      MockTripCoverStorage(),
+    );
+    final userProvider = _RecordingCurrentUserIdProvider();
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [tripControllerProvider.overrideWith((ref) => controller)],
+        child: MaterialApp(home: TripFormScreen(userIdProvider: userProvider)),
+      ),
+    );
+    await tester.enterText(
+      find.byKey(const Key('trip-title-field')),
+      'Only one trip',
+    );
+
+    await tester.tap(find.byKey(const Key('save-trip-button')));
+    await tester.tap(find.byKey(const Key('save-trip-button')));
+    await tester.pump();
+    final saveButton = tester.widget<FilledButton>(
+      find.byKey(const Key('save-trip-button')),
+    );
+    final providerCallsBeforeCompletion = userProvider.requireCalls;
+    final addCallsBeforeCompletion = repository.addCalls;
+    final saveWasDisabled = saveButton.onPressed == null;
+    repository.gate.complete();
+    await tester.pumpAndSettle();
+
+    expect(providerCallsBeforeCompletion, 1);
+    expect(addCallsBeforeCompletion, 1);
+    expect(saveWasDisabled, isTrue);
+  });
+
+  testWidgets('a delayed save failure does not setState after form disposal', (
+    tester,
+  ) async {
+    final repository = _DelayedAddTripRepository(failAfterDelay: true);
+    final controller = TripController(
+      repository,
+      MockJournalRepository(),
+      MockTripCoverStorage(),
+    );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [tripControllerProvider.overrideWith((ref) => controller)],
+        child: MaterialApp(
+          home: Builder(
+            builder: (context) => FilledButton(
+              onPressed: () => Navigator.push<void>(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const TripFormScreen(
+                    userIdProvider: _FixedCurrentUserIdProvider(
+                      '11111111-1111-4111-8111-111111111111',
+                    ),
+                  ),
+                ),
+              ),
+              child: const Text('Open form'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('Open form'));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const Key('trip-title-field')),
+      'Disposed save',
+    );
+    await tester.tap(find.byKey(const Key('save-trip-button')));
+    await tester.pump();
+
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    repository.gate.complete();
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+  });
 }
 
 final class _FixedCurrentUserIdProvider implements CurrentUserIdProvider {
@@ -181,4 +271,30 @@ final class _UnauthenticatedCurrentUserIdProvider
 
   @override
   String requireUserId() => throw const UnauthenticatedTripUserException();
+}
+
+final class _RecordingCurrentUserIdProvider implements CurrentUserIdProvider {
+  int requireCalls = 0;
+
+  @override
+  String requireUserId() {
+    requireCalls++;
+    return '11111111-1111-4111-8111-111111111111';
+  }
+}
+
+final class _DelayedAddTripRepository extends MockTripRepository {
+  _DelayedAddTripRepository({this.failAfterDelay = false});
+
+  final bool failAfterDelay;
+  final Completer<void> gate = Completer<void>();
+  int addCalls = 0;
+
+  @override
+  Future<void> addTrip(Trip trip) async {
+    addCalls++;
+    await gate.future;
+    if (failAfterDelay) throw StateError('delayed add failed');
+    await super.addTrip(trip);
+  }
 }
