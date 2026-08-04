@@ -30,6 +30,31 @@ void main() {
   );
 
   testWidgets(
+    'restore mode keeps the existing cover read-only and retains its URL',
+    (tester) async {
+      tester.view.physicalSize = const Size(1200, 1800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      const coverUrl = 'https://images.example.com/deleted-cover.jpg';
+      final trip = _deletedTrip(now: now).copyWith(coverPhotoPath: coverUrl);
+      final repository = _RestoreRepository()..deletedTrips.add(trip);
+      final controller = _controller(repository, now);
+
+      await tester.pumpWidget(_formApp(controller, trip));
+
+      expect(find.byKey(const Key('add-cover-photo-button')), findsNothing);
+      expect(tester.widget<Chip>(find.byType(Chip)).onDeleted, isNull);
+
+      await tester.tap(find.byKey(const Key('save-trip-button')));
+      await tester.pumpAndSettle();
+
+      expect(repository.restoreCalls, 1);
+      expect(repository.activeTrips.single.coverPhotoPath, coverUrl);
+    },
+  );
+
+  testWidgets(
     'restore form rejects an invalid date range before repository write',
     (tester) async {
       final trip = _deletedTrip(now: now).copyWith(

@@ -1,8 +1,12 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:typed_data';
 
+import 'package:cross_file/cross_file.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:tripjournal/data/journal_repository.dart';
+import 'package:tripjournal/data/mock_trip_cover_storage.dart';
 import 'package:tripjournal/data/trip_cover_storage.dart';
 import 'package:tripjournal/data/trip_repository.dart';
 import 'package:tripjournal/features/trip/controller/trip_controller.dart';
@@ -56,6 +60,33 @@ void main() {
     ]);
     expect(repository.addedTrips.single.coverPhotoPath, storage.uploadedUrl);
   });
+
+  test(
+    'invalid byte-backed cover is rejected before repository write',
+    () async {
+      final validatingController = TripController(
+        repository,
+        journalRepository,
+        MockTripCoverStorage(),
+      );
+      final draft = await TripCoverDraft.fromXFile(
+        XFile.fromData(
+          Uint8List.fromList(ascii.encode('GIF89a')),
+          path: 'disguised.jpg',
+          name: 'disguised.jpg',
+          mimeType: 'image/jpeg',
+        ),
+      );
+
+      final error = await validatingController.createTrip(
+        _trip(id: 'invalid-cover'),
+        coverDraft: draft,
+      );
+
+      expect(error, contains('damaged or does not match'));
+      expect(repository.addedTrips, isEmpty);
+    },
+  );
 
   test('create database failure rolls back the newly uploaded cover', () async {
     repository.failAdd = true;

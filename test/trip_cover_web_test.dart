@@ -4,6 +4,7 @@ import 'package:cross_file/cross_file.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:image/image.dart' as image;
 
 import 'package:tripjournal/data/mock_trip_cover_storage.dart';
 import 'package:tripjournal/data/trip_cover_storage.dart';
@@ -16,7 +17,9 @@ void main() {
   testWidgets('browser XFile bytes preview without persisting its blob URL', (
     tester,
   ) async {
-    final bytes = Uint8List.fromList([1, 2, 3, 4]);
+    final bytes = Uint8List.fromList(
+      image.encodePng(image.Image(width: 1, height: 1)),
+    );
     final draft = await TripCoverDraft.fromXFile(
       XFile.fromData(
         bytes,
@@ -40,15 +43,15 @@ void main() {
     final preview =
         TripCoverPhoto(coverDraft: draft, width: 160, height: 90).build(context)
             as Container;
-    final image = preview.child! as Image;
+    final previewImage = preview.child! as Image;
     final storedReference = await MockTripCoverStorage().uploadCover(
       userId: 'user-id',
       tripId: 'trip-id',
       cover: draft,
     );
 
-    expect(image.image, isA<MemoryImage>());
-    expect((image.image as MemoryImage).bytes, bytes);
+    expect(previewImage.image, isA<MemoryImage>());
+    expect((previewImage.image as MemoryImage).bytes, bytes);
     expect(draft.path, startsWith('blob:'));
     expect(storedReference, startsWith('mock-cover://'));
     expect(storedReference, isNot(contains('blob:')));

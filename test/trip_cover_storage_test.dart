@@ -110,6 +110,20 @@ Uint8List _uploadedFileBytes(http.BaseRequest request) {
   return Uint8List.fromList(body.sublist(contentStart, contentEnd));
 }
 
+Uint8List _validCoverBytes(String extension) {
+  final source = image.Image(width: 2, height: 2)
+    ..setPixelRgb(0, 0, 255, 0, 0)
+    ..setPixelRgb(1, 0, 0, 255, 0)
+    ..setPixelRgb(0, 1, 0, 0, 255)
+    ..setPixelRgb(1, 1, 255, 255, 255);
+  return switch (extension) {
+    'jpg' || 'jpeg' => Uint8List.fromList(image.encodeJpg(source)),
+    'png' => Uint8List.fromList(image.encodePng(source)),
+    'webp' => Uint8List.fromList(image.encodeWebP(source)),
+    _ => throw ArgumentError.value(extension, 'extension'),
+  };
+}
+
 void main() {
   late Directory temporaryDirectory;
 
@@ -141,8 +155,8 @@ void main() {
       final storage = MockTripCoverStorage();
       final draft = await TripCoverDraft.fromXFile(
         XFile.fromData(
-          Uint8List.fromList([1, 2, 3]),
-          path: 'blob:https://tripjournal.test/browser-cover-id',
+          _validCoverBytes('png'),
+          path: 'blob:https://tripjournal.test/browser-cover.png',
           name: 'browser-cover.png',
           mimeType: 'image/png',
         ),
@@ -157,13 +171,30 @@ void main() {
       expect(result, startsWith('mock-cover://'));
       expect(result, isNot(startsWith('blob:')));
     });
+
+    test('rejects disguised byte-backed browser input', () async {
+      final storage = MockTripCoverStorage();
+      final draft = await TripCoverDraft.fromXFile(
+        XFile.fromData(
+          Uint8List.fromList(ascii.encode('GIF89a')),
+          path: 'blob:https://tripjournal.test/disguised-cover.jpg',
+          name: 'disguised-cover.jpg',
+          mimeType: 'image/jpeg',
+        ),
+      );
+
+      await expectLater(
+        storage.uploadCover(userId: _userId, tripId: _tripId, cover: draft),
+        throwsA(isA<InvalidTripCoverImageException>()),
+      );
+    });
   });
 
   group('SupabaseTripCoverStorage upload', () {
     test(
       'uploads browser XFile bytes with the correct MIME and object path',
       () async {
-        final sourceBytes = Uint8List.fromList([9, 8, 7, 6]);
+        final sourceBytes = _validCoverBytes('png');
         final draft = await TripCoverDraft.fromXFile(
           XFile.fromData(
             sourceBytes,
@@ -196,11 +227,113 @@ void main() {
       },
     );
 
+    test('rejects GIF bytes renamed as jpg before storage request', () async {
+      var requests = 0;
+      final storage = _storage(
+        MockClient((request) async {
+          requests++;
+          return _jsonResponse({'Key': 'unexpected'}, request: request);
+        }),
+      );
+      final draft = await TripCoverDraft.fromXFile(
+        XFile.fromData(
+          Uint8List.fromList(ascii.encode('GIF89a')),
+          path: 'disguised.jpg',
+          name: 'disguised.jpg',
+          mimeType: 'image/jpeg',
+        ),
+      );
+
+      await expectLater(
+        storage.uploadCover(userId: _userId, tripId: _tripId, cover: draft),
+        throwsA(isA<InvalidTripCoverImageException>()),
+      );
+      expect(requests, 0);
+    });
+
+    test('rejects corrupt jpg bytes before storage request', () async {
+      var requests = 0;
+      final storage = _storage(
+        MockClient((request) async {
+          requests++;
+          return _jsonResponse({'Key': 'unexpected'}, request: request);
+        }),
+      );
+      final draft = await TripCoverDraft.fromXFile(
+        XFile.fromData(
+          Uint8List.fromList([0xff, 0xd8, 0xff, 0xd9]),
+          path: 'corrupt.jpg',
+          name: 'corrupt.jpg',
+          mimeType: 'image/jpeg',
+        ),
+      );
+
+      await expectLater(
+        storage.uploadCover(userId: _userId, tripId: _tripId, cover: draft),
+        throwsA(isA<InvalidTripCoverImageException>()),
+      );
+      expect(requests, 0);
+    });
+
+    test(
+      'rejects arbitrary bytes renamed as jpg before storage request',
+      () async {
+        var requests = 0;
+        final storage = _storage(
+          MockClient((request) async {
+            requests++;
+            return _jsonResponse({'Key': 'unexpected'}, request: request);
+          }),
+        );
+        final draft = await TripCoverDraft.fromXFile(
+          XFile.fromData(
+            Uint8List.fromList([1, 2, 3, 4]),
+            path: 'not-an-image.jpg',
+            name: 'not-an-image.jpg',
+            mimeType: 'image/jpeg',
+          ),
+        );
+
+        await expectLater(
+          storage.uploadCover(userId: _userId, tripId: _tripId, cover: draft),
+          throwsA(isA<InvalidTripCoverImageException>()),
+        );
+        expect(requests, 0);
+      },
+    );
+
+    test(
+      'rejects MIME and extension mismatch before storage request',
+      () async {
+        var requests = 0;
+        final storage = _storage(
+          MockClient((request) async {
+            requests++;
+            return _jsonResponse({'Key': 'unexpected'}, request: request);
+          }),
+        );
+        final draft = await TripCoverDraft.fromXFile(
+          XFile.fromData(
+            _validCoverBytes('png'),
+            path: 'cover.png',
+            name: 'cover.png',
+            mimeType: 'image/jpeg',
+          ),
+        );
+
+        await expectLater(
+          storage.uploadCover(userId: _userId, tripId: _tripId, cover: draft),
+          throwsA(isA<InvalidTripCoverImageException>()),
+        );
+        expect(requests, 0);
+      },
+    );
+
     test(
       'normalizes a supported extension and uploads to the owner/trip path',
       () async {
         final file = File('${temporaryDirectory.path}/cover.JPG');
-        await file.writeAsBytes([1, 2, 3]);
+        await file.writeAsBytes(_validCoverBytes('jpg'));
         const objectPath = '$_userId/$_tripId/cover-$_coverId.jpg';
         final storage = _storage(
           MockClient((request) async {
@@ -210,8 +343,9 @@ void main() {
               '/storage/v1/object/trip-covers/$objectPath',
             );
             expect(request.headers['x-upsert'], 'false');
-            expect(request.body, contains('name="cacheControl"'));
-            expect(request.body, contains('3600'));
+            final body = latin1.decode(request.bodyBytes);
+            expect(body, contains('name="cacheControl"'));
+            expect(body, contains('3600'));
             return _jsonResponse({
               'Key': 'trip-covers/$objectPath',
             }, request: request);
@@ -234,7 +368,7 @@ void main() {
     test('preserves every supported lowercase extension', () async {
       for (final extension in ['jpg', 'jpeg', 'png', 'webp']) {
         final file = File('${temporaryDirectory.path}/cover.$extension');
-        final sourceBytes = Uint8List.fromList([1, 2, 3, 4]);
+        final sourceBytes = _validCoverBytes(extension);
         await file.writeAsBytes(sourceBytes);
         final expectedSuffix = 'cover-$_coverId.$extension';
         final storage = _storage(
@@ -409,7 +543,7 @@ void main() {
           tripId: _tripId,
           cover: TripCoverDraft.fromPath(file.path),
         ),
-        throwsStateError,
+        throwsA(isA<InvalidTripCoverImageException>()),
       );
 
       expect(platform.calls, 1);
@@ -431,7 +565,7 @@ void main() {
         'png': 'image/png',
         'webp': 'image/webp',
       }.entries) {
-        final bytes = Uint8List.fromList([4, 3, 2, 1]);
+        final bytes = _validCoverBytes(entry.key);
         final draft = await TripCoverDraft.fromXFile(
           XFile.fromData(
             bytes,

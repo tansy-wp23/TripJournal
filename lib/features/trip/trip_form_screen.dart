@@ -176,13 +176,6 @@ class _TripFormScreenState extends ConsumerState<TripFormScreen> {
     final dateRangeError = validateTripDateRange(_startDate, _endDate);
     setState(() => _dateRangeError = dateRangeError);
     if (!titleValid || dateRangeError != null) return;
-    if (_isRestoring && _coverPhotoDraft != null) {
-      setState(() {
-        _dateRangeError =
-            'Restore this trip before choosing a new cover photo.';
-      });
-      return;
-    }
     setState(() => _saving = true);
 
     final now = DateTime.now();
@@ -213,7 +206,7 @@ class _TripFormScreenState extends ConsumerState<TripFormScreen> {
       id: tripId,
       userId: userId,
       title: _titleController.text.trim(),
-      coverPhotoPath: _coverPhotoPath,
+      coverPhotoPath: _isRestoring ? existing?.coverPhotoPath : _coverPhotoPath,
       startDate: _startDate,
       endDate: _endDate,
       notes: notes.isEmpty ? null : notes,
@@ -361,12 +354,13 @@ class _TripFormScreenState extends ConsumerState<TripFormScreen> {
                   'Cover photo',
                   style: Theme.of(context).textTheme.titleSmall,
                 ),
-                TextButton.icon(
-                  key: const Key('add-cover-photo-button'),
-                  onPressed: _addCoverPhoto,
-                  icon: const Icon(Icons.add_a_photo),
-                  label: const Text('Add photo'),
-                ),
+                if (!_isRestoring)
+                  TextButton.icon(
+                    key: const Key('add-cover-photo-button'),
+                    onPressed: _addCoverPhoto,
+                    icon: const Icon(Icons.add_a_photo),
+                    label: const Text('Add photo'),
+                  ),
               ],
             ),
             if (_coverPhotoPath == null && _coverPhotoDraft == null)
@@ -387,7 +381,7 @@ class _TripFormScreenState extends ConsumerState<TripFormScreen> {
                     label: Text(
                       _coverPhotoDraft?.name ?? basename(_coverPhotoPath!),
                     ),
-                    onDeleted: _removeCoverPhoto,
+                    onDeleted: _isRestoring ? null : _removeCoverPhoto,
                   ),
                 ],
               ),

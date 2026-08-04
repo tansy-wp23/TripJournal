@@ -1,4 +1,5 @@
 import 'trip_cover_storage.dart';
+import 'trip_cover_upload_preparer.dart';
 
 final class MockTripCoverStorage implements TripCoverStorage {
   @override
@@ -7,6 +8,9 @@ final class MockTripCoverStorage implements TripCoverStorage {
     required String tripId,
     required TripCoverDraft cover,
   }) async {
+    if (cover.previewBytes != null) {
+      await prepareTripCoverUpload(cover);
+    }
     final scheme = Uri.tryParse(cover.path)?.scheme.toLowerCase();
     if (cover.path.isEmpty || scheme == 'blob' || scheme == 'data') {
       return Uri(

@@ -40,6 +40,7 @@ dependencies:
   supabase_flutter: ^2.16.0
   health: ^13.3.1
   cross_file: ^0.3.5+2
+  image: ^4.9.1
   image_picker: ^1.2.3
   flutter_image_compress: ^2.5.1
   http: ^1.2.0
@@ -51,8 +52,6 @@ dependencies:
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  image: ^4.9.1
-
   # The "flutter_lints" package below contains a set of recommended lints to
   # encourage good coding practices. The lint set provided by the package is
   # activated in the `analysis_options.yaml` file located at the root of your
