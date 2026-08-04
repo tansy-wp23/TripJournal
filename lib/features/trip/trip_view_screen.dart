@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:printing/printing.dart';
 
+import '../../data/current_user_id_provider.dart';
+import '../../data/trip_repository_locator.dart';
 import '../../models/journal_entry.dart';
 import '../../models/trip.dart';
 import '../journal/controller/journal_controller.dart';
@@ -11,7 +13,6 @@ import '../journal/screens/entry_detail_screen.dart';
 import '../journal/widgets/format_utils.dart';
 import '../journal/widgets/mood_display.dart';
 import 'controller/trip_controller.dart';
-import 'mock_user.dart';
 import 'screens/trip_wellness_screen.dart';
 import 'trip_day_groups.dart';
 import 'trip_form_screen.dart';
@@ -25,9 +26,10 @@ import 'widgets/wellness_stats_row.dart';
 /// The "journey" screen (IMPLEMENTATION_PLAN_HOMEPAGE.md Phase 5) — a
 /// vertical day-by-day timeline for one trip, reached from the homepage.
 class TripViewScreen extends ConsumerStatefulWidget {
-  const TripViewScreen({super.key, required this.tripId});
+  const TripViewScreen({super.key, required this.tripId, this.userIdProvider});
 
   final String tripId;
+  final CurrentUserIdProvider? userIdProvider;
 
   @override
   ConsumerState<TripViewScreen> createState() => _TripViewScreenState();
@@ -35,6 +37,8 @@ class TripViewScreen extends ConsumerStatefulWidget {
 
 class _TripViewScreenState extends ConsumerState<TripViewScreen> {
   bool _searchVisible = false;
+  bool _dataLoadInProgress = false;
+  String? _identityError;
 
   /// First-use hint dismissal, in-memory only for this screen instance --
   /// reappears next time the trip is opened, which is fine for a low-stakes
@@ -48,12 +52,34 @@ class _TripViewScreenState extends ConsumerState<TripViewScreen> {
   }
 
   Future<void> _loadData() async {
+    if (_dataLoadInProgress) return;
+    _dataLoadInProgress = true;
+    try {
+      await _loadDataOnce();
+    } finally {
+      _dataLoadInProgress = false;
+    }
+  }
+
+  Future<void> _loadDataOnce() async {
     if (!mounted) return;
     final tripController = ref.read(tripControllerProvider.notifier);
     if (ref.read(tripControllerProvider).trips.isEmpty) {
-      await tripController.loadTrips(kMockUserId);
+      late final String userId;
+      try {
+        userId = (widget.userIdProvider ?? currentUserIdProvider)
+            .requireUserId();
+      } on UnauthenticatedTripUserException catch (e) {
+        if (!mounted) return;
+        setState(() => _identityError = e.toString());
+        return;
+      }
+      await tripController.loadTrips(userId);
     }
     if (!mounted) return;
+    if (_identityError != null) {
+      setState(() => _identityError = null);
+    }
     await ref
         .read(journalControllerProvider.notifier)
         .loadEntries(widget.tripId);
@@ -88,7 +114,12 @@ class _TripViewScreenState extends ConsumerState<TripViewScreen> {
   Future<void> _openEditTrip(Trip trip) async {
     final movedToTrash = await Navigator.push<bool>(
       context,
-      MaterialPageRoute(builder: (_) => TripFormScreen(existingTrip: trip)),
+      MaterialPageRoute(
+        builder: (_) => TripFormScreen(
+          existingTrip: trip,
+          userIdProvider: widget.userIdProvider,
+        ),
+      ),
     );
     if (movedToTrash == true && mounted) {
       Navigator.pop(context, true);
@@ -122,6 +153,11 @@ class _TripViewScreenState extends ConsumerState<TripViewScreen> {
   Widget build(BuildContext context) {
     final tripController = ref.watch(tripControllerProvider);
     final journalController = ref.watch(journalControllerProvider);
+
+    if (_identityError != null) {
+      return Scaffold(body: Center(child: Text(_identityError!)));
+    }
+
     final trip = _findTrip(tripController.trips);
 
     if (trip == null) {
