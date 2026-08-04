@@ -49,7 +49,8 @@ class Trip {
   }
 
   /// Inclusive day count, e.g. a single-day trip (start == end) is 1.
-  int get durationDays => _dateOnly(endDate).difference(_dateOnly(startDate)).inDays + 1;
+  int get durationDays =>
+      _dateOnly(endDate).difference(_dateOnly(startDate)).inDays + 1;
 
   /// True if [date] falls within [startDate, endDate] inclusive.
   bool isActiveOn(DateTime date) {
