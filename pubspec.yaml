@@ -44,6 +44,7 @@ dependencies:
   flutter_dotenv: ^6.0.1
   pdf: ^3.13.0
   printing: ^5.15.0
+  uuid: ^4.6.0
 
 dev_dependencies:
   flutter_test:

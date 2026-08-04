@@ -2,13 +2,14 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:tripjournal/models/trip.dart';
 
-Trip _trip({required DateTime start, required DateTime end}) {
+Trip _trip({required DateTime start, required DateTime end, DateTime? deletedAt}) {
   return Trip(
     id: 't',
     userId: 'u',
     title: 'Test Trip',
     startDate: start,
     endDate: end,
+    deletedAt: deletedAt,
     createdAt: start,
     updatedAt: start,
   );
@@ -105,6 +106,7 @@ void main() {
         notes: 'Pack rain jacket',
         createdAt: DateTime(2026, 4, 1),
         updatedAt: DateTime(2026, 4, 1),
+        deletedAt: DateTime.utc(2026, 4, 2, 6),
       );
       final restored = Trip.fromJson(trip.toJson());
       expect(restored.id, trip.id);
@@ -114,6 +116,7 @@ void main() {
       expect(restored.startDate, trip.startDate);
       expect(restored.endDate, trip.endDate);
       expect(restored.notes, trip.notes);
+      expect(restored.deletedAt, trip.deletedAt);
     });
 
     test('round-trips with null coverPhotoPath and null notes', () {
@@ -145,6 +148,35 @@ void main() {
       expect(updated.title, 'Renamed');
       expect(updated.startDate, trip.startDate);
       expect(updated.id, trip.id);
+    });
+  });
+
+  group('trash lifecycle', () {
+    test('keeps a trip recoverable until its 30-day expiry', () {
+      final deletedAt = DateTime.utc(2026, 8, 5, 2, 15);
+      final trip = _trip(
+        start: DateTime.utc(2026, 8, 1),
+        end: DateTime.utc(2026, 8, 3),
+        deletedAt: deletedAt,
+      );
+
+      expect(trip.trashExpiresAt, DateTime.utc(2026, 9, 4, 2, 15));
+      expect(trip.isRecoverableAt(DateTime.utc(2026, 9, 4, 2, 14, 59)), isTrue);
+      expect(trip.isRecoverableAt(DateTime.utc(2026, 9, 4, 2, 15)), isFalse);
+      expect(
+        trip.remainingRecoveryDaysAt(DateTime.utc(2026, 8, 5, 14, 15)),
+        30,
+      );
+    });
+
+    test('clears deletedAt when requested through copyWith', () {
+      final trip = _trip(
+        start: DateTime.utc(2026, 8, 1),
+        end: DateTime.utc(2026, 8, 3),
+        deletedAt: DateTime.utc(2026, 8, 5, 2, 15),
+      );
+
+      expect(trip.copyWith(clearDeletedAt: true).deletedAt, isNull);
     });
   });
 }

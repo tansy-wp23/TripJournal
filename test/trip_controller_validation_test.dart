@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:tripjournal/data/mock_journal_repository.dart';
 import 'package:tripjournal/data/mock_trip_repository.dart';
 import 'package:tripjournal/features/trip/controller/trip_controller.dart';
+import 'package:tripjournal/features/trip/mock_user.dart';
 import 'package:tripjournal/models/trip.dart';
 
 void main() {
@@ -10,13 +11,13 @@ void main() {
 
   setUp(() async {
     controller = TripController(MockTripRepository(), MockJournalRepository());
-    await controller.loadTrips('user-001');
+    await controller.loadTrips(kMockUserId);
   });
 
   Trip newTrip({required String id, required String title, required DateTime start, required DateTime end}) {
     return Trip(
       id: id,
-      userId: 'user-001',
+      userId: kMockUserId,
       title: title,
       startDate: start,
       endDate: end,
