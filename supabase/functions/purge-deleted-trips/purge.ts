@@ -4,16 +4,18 @@ export const JOURNAL_PHOTOS_BUCKET = "journal-photos";
 const RETENTION_MILLISECONDS = 30 * 24 * 60 * 60 * 1000;
 const PUBLIC_OBJECT_PREFIX = ["storage", "v1", "object", "public"];
 
-export interface ExpiredTrip {
-  id: string;
+export interface PurgeClaim {
+  tripId: string;
+  claimToken: string;
+  userId: string;
   coverPhotoUrl: string | null;
+  journalPhotoUrls: Array<string | null>;
 }
 
 export interface PurgeGateway {
-  listExpiredTrips(cutoffIso: string): Promise<ExpiredTrip[]>;
-  listJournalPhotoUrls(tripId: string): Promise<Array<string | null>>;
+  claimExpiredTrips(cutoffIso: string): Promise<PurgeClaim[]>;
   removeObjects(bucket: string, paths: string[]): Promise<void>;
-  permanentlyDeleteTrip(tripId: string): Promise<void>;
+  permanentlyDeleteTrip(tripId: string, claimToken: string): Promise<void>;
 }
 
 export interface PurgeSummary {
@@ -27,13 +29,6 @@ export interface StorageObject {
   path: string;
 }
 
-export class StorageObjectNotFoundError extends Error {
-  constructor(public readonly bucket: string, public readonly path: string) {
-    super(`Storage object not found: ${bucket}/${path}`);
-    this.name = "StorageObjectNotFoundError";
-  }
-}
-
 interface PurgeOptions {
   gateway: PurgeGateway;
   cutoffIso: string;
@@ -43,31 +38,22 @@ interface PurgeOptions {
 export async function purgeExpiredTrips(
   { gateway, cutoffIso, supabaseUrl }: PurgeOptions,
 ): Promise<PurgeSummary> {
-  const trips = await gateway.listExpiredTrips(cutoffIso);
+  const claims = await gateway.claimExpiredTrips(cutoffIso);
   const summary: PurgeSummary = {
-    processed: trips.length,
+    processed: claims.length,
     deleted: 0,
     failed: 0,
   };
 
-  for (const trip of trips) {
+  for (const claim of claims) {
     try {
-      const journalPhotoUrls = await gateway.listJournalPhotoUrls(trip.id);
-      const objects = managedObjectsForTrip(
-        trip.coverPhotoUrl,
-        journalPhotoUrls,
-        supabaseUrl,
-      );
+      const objects = managedObjectsForClaim(claim, supabaseUrl);
 
       for (const object of objects) {
-        try {
-          await gateway.removeObjects(object.bucket, [object.path]);
-        } catch (error) {
-          if (!(error instanceof StorageObjectNotFoundError)) throw error;
-        }
+        await gateway.removeObjects(object.bucket, [object.path]);
       }
 
-      await gateway.permanentlyDeleteTrip(trip.id);
+      await gateway.permanentlyDeleteTrip(claim.tripId, claim.claimToken);
       summary.deleted++;
     } catch {
       summary.failed++;
@@ -77,29 +63,58 @@ export async function purgeExpiredTrips(
   return summary;
 }
 
-function managedObjectsForTrip(
-  coverPhotoUrl: string | null,
-  journalPhotoUrls: Array<string | null>,
+function managedObjectsForClaim(
+  claim: PurgeClaim,
   supabaseUrl: string,
 ): StorageObject[] {
-  const candidates: Array<StorageObject | null> = [
-    parsePublicStorageUrl(
-      coverPhotoUrl,
+  const candidates: StorageObject[] = [];
+  if (claim.coverPhotoUrl != null) {
+    candidates.push(requireOwnedTripObject(
+      claim.coverPhotoUrl,
       supabaseUrl,
       TRIP_COVERS_BUCKET,
-    ),
-    ...journalPhotoUrls.map((url) =>
-      parsePublicStorageUrl(url, supabaseUrl, JOURNAL_PHOTOS_BUCKET)
-    ),
-  ];
+      claim,
+    ));
+  }
+  for (const journalPhotoUrl of claim.journalPhotoUrls) {
+    if (journalPhotoUrl == null) continue;
+    candidates.push(requireOwnedTripObject(
+      journalPhotoUrl,
+      supabaseUrl,
+      JOURNAL_PHOTOS_BUCKET,
+      claim,
+    ));
+  }
   const unique = new Map<string, StorageObject>();
 
   for (const candidate of candidates) {
-    if (candidate == null) continue;
     unique.set(`${candidate.bucket}\u0000${candidate.path}`, candidate);
   }
 
   return [...unique.values()];
+}
+
+function requireOwnedTripObject(
+  publicUrl: string,
+  supabaseUrl: string,
+  expectedBucket: string,
+  claim: PurgeClaim,
+): StorageObject {
+  const object = parsePublicStorageUrl(
+    publicUrl,
+    supabaseUrl,
+    expectedBucket,
+  );
+  const segments = object?.path.split("/") ?? [];
+  if (
+    object == null ||
+    segments.length < 3 ||
+    segments[0] !== claim.userId ||
+    segments[1] !== claim.tripId
+  ) {
+    throw new Error("Claim snapshot contains an unowned Storage URL.");
+  }
+  return object;
 }
 
 export function parsePublicStorageUrl(

@@ -50,7 +50,7 @@ class SupabaseTripRepository implements TripRepository {
   Future<void> updateTrip(Trip trip) async {
     await _client
         .from('trips')
-        .update(tripToSupabaseRow(trip))
+        .update(tripEditableFieldsToSupabaseRow(trip))
         .eq('id', trip.id);
   }
 

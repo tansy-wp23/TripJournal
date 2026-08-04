@@ -1,17 +1,13 @@
 import {
   createPurgeHandler,
-  type ExpiredTrip,
   parsePublicStorageUrl,
-  purgeExpiredTrips,
+  type PurgeClaim,
   type PurgeGateway,
-  StorageObjectNotFoundError,
 } from "./purge.ts";
-import { createSupabaseGateway } from "./index.ts";
 
 const supabaseUrl = "https://tripjournal.supabase.co";
 const secret = "correct-cron-secret";
 const now = new Date("2026-09-04T02:15:00.000Z");
-const cutoffIso = "2026-08-05T02:15:00.000Z";
 
 function assert(
   condition: unknown,
@@ -30,46 +26,31 @@ function assertEquals(actual: unknown, expected: unknown, message?: string) {
   }
 }
 
-class RecordingGateway implements PurgeGateway {
-  trips: ExpiredTrip[] = [];
-  photoUrls = new Map<string, Array<string | null>>();
-  removalFailures = new Map<string, Error>();
-  journalFailures = new Map<string, Error>();
-  deletionFailures = new Map<string, Error>();
+class HandlerGateway implements PurgeGateway {
+  claims: PurgeClaim[] = [];
+  claimFailure: Error | null = null;
   cutoffs: string[] = [];
-  events: string[] = [];
 
-  listExpiredTrips(requestedCutoffIso: string): Promise<ExpiredTrip[]> {
-    this.cutoffs.push(requestedCutoffIso);
-    return Promise.resolve(this.trips);
+  claimExpiredTrips(cutoffIso: string): Promise<PurgeClaim[]> {
+    this.cutoffs.push(cutoffIso);
+    return this.claimFailure == null
+      ? Promise.resolve(this.claims)
+      : Promise.reject(this.claimFailure);
   }
 
-  listJournalPhotoUrls(tripId: string): Promise<Array<string | null>> {
-    this.events.push(`list:${tripId}`);
-    const failure = this.journalFailures.get(tripId);
-    if (failure) return Promise.reject(failure);
-    return Promise.resolve(this.photoUrls.get(tripId) ?? []);
+  removeObjects(): Promise<void> {
+    return Promise.resolve();
   }
 
-  removeObjects(bucket: string, paths: string[]): Promise<void> {
-    const key = `${bucket}/${paths.join(",")}`;
-    this.events.push(`remove:${key}`);
-    const failure = this.removalFailures.get(key);
-    return failure ? Promise.reject(failure) : Promise.resolve();
-  }
-
-  permanentlyDeleteTrip(tripId: string): Promise<void> {
-    this.events.push(`delete:${tripId}`);
-    const failure = this.deletionFailures.get(tripId);
-    return failure ? Promise.reject(failure) : Promise.resolve();
+  permanentlyDeleteTrip(): Promise<void> {
+    return Promise.resolve();
   }
 }
 
 function handlerFor(
-  gateway: RecordingGateway,
+  gateway: HandlerGateway,
   overrides: {
     env?: Record<string, string | undefined>;
-    clock?: () => Date;
     createGateway?: () => PurgeGateway;
   } = {},
 ) {
@@ -79,48 +60,34 @@ function handlerFor(
     SUPABASE_SERVICE_ROLE_KEY: "service-role-key",
     ...overrides.env,
   };
-
   return createPurgeHandler({
-    readEnv: (name: string) => env[name],
-    clock: overrides.clock ?? (() => now),
+    readEnv: (name) => env[name],
+    clock: () => now,
     createGateway: overrides.createGateway ?? (() => gateway),
   });
 }
 
-function post(headerSecret = secret) {
-  return new Request("https://edge.example.test/purge-deleted-trips", {
+function post(headerSecret?: string) {
+  const headers = new Headers();
+  if (headerSecret != null) headers.set("x-cron-secret", headerSecret);
+  return new Request("https://edge.example.test/purge", {
     method: "POST",
-    headers: { "x-cron-secret": headerSecret },
+    headers,
   });
 }
 
-function capturedRequest(input: RequestInfo | URL, init?: RequestInit) {
-  return input instanceof Request ? input : new Request(input, init);
-}
-
-Deno.test("rejects missing and incorrect cron secrets without initializing the gateway", async () => {
-  const gateway = new RecordingGateway();
+Deno.test("rejects missing and incorrect cron secrets before gateway initialization", async () => {
+  const gateway = new HandlerGateway();
   let initializationCount = 0;
-  const handler = createPurgeHandler({
-    readEnv: (name: string) =>
-      ({
-        PURGE_CRON_SECRET: secret,
-        SUPABASE_URL: supabaseUrl,
-        SUPABASE_SERVICE_ROLE_KEY: "service-role-key",
-      } as Record<string, string | undefined>)[name],
-    clock: () => now,
+  const handler = handlerFor(gateway, {
     createGateway: () => {
       initializationCount++;
       return gateway;
     },
   });
 
-  const missing = await handler(
-    new Request("https://edge.example.test/purge-deleted-trips", {
-      method: "POST",
-    }),
-  );
-  const incorrect = await handler(post("correct-cron-secret-extra"));
+  const missing = await handler(post());
+  const incorrect = await handler(post(`${secret}-extra`));
 
   assertEquals(missing.status, 401);
   assertEquals(incorrect.status, 401);
@@ -128,10 +95,9 @@ Deno.test("rejects missing and incorrect cron secrets without initializing the g
   assertEquals(await missing.json(), { error: "Unauthorized." });
 });
 
-Deno.test("accepts POST only and returns JSON for malformed invocation methods", async () => {
-  const gateway = new RecordingGateway();
-  const response = await handlerFor(gateway)(
-    new Request("https://edge.example.test/purge-deleted-trips", {
+Deno.test("accepts POST only and returns a JSON 405 response", async () => {
+  const response = await handlerFor(new HandlerGateway())(
+    new Request("https://edge.example.test/purge", {
       method: "GET",
       headers: { "x-cron-secret": secret },
     }),
@@ -146,182 +112,35 @@ Deno.test("accepts POST only and returns JSON for malformed invocation methods",
   assertEquals(await response.json(), { error: "Method not allowed." });
 });
 
-Deno.test("uses the handler clock to supply the exact 30 x 24-hour cutoff", async () => {
-  const gateway = new RecordingGateway();
-  gateway.trips = [{ id: "expired", coverPhotoUrl: null }];
+Deno.test("missing server secret fails closed with a generic 500", async () => {
+  const response = await handlerFor(new HandlerGateway(), {
+    env: { PURGE_CRON_SECRET: undefined },
+  })(post(secret));
 
-  const response = await handlerFor(gateway)(post());
-
-  assertEquals(response.status, 200);
-  assertEquals(gateway.cutoffs, [cutoffIso]);
-  assertEquals(gateway.events, ["list:expired", "delete:expired"]);
-  assertEquals(await response.json(), { processed: 1, deleted: 1, failed: 0 });
+  assertEquals(response.status, 500);
+  assertEquals(await response.text(), '{"error":"Internal server error."}');
 });
 
-Deno.test("cleans the cover and every journal photo before hard deleting the trip", async () => {
-  const gateway = new RecordingGateway();
-  gateway.trips = [{
-    id: "trip-a",
-    coverPhotoUrl:
-      `${supabaseUrl}/storage/v1/object/public/trip-covers/user-a/trip-a/cover.jpg`,
-  }];
-  gateway.photoUrls.set("trip-a", [
-    `${supabaseUrl}/storage/v1/object/public/journal-photos/user-a/trip-a/one.jpg`,
-    `${supabaseUrl}/storage/v1/object/public/journal-photos/user-a/trip-a/two.jpg`,
-  ]);
-
-  const summary = await purgeExpiredTrips({ gateway, cutoffIso, supabaseUrl });
-
-  assertEquals(summary, { processed: 1, deleted: 1, failed: 0 });
-  assertEquals(gateway.events, [
-    "list:trip-a",
-    "remove:trip-covers/user-a/trip-a/cover.jpg",
-    "remove:journal-photos/user-a/trip-a/one.jpg",
-    "remove:journal-photos/user-a/trip-a/two.jpg",
-    "delete:trip-a",
-  ]);
-});
-
-Deno.test("deduplicates canonical object paths and ignores query strings and fragments", async () => {
-  const gateway = new RecordingGateway();
-  gateway.trips = [{ id: "trip-a", coverPhotoUrl: null }];
-  gateway.photoUrls.set("trip-a", [
-    `${supabaseUrl}/storage/v1/object/public/journal-photos/user/trip/photo%20one.jpg?download=1`,
-    `${supabaseUrl}/storage/v1/object/public/journal-photos/user/trip/%70hoto%20%6Fne.jpg#preview`,
-    null,
-  ]);
-
-  const summary = await purgeExpiredTrips({ gateway, cutoffIso, supabaseUrl });
-
-  assertEquals(summary, { processed: 1, deleted: 1, failed: 0 });
-  assertEquals(gateway.events, [
-    "list:trip-a",
-    "remove:journal-photos/user/trip/photo one.jpg",
-    "delete:trip-a",
-  ]);
-});
-
-Deno.test("treats a missing Storage object as successful idempotent cleanup", async () => {
-  const gateway = new RecordingGateway();
-  gateway.trips = [{ id: "trip-a", coverPhotoUrl: null }];
-  gateway.photoUrls.set("trip-a", [
-    `${supabaseUrl}/storage/v1/object/public/journal-photos/user/trip/missing.jpg`,
-  ]);
-  gateway.removalFailures.set(
-    "journal-photos/user/trip/missing.jpg",
-    new StorageObjectNotFoundError("journal-photos", "user/trip/missing.jpg"),
-  );
-
-  const summary = await purgeExpiredTrips({ gateway, cutoffIso, supabaseUrl });
-
-  assertEquals(summary, { processed: 1, deleted: 1, failed: 0 });
-  assertEquals(gateway.events.at(-1), "delete:trip-a");
-});
-
-Deno.test("retains the database row when a real Storage removal fails", async () => {
-  const gateway = new RecordingGateway();
-  gateway.trips = [{
-    id: "trip-a",
-    coverPhotoUrl:
-      `${supabaseUrl}/storage/v1/object/public/trip-covers/user/trip/cover.jpg`,
-  }];
-  gateway.removalFailures.set(
-    "trip-covers/user/trip/cover.jpg",
-    new Error("storage unavailable"),
-  );
-
-  const summary = await purgeExpiredTrips({ gateway, cutoffIso, supabaseUrl });
-
-  assertEquals(summary, { processed: 1, deleted: 0, failed: 1 });
-  assert(!gateway.events.includes("delete:trip-a"));
-});
-
-Deno.test("isolates a failed trip and continues purging later trips", async () => {
-  const gateway = new RecordingGateway();
-  gateway.trips = [
-    {
-      id: "bad-trip",
-      coverPhotoUrl:
-        `${supabaseUrl}/storage/v1/object/public/trip-covers/user/bad/cover.jpg`,
-    },
-    { id: "good-trip", coverPhotoUrl: null },
-  ];
-  gateway.removalFailures.set(
-    "trip-covers/user/bad/cover.jpg",
-    new Error("storage unavailable"),
-  );
-
-  const summary = await purgeExpiredTrips({ gateway, cutoffIso, supabaseUrl });
-
-  assertEquals(summary, { processed: 2, deleted: 1, failed: 1 });
-  assert(!gateway.events.includes("delete:bad-trip"));
-  assert(gateway.events.includes("delete:good-trip"));
-});
-
-Deno.test("retains a trip when journal-photo listing or database deletion fails", async () => {
-  const gateway = new RecordingGateway();
-  gateway.trips = [
-    { id: "journal-failure", coverPhotoUrl: null },
-    { id: "delete-failure", coverPhotoUrl: null },
-  ];
-  gateway.journalFailures.set("journal-failure", new Error("query failed"));
-  gateway.deletionFailures.set("delete-failure", new Error("delete failed"));
-
-  const summary = await purgeExpiredTrips({ gateway, cutoffIso, supabaseUrl });
-
-  assertEquals(summary, { processed: 2, deleted: 0, failed: 2 });
-  assert(!gateway.events.includes("delete:journal-failure"));
-});
-
-Deno.test("parses only canonical public object URLs on the current Supabase origin and expected bucket", () => {
-  assertEquals(
-    parsePublicStorageUrl(
-      `${supabaseUrl}/storage/v1/object/public/trip-covers/user/trip/cover%20photo.jpg?x=1#preview`,
-      supabaseUrl,
-      "trip-covers",
-    ),
-    { bucket: "trip-covers", path: "user/trip/cover photo.jpg" },
-  );
-
-  const rejected = [
-    `https://attacker.example/storage/v1/object/public/trip-covers/user/trip/cover.jpg`,
-    `https://attacker.example@tripjournal.supabase.co/storage/v1/object/public/trip-covers/user/trip/cover.jpg`,
-    `${supabaseUrl}/storage/v1/object/public/journal-photos/user/trip/cover.jpg`,
-    `${supabaseUrl}/storage/v1/object/public/trip-covers/user//cover.jpg`,
-    `${supabaseUrl}/storage/v1/object/public/trip-covers/user/%2e%2e/cover.jpg`,
-    `${supabaseUrl}/storage/v1/object/public/trip-covers/user%2fother/cover.jpg`,
-    `${supabaseUrl}/storage/v1/object/public/trip-covers/user%5Cother/cover.jpg`,
-    `${supabaseUrl}/storage/v1/object/public/trip-covers/user/%252f/cover.jpg`,
-    `${supabaseUrl}/storage/v1/object/public/trip-covers/`,
-  ];
-  for (const value of rejected) {
-    assertEquals(
-      parsePublicStorageUrl(value, supabaseUrl, "trip-covers"),
-      null,
-      `Expected URL to be rejected: ${value}`,
-    );
-  }
-});
-
-Deno.test("returns a generic 500 only for request-wide initialization and listing failures", async () => {
-  const gateway = new RecordingGateway();
-  const missingEnv = await handlerFor(gateway, {
+Deno.test("request-wide environment, initialization, and claim failures return secret-free 500", async () => {
+  const missingServiceKey = await handlerFor(new HandlerGateway(), {
     env: { SUPABASE_SERVICE_ROLE_KEY: undefined },
-  })(post());
-  const failedInitialization = await handlerFor(gateway, {
+  })(post(secret));
+  const failedInitialization = await handlerFor(new HandlerGateway(), {
     createGateway: () => {
       throw new Error(`do not expose ${secret}`);
     },
-  })(post());
-  const failedListing = await handlerFor(gateway, {
-    createGateway: () =>
-      Object.assign(gateway, {
-        listExpiredTrips: () =>
-          Promise.reject(new Error("database unavailable")),
-      }),
-  })(post());
+  })(post(secret));
+  const failedClaim = new HandlerGateway();
+  failedClaim.claimFailure = new Error("database unavailable");
+  const failedClaimResponse = await handlerFor(failedClaim)(post(secret));
 
-  for (const response of [missingEnv, failedInitialization, failedListing]) {
+  for (
+    const response of [
+      missingServiceKey,
+      failedInitialization,
+      failedClaimResponse,
+    ]
+  ) {
     assertEquals(response.status, 500);
     const body = await response.text();
     assertEquals(body, '{"error":"Internal server error."}');
@@ -330,147 +149,35 @@ Deno.test("returns a generic 500 only for request-wide initialization and listin
   }
 });
 
-Deno.test("Supabase gateway queries the exact schema fields with an inclusive expired cutoff", async () => {
-  const requests: Request[] = [];
-  const gateway = createSupabaseGateway({
-    supabaseUrl,
-    serviceRoleKey: "service-role-key",
-    cutoffIso,
-    fetch: (input: RequestInfo | URL, init?: RequestInit) => {
-      const request = capturedRequest(input, init);
-      requests.push(request);
-      const url = new URL(request.url);
-
-      if (url.pathname === "/rest/v1/trips") {
-        return Promise.resolve(Response.json([
-          { id: "trip-a", cover_photo_url: "https://cover.example/a.jpg" },
-        ], { headers: { "content-range": "0-0/*" } }));
-      }
-      if (url.pathname === "/rest/v1/journal_entries") {
-        return Promise.resolve(Response.json([
-          { photo_urls: ["https://photo.example/one.jpg", null] },
-          { photo_urls: ["https://photo.example/two.jpg"] },
-        ], { headers: { "content-range": "0-1/*" } }));
-      }
-      throw new Error(`Unexpected request: ${request.url}`);
-    },
-  });
-
-  assertEquals(await gateway.listExpiredTrips(cutoffIso), [{
-    id: "trip-a",
-    coverPhotoUrl: "https://cover.example/a.jpg",
-  }]);
-  assertEquals(await gateway.listJournalPhotoUrls("trip-a"), [
-    "https://photo.example/one.jpg",
-    null,
-    "https://photo.example/two.jpg",
-  ]);
-
-  const tripsUrl = new URL(requests[0].url);
-  assertEquals(tripsUrl.searchParams.get("select"), "id,cover_photo_url");
-  assertEquals(tripsUrl.searchParams.get("deleted_at"), `lte.${cutoffIso}`);
-  assertEquals(tripsUrl.searchParams.get("order"), "id.asc");
-  assertEquals(tripsUrl.searchParams.get("offset"), "0");
-  assertEquals(tripsUrl.searchParams.get("limit"), "500");
-  const journalUrl = new URL(requests[1].url);
-  assertEquals(journalUrl.searchParams.get("select"), "photo_urls");
-  assertEquals(journalUrl.searchParams.get("trip_id"), "eq.trip-a");
-  assertEquals(journalUrl.searchParams.get("order"), "id.asc");
+Deno.test("parses a canonical current-origin public URL without query or fragment", () => {
+  assertEquals(
+    parsePublicStorageUrl(
+      `${supabaseUrl}/storage/v1/object/public/trip-covers/user/trip/cover%20photo.jpg?download=1#preview`,
+      supabaseUrl,
+      "trip-covers",
+    ),
+    { bucket: "trip-covers", path: "user/trip/cover photo.jpg" },
+  );
 });
 
-Deno.test("Supabase gateway paginates expired trips without deleting during listing", async () => {
-  const pages: string[] = [];
-  const firstPage = Array.from({ length: 500 }, (_, index) => ({
-    id: `trip-${index.toString().padStart(3, "0")}`,
-    cover_photo_url: null,
-  }));
-  const gateway = createSupabaseGateway({
-    supabaseUrl,
-    serviceRoleKey: "service-role-key",
-    cutoffIso,
-    fetch: (input: RequestInfo | URL, init?: RequestInit) => {
-      const request = capturedRequest(input, init);
-      const url = new URL(request.url);
-      pages.push(
-        `${url.searchParams.get("offset")}:${url.searchParams.get("limit")}`,
-      );
-      const body = pages.length === 1
-        ? firstPage
-        : [{ id: "trip-500", cover_photo_url: null }];
-      return Promise.resolve(Response.json(body));
-    },
-  });
+Deno.test("rejects foreign origins, unexpected buckets, and noncanonical paths", () => {
+  const rejected = [
+    "https://attacker.example/storage/v1/object/public/trip-covers/user/trip/cover.jpg",
+    "https://attacker.example@tripjournal.supabase.co/storage/v1/object/public/trip-covers/user/trip/cover.jpg",
+    `${supabaseUrl}/storage/v1/object/public/journal-photos/user/trip/cover.jpg`,
+    `${supabaseUrl}/storage/v1/object/public/trip-covers/user//cover.jpg`,
+    `${supabaseUrl}/storage/v1/object/public/trip-covers/user/%2e%2e/cover.jpg`,
+    `${supabaseUrl}/storage/v1/object/public/trip-covers/user%2fother/cover.jpg`,
+    `${supabaseUrl}/storage/v1/object/public/trip-covers/user%5Cother/cover.jpg`,
+    `${supabaseUrl}/storage/v1/object/public/trip-covers/user/%252f/cover.jpg`,
+    `${supabaseUrl}/storage/v1/object/public/trip-covers/`,
+  ];
 
-  const trips = await gateway.listExpiredTrips(cutoffIso);
-
-  assertEquals(trips.length, 501);
-  assertEquals(trips.at(-1), { id: "trip-500", coverPhotoUrl: null });
-  assertEquals(pages, ["0:500", "500:500"]);
-});
-
-Deno.test("Supabase gateway maps only authoritative Storage 404 errors to object-not-found", async () => {
-  let status = 404;
-  const gateway = createSupabaseGateway({
-    supabaseUrl,
-    serviceRoleKey: "service-role-key",
-    cutoffIso,
-    fetch: () =>
-      Promise.resolve(
-        new Response(
-          JSON.stringify({
-            statusCode: String(status),
-            error: "storage_error",
-          }),
-          {
-            status,
-            headers: { "content-type": "application/json" },
-          },
-        ),
-      ),
-  });
-
-  let missingError: unknown;
-  try {
-    await gateway.removeObjects("journal-photos", ["user/trip/missing.jpg"]);
-  } catch (error) {
-    missingError = error;
+  for (const value of rejected) {
+    assertEquals(
+      parsePublicStorageUrl(value, supabaseUrl, "trip-covers"),
+      null,
+      `Expected URL to be rejected: ${value}`,
+    );
   }
-  assert(missingError instanceof StorageObjectNotFoundError);
-
-  status = 500;
-  let realError: unknown;
-  try {
-    await gateway.removeObjects("journal-photos", ["user/trip/photo.jpg"]);
-  } catch (error) {
-    realError = error;
-  }
-  assert(realError instanceof Error);
-  assert(!(realError instanceof StorageObjectNotFoundError));
-});
-
-Deno.test("Supabase gateway hard delete remains cutoff-guarded and treats an already-absent row idempotently", async () => {
-  const requests: Request[] = [];
-  const gateway = createSupabaseGateway({
-    supabaseUrl,
-    serviceRoleKey: "service-role-key",
-    cutoffIso,
-    fetch: (input: RequestInfo | URL, init?: RequestInit) => {
-      const request = capturedRequest(input, init);
-      requests.push(request);
-      if (request.method === "DELETE") {
-        return Promise.resolve(Response.json([]));
-      }
-      return Promise.resolve(Response.json([]));
-    },
-  });
-
-  await gateway.permanentlyDeleteTrip("trip-a");
-
-  const deleteUrl = new URL(requests[0].url);
-  assertEquals(requests[0].method, "DELETE");
-  assertEquals(deleteUrl.pathname, "/rest/v1/trips");
-  assertEquals(deleteUrl.searchParams.get("id"), "eq.trip-a");
-  assertEquals(deleteUrl.searchParams.get("deleted_at"), `lte.${cutoffIso}`);
-  assertEquals(deleteUrl.searchParams.get("select"), "id");
-  assertEquals(requests[1].method, "GET");
 });

@@ -32,6 +32,16 @@ Map<String, dynamic> tripToSupabaseRow(Trip trip) {
   };
 }
 
+Map<String, dynamic> tripEditableFieldsToSupabaseRow(Trip trip) {
+  return {
+    'title': trip.title,
+    'cover_photo_url': trip.coverPhotoPath,
+    'start_date': _formatDateOnly(trip.startDate),
+    'end_date': _formatDateOnly(trip.endDate),
+    'notes': trip.notes,
+  };
+}
+
 String _formatDateOnly(DateTime date) {
   final month = date.month.toString().padLeft(2, '0');
   final day = date.day.toString().padLeft(2, '0');

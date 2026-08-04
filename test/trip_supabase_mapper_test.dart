@@ -66,4 +66,29 @@ void main() {
       expect(row, isNot(contains('createdAt')));
     });
   });
+
+  test('editable row excludes ownership and purge lifecycle columns', () {
+    final row = tripEditableFieldsToSupabaseRow(
+      Trip(
+        id: 'trip-123',
+        userId: 'user-456',
+        title: 'Penang Weekend',
+        coverPhotoPath: 'trip-covers/penang.jpg',
+        startDate: DateTime(2026, 8, 5),
+        endDate: DateTime(2026, 8, 7),
+        notes: 'Try the char kway teow.',
+        createdAt: DateTime.utc(2026, 7, 1),
+        updatedAt: DateTime.utc(2026, 7, 2),
+        deletedAt: DateTime.utc(2026, 8, 10),
+      ),
+    );
+
+    expect(row, {
+      'title': 'Penang Weekend',
+      'cover_photo_url': 'trip-covers/penang.jpg',
+      'start_date': '2026-08-05',
+      'end_date': '2026-08-07',
+      'notes': 'Try the char kway teow.',
+    });
+  });
 }

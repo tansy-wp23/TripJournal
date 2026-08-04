@@ -168,23 +168,30 @@ void main() {
       await repository.addTrip(trip);
     });
 
-    test('updateTrip updates by id with a snake_case row', () async {
-      final trip = _trip();
-      final repository = _repository(
-        MockClient((request) async {
-          expect(request.method, 'PATCH');
-          expect(request.url.path, '/rest/v1/trips');
-          expect(request.url.queryParameters['id'], 'eq.${trip.id}');
-          final body = jsonDecode(request.body) as Map<String, dynamic>;
-          expect(body['user_id'], _userId);
-          expect(body['updated_at'], '2026-07-02T03:04:05.000Z');
-          expect(body, isNot(contains('updatedAt')));
-          return _jsonResponse([], request: request);
-        }),
-      );
+    test(
+      'updateTrip sends only editable columns and never lifecycle fields',
+      () async {
+        final trip = _trip();
+        final repository = _repository(
+          MockClient((request) async {
+            expect(request.method, 'PATCH');
+            expect(request.url.path, '/rest/v1/trips');
+            expect(request.url.queryParameters['id'], 'eq.${trip.id}');
+            final body = jsonDecode(request.body) as Map<String, dynamic>;
+            expect(body.keys, {
+              'title',
+              'cover_photo_url',
+              'start_date',
+              'end_date',
+              'notes',
+            });
+            return _jsonResponse([], request: request);
+          }),
+        );
 
-      await repository.updateTrip(trip);
-    });
+        await repository.updateTrip(trip);
+      },
+    );
 
     test(
       'moveToTrash invokes the move_trip_to_trash RPC with the trip id',
