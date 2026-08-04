@@ -45,8 +45,7 @@ class Trip {
     if (expiry == null) return 0;
     final microseconds = expiry.difference(now.toUtc()).inMicroseconds;
     if (microseconds <= 0) return 0;
-    return (microseconds + Duration.microsecondsPerDay - 1) ~/
-        Duration.microsecondsPerDay;
+    return (microseconds - 1) ~/ Duration.microsecondsPerDay + 1;
   }
 
   /// Inclusive day count, e.g. a single-day trip (start == end) is 1.

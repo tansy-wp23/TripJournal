@@ -200,5 +200,29 @@ void main() {
       );
       expect(trip.remainingRecoveryDaysAt(expiry), 0);
     });
+
+    test('handles an extreme positive remaining duration without overflow', () {
+      const expectedDays = 106751991;
+      const expiryMicros = 8640000000000000000;
+      const remainingMicros =
+          expectedDays * Duration.microsecondsPerDay;
+      final expiry = DateTime.fromMicrosecondsSinceEpoch(
+        expiryMicros,
+        isUtc: true,
+      );
+      final deletedAt = expiry.subtract(const Duration(days: 30));
+      final now = DateTime.fromMicrosecondsSinceEpoch(
+        expiryMicros - remainingMicros,
+        isUtc: true,
+      );
+      final trip = _trip(
+        start: DateTime.utc(2026, 8, 1),
+        end: DateTime.utc(2026, 8, 3),
+        deletedAt: deletedAt,
+      );
+
+      expect(trip.trashExpiresAt, expiry);
+      expect(trip.remainingRecoveryDaysAt(now), expectedDays);
+    });
   });
 }

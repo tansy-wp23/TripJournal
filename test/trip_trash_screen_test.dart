@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -48,6 +50,23 @@ void main() {
     expect(find.text('Deleted Aug 4, 2026'), findsOneWidget);
     expect(find.text('Expires Sep 3, 2026'), findsOneWidget);
     expect(find.text('29 days remaining'), findsOneWidget);
+  });
+
+  testWidgets('a newly deleted trip schedules only a web-safe wake interval', (
+    tester,
+  ) async {
+    final repository = _TrashRepository()
+      ..deletedTrips.add(_trip(id: 'newly-deleted', deletedAt: now));
+    final controller = _controller(repository, () => now);
+    final timerFactory = _RecordingTimerFactory();
+
+    await tester.pumpWidget(
+      _trashApp(controller, timerFactory: timerFactory.create),
+    );
+    await tester.pumpAndSettle();
+
+    expect(timerFactory.durations, [const Duration(days: 1)]);
+    expect(timerFactory.durations.single, greaterThan(Duration.zero));
   });
 
   testWidgets('asks for confirmation before restoring', (tester) async {
@@ -260,10 +279,13 @@ TripTrashController _controller(
   );
 }
 
-Widget _trashApp(TripTrashController controller) {
+Widget _trashApp(
+  TripTrashController controller, {
+  TripTrashTimerFactory? timerFactory,
+}) {
   return ProviderScope(
     overrides: [tripTrashControllerProvider.overrideWith((ref) => controller)],
-    child: const MaterialApp(home: TripTrashScreen()),
+    child: MaterialApp(home: TripTrashScreen(timerFactory: timerFactory)),
   );
 }
 
@@ -377,4 +399,26 @@ final class _TrashRepository implements TripRepository {
     );
     if (index != -1) activeTrips[index] = trip;
   }
+}
+
+final class _RecordingTimerFactory {
+  final List<Duration> durations = [];
+
+  Timer create(Duration duration, void Function() callback) {
+    durations.add(duration);
+    return _FakeTimer();
+  }
+}
+
+final class _FakeTimer implements Timer {
+  bool _active = true;
+
+  @override
+  bool get isActive => _active;
+
+  @override
+  int get tick => 0;
+
+  @override
+  void cancel() => _active = false;
 }

@@ -8,8 +8,19 @@ import '../../journal/widgets/format_utils.dart';
 import '../controller/trip_trash_controller.dart';
 import '../trip_form_screen.dart';
 
+typedef TripTrashTimerFactory =
+    Timer Function(Duration duration, void Function() callback);
+
+const _maxExpiryWakeDelay = Duration(days: 1);
+
+Timer _createTimer(Duration duration, void Function() callback) {
+  return Timer(duration, callback);
+}
+
 class TripTrashScreen extends ConsumerStatefulWidget {
-  const TripTrashScreen({super.key});
+  const TripTrashScreen({super.key, this.timerFactory});
+
+  final TripTrashTimerFactory? timerFactory;
 
   @override
   ConsumerState<TripTrashScreen> createState() => _TripTrashScreenState();
@@ -59,7 +70,16 @@ class _TripTrashScreenState extends ConsumerState<TripTrashScreen> {
 
     _expiryTimer?.cancel();
     _scheduledExpiry = nextExpiry;
-    _expiryTimer = Timer(nextExpiry.difference(now), _handleExpiry);
+    final remaining = nextExpiry.difference(now);
+    // Browser timers use a signed 32-bit millisecond delay. Waking in
+    // one-day chunks stays safely below that limit on every platform.
+    final wakeDelay = remaining > _maxExpiryWakeDelay
+        ? _maxExpiryWakeDelay
+        : remaining;
+    _expiryTimer = (widget.timerFactory ?? _createTimer)(
+      wakeDelay,
+      _handleExpiry,
+    );
   }
 
   void _handleExpiry() {
