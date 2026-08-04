@@ -178,5 +178,27 @@ void main() {
 
       expect(trip.copyWith(clearDeletedAt: true).deletedAt, isNull);
     });
+
+    test('reports one remaining day during the final positive microsecond', () {
+      final deletedAt = DateTime.utc(2026, 8, 5, 2, 15);
+      final trip = _trip(
+        start: DateTime.utc(2026, 8, 1),
+        end: DateTime.utc(2026, 8, 3),
+        deletedAt: deletedAt,
+      );
+      final expiry = deletedAt.add(const Duration(days: 30));
+
+      expect(
+        trip.isRecoverableAt(expiry.subtract(const Duration(microseconds: 1))),
+        isTrue,
+      );
+      expect(
+        trip.remainingRecoveryDaysAt(
+          expiry.subtract(const Duration(microseconds: 1)),
+        ),
+        1,
+      );
+      expect(trip.remainingRecoveryDaysAt(expiry), 0);
+    });
   });
 }

@@ -143,29 +143,58 @@ void main() {
   });
 
   testWidgets(
-    'an item that reaches exact expiry has no enabled Restore action',
+    'an item disables automatically when exact expiry passes while mounted',
     (tester) async {
       final deletedAt = DateTime.utc(2026, 7, 6, 12);
+      final exactExpiry = deletedAt.add(const Duration(days: 30));
+      var clockNow = exactExpiry.subtract(const Duration(seconds: 1));
       final repository = _TrashRepository()
         ..deletedTrips.add(_trip(id: 'expired', deletedAt: deletedAt));
-      var clockCalls = 0;
-      final justBeforeExpiry = deletedAt.add(
-        const Duration(days: 30, microseconds: -1),
-      );
-      final exactExpiry = deletedAt.add(const Duration(days: 30));
-      final controller = _controller(
-        repository,
-        () => clockCalls++ == 0 ? justBeforeExpiry : exactExpiry,
-      );
+      final controller = _controller(repository, () => clockNow);
 
       await tester.pumpWidget(_trashApp(controller));
       await tester.pumpAndSettle();
 
-      final button = tester.widget<FilledButton>(
+      var button = tester.widget<FilledButton>(
+        find.byKey(const Key('restore-trip-expired')),
+      );
+      expect(button.onPressed, isNotNull);
+      expect(find.text('1 day remaining'), findsOneWidget);
+
+      clockNow = exactExpiry;
+      await tester.pump(const Duration(seconds: 1));
+
+      button = tester.widget<FilledButton>(
         find.byKey(const Key('restore-trip-expired')),
       );
       expect(button.onPressed, isNull);
       expect(find.text('Recovery period expired'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'a stale enabled action reports expiry instead of silently returning',
+    (tester) async {
+      final deletedAt = DateTime.utc(2026, 7, 6, 12);
+      final exactExpiry = deletedAt.add(const Duration(days: 30));
+      var clockNow = exactExpiry.subtract(const Duration(seconds: 1));
+      final repository = _TrashRepository()
+        ..deletedTrips.add(_trip(id: 'expiry-race', deletedAt: deletedAt));
+      final controller = _controller(repository, () => clockNow);
+
+      await tester.pumpWidget(_trashApp(controller));
+      await tester.pumpAndSettle();
+
+      clockNow = exactExpiry;
+      await tester.tap(find.byKey(const Key('restore-trip-expiry-race')));
+      await tester.pump();
+
+      expect(
+        find.text('This trip\'s recovery period has expired.'),
+        findsOneWidget,
+      );
+      expect(find.text('Recovery period expired'), findsOneWidget);
+      expect(repository.restoreCalls, 0);
     },
   );
 

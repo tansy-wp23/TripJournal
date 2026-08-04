@@ -254,6 +254,43 @@ void main() {
     },
   );
 
+  test(
+    'an older post-restore refresh cannot overwrite a newer restore result',
+    () async {
+      final tripA = _trip(
+        id: 'trip-a',
+        start: DateTime(2026, 10, 1),
+        end: DateTime(2026, 10, 2),
+        deletedAt: now.subtract(const Duration(days: 1)),
+      );
+      final tripB = _trip(
+        id: 'trip-b',
+        start: DateTime(2026, 11, 1),
+        end: DateTime(2026, 11, 2),
+        deletedAt: now.subtract(const Duration(days: 1)),
+      );
+      repository.deletedTrips.addAll([tripA, tripB]);
+      await controller.load();
+      repository
+        ..deletedLoadGate = Completer<void>()
+        ..deletedLoadStarted = Completer<void>();
+
+      final restoreA = controller.restore(tripA);
+      await repository.deletedLoadStarted!.future;
+      final resultB = await controller.restore(tripB);
+
+      expect(resultB.status, TripRestoreStatus.restored);
+      expect(controller.trips, isEmpty);
+
+      repository.pendingDeletedLoadGate!.complete();
+      final resultA = await restoreA;
+
+      expect(resultA.status, TripRestoreStatus.restored);
+      expect(controller.trips, isEmpty);
+      expect(repository.restoreCalls, 2);
+    },
+  );
+
   test('a pending load may finish after disposal without notifying', () async {
     repository.deletedLoadGate = Completer<void>();
     final future = controller.load();
@@ -305,6 +342,7 @@ final class _MemoryTripRepository implements TripRepository {
   Completer<void>? restoreGate;
   Completer<void>? deletedLoadGate;
   Completer<void>? pendingDeletedLoadGate;
+  Completer<void>? deletedLoadStarted;
 
   @override
   Future<List<Trip>> getTrips(String userId) async => activeTrips
@@ -319,6 +357,9 @@ final class _MemoryTripRepository implements TripRepository {
     final gate = deletedLoadGate;
     deletedLoadGate = null;
     if (gate != null) pendingDeletedLoadGate = gate;
+    if (gate != null && deletedLoadStarted?.isCompleted == false) {
+      deletedLoadStarted!.complete();
+    }
     await gate?.future;
     if (failNextDeletedLoad) {
       failNextDeletedLoad = false;

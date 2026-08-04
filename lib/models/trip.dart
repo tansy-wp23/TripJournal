@@ -43,9 +43,10 @@ class Trip {
   int remainingRecoveryDaysAt(DateTime now) {
     final expiry = trashExpiresAt;
     if (expiry == null) return 0;
-    final seconds = expiry.difference(now.toUtc()).inSeconds;
-    if (seconds <= 0) return 0;
-    return (seconds / Duration.secondsPerDay).ceil();
+    final microseconds = expiry.difference(now.toUtc()).inMicroseconds;
+    if (microseconds <= 0) return 0;
+    return (microseconds + Duration.microsecondsPerDay - 1) ~/
+        Duration.microsecondsPerDay;
   }
 
   /// Inclusive day count, e.g. a single-day trip (start == end) is 1.

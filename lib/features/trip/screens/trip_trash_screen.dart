@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -14,18 +16,76 @@ class TripTrashScreen extends ConsumerStatefulWidget {
 }
 
 class _TripTrashScreenState extends ConsumerState<TripTrashScreen> {
+  TripTrashController? _listenedController;
+  Timer? _expiryTimer;
+  DateTime? _scheduledExpiry;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) ref.read(tripTrashControllerProvider.notifier).load();
+      if (!mounted) return;
+      final controller = ref.read(tripTrashControllerProvider.notifier);
+      _listenedController = controller;
+      controller.addListener(_scheduleNextExpiry);
+      controller.load();
     });
+  }
+
+  void _scheduleNextExpiry() {
+    if (!mounted) return;
+    final controller = _listenedController;
+    if (controller == null) return;
+
+    final now = controller.now;
+    DateTime? nextExpiry;
+    for (final trip in controller.trips) {
+      final expiry = trip.trashExpiresAt;
+      if (expiry == null || !expiry.isAfter(now)) continue;
+      if (nextExpiry == null || expiry.isBefore(nextExpiry)) {
+        nextExpiry = expiry;
+      }
+    }
+
+    if (nextExpiry == null) {
+      _expiryTimer?.cancel();
+      _expiryTimer = null;
+      _scheduledExpiry = null;
+      return;
+    }
+    if (_scheduledExpiry == nextExpiry && _expiryTimer?.isActive == true) {
+      return;
+    }
+
+    _expiryTimer?.cancel();
+    _scheduledExpiry = nextExpiry;
+    _expiryTimer = Timer(nextExpiry.difference(now), _handleExpiry);
+  }
+
+  void _handleExpiry() {
+    _expiryTimer = null;
+    _scheduledExpiry = null;
+    if (!mounted) return;
+    setState(() {});
+    _scheduleNextExpiry();
+  }
+
+  @override
+  void dispose() {
+    _expiryTimer?.cancel();
+    _listenedController?.removeListener(_scheduleNextExpiry);
+    super.dispose();
   }
 
   Future<void> _confirmRestore(Trip trip) async {
     final controller = ref.read(tripTrashControllerProvider.notifier);
-    if (controller.isRestoring(trip.id) ||
-        !trip.isRecoverableAt(controller.now)) {
+    if (controller.isRestoring(trip.id)) {
+      return;
+    }
+    if (!trip.isRecoverableAt(controller.now)) {
+      setState(() {});
+      _scheduleNextExpiry();
+      _showMessage('This trip\'s recovery period has expired.');
       return;
     }
 

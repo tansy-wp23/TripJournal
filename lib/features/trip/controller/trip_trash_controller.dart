@@ -153,7 +153,7 @@ class TripTrashController extends ChangeNotifier {
 
       // Invalidate any older load that captured this row before the restore.
       // Its eventual response must not reinsert the successfully restored trip.
-      _loadGeneration++;
+      final refreshGeneration = ++_loadGeneration;
       _loading = false;
       _trips = _trips
           .where((deletedTrip) => deletedTrip.id != candidate.id)
@@ -162,7 +162,7 @@ class TripTrashController extends ChangeNotifier {
 
       try {
         final loaded = await _tripRepository.getDeletedTrips(userId);
-        if (!_disposed) {
+        if (!_disposed && refreshGeneration == _loadGeneration) {
           _trips = _recoverableNewestFirst(
             loaded.where((trip) => trip.id != candidate.id),
           );
