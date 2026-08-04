@@ -66,18 +66,24 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     ).showSnackBar(SnackBar(content: Text('$feature is not wired up yet.')));
   }
 
-  void _openTripView(Trip trip) {
-    Navigator.push(
+  Future<void> _openTripView(Trip trip) async {
+    final movedToTrash = await Navigator.push<bool>(
       context,
       MaterialPageRoute(builder: (_) => TripViewScreen(tripId: trip.id)),
     );
+    if (movedToTrash == true) {
+      await _loadDashboardData();
+    }
   }
 
-  void _openCreateTrip() {
-    Navigator.push(
+  Future<void> _openCreateTrip() async {
+    final movedToTrash = await Navigator.push<bool>(
       context,
       MaterialPageRoute(builder: (_) => const TripFormScreen()),
     );
+    if (movedToTrash == true) {
+      await _loadDashboardData();
+    }
   }
 
   @override

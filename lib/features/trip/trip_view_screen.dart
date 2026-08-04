@@ -68,18 +68,31 @@ class _TripViewScreenState extends ConsumerState<TripViewScreen> {
 
   Future<void> _confirmAndDeleteTrip(Trip trip) async {
     final tripController = ref.read(tripControllerProvider.notifier);
-    final entryCount = await tripController.countEntriesForTrip(trip.id);
-    if (!mounted) return;
-
     final confirmed = await showDeleteTripConfirmationDialog(
       context,
       tripTitle: trip.title,
-      entryCount: entryCount,
     );
     if (!confirmed || !mounted) return;
 
-    await tripController.deleteTrip(trip.id);
-    if (mounted) Navigator.pop(context);
+    final error = await tripController.moveToTrash(trip.id);
+    if (!mounted) return;
+    if (error != null) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error)));
+      return;
+    }
+    Navigator.pop(context, true);
+  }
+
+  Future<void> _openEditTrip(Trip trip) async {
+    final movedToTrash = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(builder: (_) => TripFormScreen(existingTrip: trip)),
+    );
+    if (movedToTrash == true && mounted) {
+      Navigator.pop(context, true);
+    }
   }
 
   Future<void> _exportTripPdf(Trip trip, List<JournalEntry> entries) async {
@@ -152,16 +165,12 @@ class _TripViewScreenState extends ConsumerState<TripViewScreen> {
           IconButton(
             key: const Key('trip-view-edit-button'),
             icon: const Icon(Icons.edit),
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => TripFormScreen(existingTrip: trip),
-              ),
-            ),
+            onPressed: () => _openEditTrip(trip),
           ),
           IconButton(
             key: const Key('trip-view-delete-button'),
             icon: const Icon(Icons.delete_outline),
+            tooltip: 'Move to Trash',
             onPressed: () => _confirmAndDeleteTrip(trip),
           ),
         ],

@@ -6,6 +6,7 @@ import 'package:http/testing.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:tripjournal/data/mock_journal_repository.dart';
+import 'package:tripjournal/data/mock_trip_cover_storage.dart';
 import 'package:tripjournal/data/supabase_trip_repository.dart';
 import 'package:tripjournal/features/trip/controller/trip_controller.dart';
 import 'package:tripjournal/models/trip.dart';
@@ -244,7 +245,11 @@ void main() {
           );
         }),
       );
-      final controller = TripController(repository, MockJournalRepository());
+      final controller = TripController(
+        repository,
+        MockJournalRepository(),
+        MockTripCoverStorage(),
+      );
 
       await controller.loadTrips(_userId);
       final previouslyLoaded = controller.trips;

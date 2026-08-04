@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/legacy.dart';
 
 import '../../../data/journal_repository.dart';
 import '../../../data/repository_locator.dart';
+import '../../../data/trip_cover_storage.dart';
 import '../../../data/trip_repository.dart';
 import '../../../data/trip_repository_locator.dart';
 import '../../../models/trip.dart';
@@ -11,19 +12,32 @@ import '../../journal/widgets/format_utils.dart';
 import '../trip_overlap.dart';
 
 class TripController extends ChangeNotifier {
-  TripController(this._tripRepository, this._journalRepository);
+  TripController(
+    this._tripRepository,
+    this._journalRepository,
+    this._tripCoverStorage,
+  );
 
   final TripRepository _tripRepository;
   final JournalRepository _journalRepository;
+  final TripCoverStorage _tripCoverStorage;
 
   String? _userId;
   List<Trip> _trips = [];
   bool _loading = false;
   String? _error;
+  String? _cleanupWarning;
 
   List<Trip> get trips => _trips;
   bool get loading => _loading;
   String? get error => _error;
+  String? get cleanupWarning => _cleanupWarning;
+
+  void clearCleanupWarning() {
+    if (_cleanupWarning == null) return;
+    _cleanupWarning = null;
+    notifyListeners();
+  }
 
   /// The trip whose date range contains today, or null if none does.
   Trip? get activeTrip {
@@ -64,7 +78,11 @@ class TripController extends ChangeNotifier {
     final dateRangeError = validateTripDateRange(trip.startDate, trip.endDate);
     if (dateRangeError != null) return dateRangeError;
 
-    final overlap = findOverlappingTrip(trip, _trips, excludingTripId: excludingTripId);
+    final overlap = findOverlappingTrip(
+      trip,
+      _trips,
+      excludingTripId: excludingTripId,
+    );
     if (overlap != null) {
       return 'You already have a trip during these dates '
           '(${overlap.title}, ${formatDate(overlap.startDate)} - ${formatDate(overlap.endDate)}). '
@@ -90,15 +108,29 @@ class TripController extends ChangeNotifier {
     if (validationError != null) return validationError;
 
     _error = null;
+    _cleanupWarning = null;
+    String? uploadedCoverUrl;
+    var tripToPersist = trip;
     try {
-      await _tripRepository.addTrip(trip);
-      await _refresh();
-      return null;
+      if (_isLocalCover(trip.coverPhotoPath)) {
+        uploadedCoverUrl = await _tripCoverStorage.uploadCover(
+          userId: trip.userId,
+          tripId: trip.id,
+          localPath: trip.coverPhotoPath!,
+        );
+        tripToPersist = _copyWithCover(trip, uploadedCoverUrl);
+      }
+      await _tripRepository.addTrip(tripToPersist);
     } catch (e) {
+      if (uploadedCoverUrl != null) {
+        await _cleanupCover(uploadedCoverUrl);
+      }
       _error = e.toString();
       notifyListeners();
       return _error;
     }
+
+    return _refreshAfterSave();
   }
 
   /// Edits [trip], or returns a validation/save error message without
@@ -109,8 +141,48 @@ class TripController extends ChangeNotifier {
     if (validationError != null) return validationError;
 
     _error = null;
+    _cleanupWarning = null;
+    final previousCover = _coverForTrip(trip.id);
+    String? uploadedCoverUrl;
+    var tripToPersist = trip;
     try {
-      await _tripRepository.updateTrip(trip);
+      if (_isLocalCover(trip.coverPhotoPath)) {
+        uploadedCoverUrl = await _tripCoverStorage.uploadCover(
+          userId: trip.userId,
+          tripId: trip.id,
+          localPath: trip.coverPhotoPath!,
+        );
+        tripToPersist = _copyWithCover(trip, uploadedCoverUrl);
+      }
+      await _tripRepository.updateTrip(tripToPersist);
+    } catch (e) {
+      if (uploadedCoverUrl != null) {
+        await _cleanupCover(uploadedCoverUrl);
+      }
+      _error = e.toString();
+      notifyListeners();
+      return _error;
+    }
+
+    if (_isRemoteCover(previousCover) &&
+        previousCover != tripToPersist.coverPhotoPath) {
+      await _cleanupCover(previousCover);
+    }
+
+    return _refreshAfterSave();
+  }
+
+  /// Number of journal entries under [tripId] for dashboard statistics.
+  Future<int> countEntriesForTrip(String tripId) async {
+    final entries = await _journalRepository.getEntries(tripId);
+    return entries.length;
+  }
+
+  /// Moves the trip to recoverable trash without touching journal entries.
+  Future<String?> moveToTrash(String id) async {
+    _error = null;
+    try {
+      await _tripRepository.moveToTrash(id);
       await _refresh();
       return null;
     } catch (e) {
@@ -120,29 +192,53 @@ class TripController extends ChangeNotifier {
     }
   }
 
-  /// Number of journal entries under [tripId] — for the delete-confirmation
-  /// UI ("Delete this trip and its N journal entries?", decision #3 in
-  /// IMPLEMENTATION_PLAN_HOMEPAGE.md).
-  Future<int> countEntriesForTrip(String tripId) async {
-    final entries = await _journalRepository.getEntries(tripId);
-    return entries.length;
+  String? _coverForTrip(String tripId) {
+    for (final trip in _trips) {
+      if (trip.id == tripId) return trip.coverPhotoPath;
+    }
+    return null;
   }
 
-  /// Deletes the trip and cascade-deletes its journal entries. The
-  /// confirmation prompt itself is a UI concern (Phase 6) — by the time this
-  /// is called, the user has already confirmed.
-  Future<void> deleteTrip(String id) async {
-    _error = null;
+  bool _isRemoteCover(String? cover) {
+    if (cover == null) return false;
+    final scheme = Uri.tryParse(cover)?.scheme.toLowerCase();
+    return scheme == 'http' || scheme == 'https';
+  }
+
+  bool _isLocalCover(String? cover) => cover != null && !_isRemoteCover(cover);
+
+  Trip _copyWithCover(Trip trip, String? coverPhotoPath) {
+    return Trip(
+      id: trip.id,
+      userId: trip.userId,
+      title: trip.title,
+      coverPhotoPath: coverPhotoPath,
+      startDate: trip.startDate,
+      endDate: trip.endDate,
+      notes: trip.notes,
+      createdAt: trip.createdAt,
+      updatedAt: trip.updatedAt,
+      deletedAt: trip.deletedAt,
+    );
+  }
+
+  Future<void> _cleanupCover(String? coverUrl) async {
     try {
-      final entries = await _journalRepository.getEntries(id);
-      for (final entry in entries) {
-        await _journalRepository.deleteEntry(entry.id);
-      }
-      await _tripRepository.moveToTrash(id);
+      await _tripCoverStorage.deleteCoverUrl(coverUrl);
+    } catch (e) {
+      _cleanupWarning = e.toString();
+      notifyListeners();
+    }
+  }
+
+  Future<String?> _refreshAfterSave() async {
+    try {
       await _refresh();
+      return null;
     } catch (e) {
       _error = e.toString();
       notifyListeners();
+      return _error;
     }
   }
 
@@ -157,5 +253,5 @@ class TripController extends ChangeNotifier {
 /// The single place the app resolves its [TripController] from — mirrors
 /// journalControllerProvider.
 final tripControllerProvider = ChangeNotifierProvider<TripController>(
-  (ref) => TripController(tripRepository, journalRepository),
+  (ref) => TripController(tripRepository, journalRepository, tripCoverStorage),
 );
