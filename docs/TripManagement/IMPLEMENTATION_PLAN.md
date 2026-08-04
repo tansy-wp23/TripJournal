@@ -692,7 +692,7 @@ Expected: all authorization, cleanup ordering, retry, and independent processing
     $purgeSecretBytes = New-Object byte[] 32
     [Security.Cryptography.RandomNumberGenerator]::Fill($purgeSecretBytes)
     $purgeSecret = [Convert]::ToBase64String($purgeSecretBytes)
-    supabase functions deploy purge-deleted-trips
+    supabase functions deploy purge-deleted-trips --no-verify-jwt
     supabase secrets set "PURGE_CRON_SECRET=$purgeSecret"
 
 In Supabase Dashboard, create Cron HTTP job:
