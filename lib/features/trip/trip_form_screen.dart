@@ -10,15 +10,22 @@ import '../../validation/photo_validation.dart';
 import '../../validation/trip_validation.dart';
 import '../journal/widgets/format_utils.dart';
 import 'controller/trip_controller.dart';
+import 'controller/trip_trash_controller.dart';
 import 'trip_view_screen.dart';
 import 'widgets/delete_trip_confirmation_dialog.dart';
 
 /// Create/Edit Trip form (IMPLEMENTATION_PLAN_HOMEPAGE.md Phase 6).
 class TripFormScreen extends ConsumerStatefulWidget {
-  const TripFormScreen({super.key, this.existingTrip, this.userIdProvider});
+  const TripFormScreen({
+    super.key,
+    this.existingTrip,
+    this.userIdProvider,
+    this.restoreOnSave = false,
+  }) : assert(!restoreOnSave || existingTrip != null);
 
   final Trip? existingTrip;
   final CurrentUserIdProvider? userIdProvider;
+  final bool restoreOnSave;
 
   @override
   ConsumerState<TripFormScreen> createState() => _TripFormScreenState();
@@ -35,6 +42,7 @@ class _TripFormScreenState extends ConsumerState<TripFormScreen> {
   bool _saving = false;
 
   bool get _isEditing => widget.existingTrip != null;
+  bool get _isRestoring => widget.restoreOnSave;
 
   @override
   void initState() {
@@ -194,7 +202,24 @@ class _TripFormScreenState extends ConsumerState<TripFormScreen> {
       notes: notes.isEmpty ? null : notes,
       createdAt: existing?.createdAt ?? now,
       updatedAt: now,
+      deletedAt: existing?.deletedAt,
     );
+
+    if (_isRestoring) {
+      final result = await ref
+          .read(tripTrashControllerProvider.notifier)
+          .restoreWithChanges(trip);
+      if (!mounted) return;
+      if (result.status == TripRestoreStatus.restored) {
+        Navigator.pop(context, true);
+        return;
+      }
+      setState(() {
+        _dateRangeError = result.message ?? 'Could not restore this trip.';
+        _saving = false;
+      });
+      return;
+    }
 
     final controller = ref.read(tripControllerProvider.notifier);
     final error = _isEditing
@@ -247,9 +272,15 @@ class _TripFormScreenState extends ConsumerState<TripFormScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(_isEditing ? 'Edit trip' : 'New trip'),
+        title: Text(
+          _isRestoring
+              ? 'Restore trip'
+              : _isEditing
+              ? 'Edit trip'
+              : 'New trip',
+        ),
         actions: [
-          if (_isEditing)
+          if (_isEditing && !_isRestoring)
             IconButton(
               key: const Key('delete-trip-button'),
               icon: const Icon(Icons.delete_outline),
@@ -338,7 +369,7 @@ class _TripFormScreenState extends ConsumerState<TripFormScreen> {
             FilledButton(
               key: const Key('save-trip-button'),
               onPressed: _saving ? null : _save,
-              child: const Text('Save'),
+              child: Text(_isRestoring ? 'Restore' : 'Save'),
             ),
           ],
         ),

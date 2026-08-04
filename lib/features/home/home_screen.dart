@@ -7,6 +7,7 @@ import '../journal/widgets/format_utils.dart';
 import '../journal/widgets/mood_display.dart';
 import '../trip/controller/trip_controller.dart';
 import '../trip/mock_user.dart';
+import '../trip/screens/trip_trash_screen.dart';
 import '../trip/trip_summary_stats.dart';
 import '../trip/trip_form_screen.dart';
 import '../trip/trip_list_sort.dart';
@@ -86,6 +87,18 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     }
   }
 
+  Future<void> _onProfileMenuSelected(String value) async {
+    if (value == 'recently-deleted') {
+      final restored = await Navigator.push<bool>(
+        context,
+        MaterialPageRoute(builder: (_) => const TripTrashScreen()),
+      );
+      if (restored == true) await _loadDashboardData();
+      return;
+    }
+    _showComingSoon(value == 'settings' ? 'Settings' : 'Log out');
+  }
+
   @override
   Widget build(BuildContext context) {
     final tripController = ref.watch(tripControllerProvider);
@@ -96,9 +109,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         title: const Text('TripJournal'),
         actions: [
           PopupMenuButton<String>(
-            onSelected: (value) =>
-                _showComingSoon(value == 'settings' ? 'Settings' : 'Log out'),
+            onSelected: _onProfileMenuSelected,
             itemBuilder: (context) => const [
+              PopupMenuItem(
+                value: 'recently-deleted',
+                child: Text('Recently Deleted'),
+              ),
               PopupMenuItem(value: 'settings', child: Text('Settings')),
               PopupMenuItem(value: 'logout', child: Text('Log out')),
             ],
