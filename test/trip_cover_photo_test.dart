@@ -1,29 +1,125 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:tripjournal/features/trip/widgets/trip_cover_photo.dart';
 
+Future<Container> _buildDirectly(
+  WidgetTester tester,
+  TripCoverPhoto coverPhoto,
+) async {
+  late BuildContext context;
+  await tester.pumpWidget(
+    MaterialApp(
+      home: Builder(
+        builder: (builderContext) {
+          context = builderContext;
+          return const SizedBox();
+        },
+      ),
+    ),
+  );
+  return coverPhoto.build(context) as Container;
+}
+
 void main() {
-  testWidgets('shows the placeholder icon when photoPath is null', (tester) async {
-    await tester.pumpWidget(const MaterialApp(home: TripCoverPhoto(height: 100)));
+  testWidgets('shows the placeholder icon when photoPath is null', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      const MaterialApp(home: TripCoverPhoto(height: 100)),
+    );
     expect(find.byIcon(Icons.photo), findsOneWidget);
     expect(find.byType(Image), findsNothing);
   });
 
-  testWidgets('shows the placeholder icon for a mock path with no real file behind it', (tester) async {
-    await tester.pumpWidget(const MaterialApp(
-      home: TripCoverPhoto(photoPath: 'assets/mock/kyoto_arrival_1.jpg', height: 100),
-    ));
-    expect(find.byIcon(Icons.photo), findsOneWidget);
-    expect(find.byType(Image), findsNothing);
+  testWidgets(
+    'shows the placeholder icon for a local path whose file is missing',
+    (tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: TripCoverPhoto(
+            photoPath: 'assets/mock/kyoto_arrival_1.jpg',
+            height: 100,
+          ),
+        ),
+      );
+      expect(find.byIcon(Icons.photo), findsOneWidget);
+      expect(find.byType(Image), findsNothing);
+    },
+  );
+
+  testWidgets('renders an http cover with a network image using cover fit', (
+    tester,
+  ) async {
+    final container = await _buildDirectly(
+      tester,
+      const TripCoverPhoto(
+        photoPath: 'http://images.example.com/trip-cover.jpg',
+        width: 160,
+        height: 90,
+      ),
+    );
+
+    final image = container.child! as Image;
+    expect(image.image, isA<NetworkImage>());
+    expect(image.fit, BoxFit.cover);
+    expect(image.width, 160);
+    expect(image.height, 90);
   });
 
-  // Deliberately no "renders the real image" test here: pointing
-  // TripCoverPhoto at an actual file on disk makes Image.file kick off a
-  // real image decode that reliably hangs `flutter test` for its full
-  // 10-minute timeout in this environment (tried both pumpAndSettle() and a
-  // single pump() — both hang). The fallback logic covered above is what
-  // actually matters for correctness (never attempting to decode a path
-  // with no real file behind it); the ternary that picks Image.file() when
-  // existsSync() is true is trivial enough to trust by inspection.
+  testWidgets('renders an https cover with a network image', (tester) async {
+    final container = await _buildDirectly(
+      tester,
+      const TripCoverPhoto(
+        photoPath: 'https://images.example.com/trip-cover.webp',
+        height: 100,
+      ),
+    );
+
+    expect((container.child! as Image).image, isA<NetworkImage>());
+  });
+
+  testWidgets('renders an existing local file using cover fit', (tester) async {
+    final directory = Directory.systemTemp.createTempSync(
+      'trip-cover-photo-test-',
+    );
+    addTearDown(() => directory.deleteSync(recursive: true));
+    final file = File('${directory.path}/cover.png');
+    file.writeAsBytesSync([1]);
+
+    final container = await _buildDirectly(
+      tester,
+      TripCoverPhoto(photoPath: file.path, width: 160, height: 90),
+    );
+
+    final image = container.child! as Image;
+    expect(image.image, isA<FileImage>());
+    expect(image.fit, BoxFit.cover);
+    expect(image.width, 160);
+    expect(image.height, 90);
+  });
+
+  testWidgets('image errors use the placeholder fallback', (tester) async {
+    final container = await _buildDirectly(
+      tester,
+      const TripCoverPhoto(
+        photoPath: 'https://images.example.com/broken.jpg',
+        height: 100,
+      ),
+    );
+
+    final image = container.child! as Image;
+    expect(image.errorBuilder, isNotNull);
+    final context = tester.element(find.byType(SizedBox));
+    final fallback = image.errorBuilder!(
+      context,
+      Exception('decode failed'),
+      null,
+    );
+    await tester.pumpWidget(MaterialApp(home: fallback));
+
+    expect(find.byIcon(Icons.photo), findsOneWidget);
+  });
 }
