@@ -1,9 +1,12 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
+import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:image/image.dart' as image;
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/data.dart';
 import 'package:uuid/uuid.dart';
@@ -21,6 +24,32 @@ final class _FixedUuid extends Uuid {
 
   @override
   String v4({Map<String, dynamic>? options, V4Options? config}) => _coverId;
+}
+
+final class _TestImageCompressPlatform extends UnsupportedFlutterImageCompress {
+  _TestImageCompressPlatform(this._compress);
+
+  final Future<Uint8List?> Function(String path) _compress;
+  int calls = 0;
+  CompressFormat? requestedFormat;
+
+  @override
+  Future<Uint8List?> compressWithFile(
+    String path, {
+    int minWidth = 1920,
+    int minHeight = 1080,
+    int inSampleSize = 1,
+    int quality = 95,
+    int rotate = 0,
+    bool autoCorrectionAngle = true,
+    CompressFormat format = CompressFormat.jpeg,
+    bool keepExif = false,
+    int numberOfRetries = 5,
+  }) async {
+    calls++;
+    requestedFormat = format;
+    return _compress(path);
+  }
 }
 
 SupabaseTripCoverStorage _storage(MockClient httpClient) {
@@ -44,6 +73,37 @@ http.Response _jsonResponse(
     headers: {'content-type': 'application/json'},
     request: request,
   );
+}
+
+int _indexOfBytes(List<int> bytes, List<int> pattern, [int start = 0]) {
+  for (var index = start; index <= bytes.length - pattern.length; index++) {
+    var matches = true;
+    for (var offset = 0; offset < pattern.length; offset++) {
+      if (bytes[index + offset] != pattern[offset]) {
+        matches = false;
+        break;
+      }
+    }
+    if (matches) return index;
+  }
+  return -1;
+}
+
+Uint8List _uploadedFileBytes(http.BaseRequest request) {
+  final contentType = request.headers['content-type']!;
+  final boundary = RegExp(r'boundary=(.+)$').firstMatch(contentType)!.group(1)!;
+  final body = (request as http.Request).bodyBytes;
+  final filenameStart = _indexOfBytes(body, utf8.encode('filename="'));
+  final contentStartMarker = utf8.encode('\r\n\r\n');
+  final contentStart =
+      _indexOfBytes(body, contentStartMarker, filenameStart) +
+      contentStartMarker.length;
+  final contentEnd = _indexOfBytes(
+    body,
+    utf8.encode('\r\n--$boundary'),
+    contentStart,
+  );
+  return Uint8List.fromList(body.sublist(contentStart, contentEnd));
 }
 
 void main() {
@@ -113,11 +173,13 @@ void main() {
     test('preserves every supported lowercase extension', () async {
       for (final extension in ['jpg', 'jpeg', 'png', 'webp']) {
         final file = File('${temporaryDirectory.path}/cover.$extension');
-        await file.writeAsBytes([1]);
+        final sourceBytes = Uint8List.fromList([1, 2, 3, 4]);
+        await file.writeAsBytes(sourceBytes);
         final expectedSuffix = 'cover-$_coverId.$extension';
         final storage = _storage(
           MockClient((request) async {
             expect(request.url.pathSegments.last, expectedSuffix);
+            expect(_uploadedFileBytes(request), sourceBytes);
             return _jsonResponse({'Key': expectedSuffix}, request: request);
           }),
         );
@@ -132,10 +194,32 @@ void main() {
 
     test('uses jpg when the local extension is unsupported', () async {
       final file = File('${temporaryDirectory.path}/cover.gif');
-      await file.writeAsBytes([1]);
+      final source = image.Image(width: 2, height: 2)
+        ..setPixelRgb(0, 0, 255, 0, 0)
+        ..setPixelRgb(1, 0, 0, 255, 0)
+        ..setPixelRgb(0, 1, 0, 0, 255)
+        ..setPixelRgb(1, 1, 255, 255, 255);
+      final gifBytes = image.encodeGif(source);
+      await file.writeAsBytes(gifBytes);
+      final previousPlatform = FlutterImageCompressPlatform.instance;
+      final platform = _TestImageCompressPlatform((path) async {
+        final decoded = image.decodeImage(await File(path).readAsBytes());
+        return Uint8List.fromList(image.encodeJpg(decoded!));
+      });
+      FlutterImageCompressPlatform.instance = platform;
+      addTearDown(() {
+        FlutterImageCompressPlatform.instance = previousPlatform;
+      });
       final storage = _storage(
         MockClient((request) async {
           expect(request.url.pathSegments.last, 'cover-$_coverId.jpg');
+          expect(
+            latin1.decode(request.bodyBytes).toLowerCase(),
+            contains('content-type: image/jpeg'),
+          );
+          final uploadedBytes = _uploadedFileBytes(request);
+          expect(uploadedBytes, isNot(gifBytes));
+          expect(image.JpegDecoder().isValidFile(uploadedBytes), isTrue);
           return _jsonResponse({'Key': 'cover.jpg'}, request: request);
         }),
       );
@@ -144,6 +228,136 @@ void main() {
         userId: _userId,
         tripId: _tripId,
         localPath: file.path,
+      );
+
+      expect(platform.calls, 1);
+      expect(platform.requestedFormat, CompressFormat.jpeg);
+    });
+
+    test('transcodes HEIC input before uploading JPEG bytes', () async {
+      final file = File('${temporaryDirectory.path}/cover.HEIC');
+      final heicBytes = Uint8List.fromList([
+        0x00,
+        0x00,
+        0x00,
+        0x18,
+        ...ascii.encode('ftypheic'),
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+      ]);
+      await file.writeAsBytes(heicBytes);
+      final jpegBytes = Uint8List.fromList(
+        image.encodeJpg(image.Image(width: 1, height: 1)),
+      );
+      final previousPlatform = FlutterImageCompressPlatform.instance;
+      final platform = _TestImageCompressPlatform((path) async => jpegBytes);
+      FlutterImageCompressPlatform.instance = platform;
+      addTearDown(() {
+        FlutterImageCompressPlatform.instance = previousPlatform;
+      });
+      final storage = _storage(
+        MockClient((request) async {
+          expect(request.url.pathSegments.last, 'cover-$_coverId.jpg');
+          expect(
+            latin1.decode(request.bodyBytes).toLowerCase(),
+            contains('content-type: image/jpeg'),
+          );
+          final uploadedBytes = _uploadedFileBytes(request);
+          expect(uploadedBytes, jpegBytes);
+          expect(image.JpegDecoder().isValidFile(uploadedBytes), isTrue);
+          return _jsonResponse({'Key': 'cover.jpg'}, request: request);
+        }),
+      );
+
+      await storage.uploadCover(
+        userId: _userId,
+        tripId: _tripId,
+        localPath: file.path,
+      );
+
+      expect(platform.calls, 1);
+      expect(platform.requestedFormat, CompressFormat.jpeg);
+    });
+
+    test('does not upload or create files when transcoding fails', () async {
+      final file = File('${temporaryDirectory.path}/cover.gif');
+      await file.writeAsBytes(ascii.encode('GIF89a'));
+      final previousPlatform = FlutterImageCompressPlatform.instance;
+      final platform = _TestImageCompressPlatform((path) async {
+        throw const FileSystemException('conversion failed');
+      });
+      FlutterImageCompressPlatform.instance = platform;
+      addTearDown(() {
+        FlutterImageCompressPlatform.instance = previousPlatform;
+      });
+      var requests = 0;
+      final storage = _storage(
+        MockClient((request) async {
+          requests++;
+          return _jsonResponse({'Key': 'unexpected'}, request: request);
+        }),
+      );
+
+      await expectLater(
+        storage.uploadCover(
+          userId: _userId,
+          tripId: _tripId,
+          localPath: file.path,
+        ),
+        throwsA(isA<FileSystemException>()),
+      );
+
+      expect(requests, 0);
+      final remainingFiles = temporaryDirectory.listSync();
+      expect(remainingFiles, hasLength(1));
+      expect(
+        FileSystemEntity.identicalSync(remainingFiles.single.path, file.path),
+        isTrue,
+      );
+    });
+
+    test('rejects non-JPEG transcoder output before upload', () async {
+      final file = File('${temporaryDirectory.path}/cover.heic');
+      final heicBytes = Uint8List.fromList([
+        0x00,
+        0x00,
+        0x00,
+        0x18,
+        ...ascii.encode('ftypheic'),
+      ]);
+      await file.writeAsBytes(heicBytes);
+      final previousPlatform = FlutterImageCompressPlatform.instance;
+      final platform = _TestImageCompressPlatform((path) async => heicBytes);
+      FlutterImageCompressPlatform.instance = platform;
+      addTearDown(() {
+        FlutterImageCompressPlatform.instance = previousPlatform;
+      });
+      var requests = 0;
+      final storage = _storage(
+        MockClient((request) async {
+          requests++;
+          return _jsonResponse({'Key': 'unexpected'}, request: request);
+        }),
+      );
+
+      await expectLater(
+        storage.uploadCover(
+          userId: _userId,
+          tripId: _tripId,
+          localPath: file.path,
+        ),
+        throwsStateError,
+      );
+
+      expect(platform.calls, 1);
+      expect(requests, 0);
+      final remainingFiles = temporaryDirectory.listSync();
+      expect(remainingFiles, hasLength(1));
+      expect(
+        FileSystemEntity.identicalSync(remainingFiles.single.path, file.path),
+        isTrue,
       );
     });
   });
@@ -190,8 +404,83 @@ void main() {
       await storage.deleteCoverUrl(
         '$_baseUrl/not-storage?next=/storage/v1/object/public/trip-covers/$_coverId.jpg',
       );
+      await storage.deleteCoverUrl(
+        '$_baseUrl/not-storage#/storage/v1/object/public/trip-covers/$_coverId.jpg',
+      );
 
       expect(requests, 0);
+    });
+
+    test('ignores public paths from a different storage origin', () async {
+      var requests = 0;
+      final storage = _storage(
+        MockClient((request) async {
+          requests++;
+          return _jsonResponse([], request: request);
+        }),
+      );
+      const objectPath = '$_userId/$_tripId/cover-$_coverId.jpg';
+
+      await storage.deleteCoverUrl(
+        'https://attacker.example/storage/v1/object/public/trip-covers/$objectPath',
+      );
+      await storage.deleteCoverUrl(
+        'https://example.supabase.co.attacker.example/storage/v1/object/public/trip-covers/$objectPath',
+      );
+      await storage.deleteCoverUrl(
+        'https:/storage/v1/object/public/trip-covers/$objectPath',
+      );
+      await storage.deleteCoverUrl(
+        'http://example.supabase.co/storage/v1/object/public/trip-covers/$objectPath',
+      );
+      await storage.deleteCoverUrl(
+        'https://example.supabase.co:444/storage/v1/object/public/trip-covers/$objectPath',
+      );
+
+      expect(requests, 0);
+    });
+
+    test('ignores encoded storage or bucket prefix characters', () async {
+      var requests = 0;
+      final storage = _storage(
+        MockClient((request) async {
+          requests++;
+          return _jsonResponse([], request: request);
+        }),
+      );
+      const objectPath = '$_userId/$_tripId/cover-$_coverId.jpg';
+
+      await storage.deleteCoverUrl(
+        '$_baseUrl/%73torage/v1/object/public/trip-covers/$objectPath',
+      );
+      await storage.deleteCoverUrl(
+        '$_baseUrl/storage/v1/object/public/%74rip-covers/$objectPath',
+      );
+      await storage.deleteCoverUrl(
+        '$_baseUrl/storage%2Fv1/object/public/trip-covers/$objectPath',
+      );
+
+      expect(requests, 0);
+    });
+
+    test('accepts an explicit default port for the storage origin', () async {
+      const objectPath = '$_userId/$_tripId/cover-$_coverId.jpg';
+      var requests = 0;
+      final storage = _storage(
+        MockClient((request) async {
+          requests++;
+          expect(jsonDecode(request.body), {
+            'prefixes': [objectPath],
+          });
+          return _jsonResponse([], request: request);
+        }),
+      );
+
+      await storage.deleteCoverUrl(
+        'https://example.supabase.co:443/storage/v1/object/public/trip-covers/$objectPath',
+      );
+
+      expect(requests, 1);
     });
   });
 }
