@@ -23,6 +23,7 @@ class TripController extends ChangeNotifier {
   final TripCoverStorage _tripCoverStorage;
 
   String? _userId;
+  int _loadGeneration = 0;
   List<Trip> _trips = [];
   bool _loading = false;
   bool _saving = false;
@@ -31,6 +32,7 @@ class TripController extends ChangeNotifier {
   String? _refreshWarning;
 
   List<Trip> get trips => _trips;
+  String? get loadedUserId => _userId;
   bool get loading => _loading;
   bool get saving => _saving;
   String? get error => _error;
@@ -59,20 +61,41 @@ class TripController extends ChangeNotifier {
   }
 
   Future<void> loadTrips(String userId) async {
-    _userId = userId;
+    final generation = ++_loadGeneration;
+    final switchingUser = _userId != userId;
+    if (switchingUser) {
+      _userId = null;
+      _trips = [];
+    }
     _loading = true;
     _error = null;
     notifyListeners();
 
     try {
-      _trips = await _tripRepository.getTrips(userId);
+      final trips = await _tripRepository.getTrips(userId);
+      if (generation != _loadGeneration) return;
+      _trips = trips;
+      _userId = userId;
       _refreshWarning = null;
     } catch (e) {
+      if (generation != _loadGeneration) return;
       _error = e.toString();
     } finally {
-      _loading = false;
-      notifyListeners();
+      if (generation == _loadGeneration) {
+        _loading = false;
+        notifyListeners();
+      }
     }
+  }
+
+  void clearLoadedTrips() {
+    _loadGeneration++;
+    _userId = null;
+    _trips = [];
+    _loading = false;
+    _error = null;
+    _refreshWarning = null;
+    notifyListeners();
   }
 
   /// Validates [trip] against the rules in IMPLEMENTATION_PLAN_VALIDATION.md
@@ -147,7 +170,12 @@ class TripController extends ChangeNotifier {
         return _error;
       }
 
-      _trips = [..._trips, tripToPersist];
+      if (_userId != tripToPersist.userId) {
+        _trips = [tripToPersist];
+      } else {
+        _trips = [..._trips, tripToPersist];
+      }
+      _userId = tripToPersist.userId;
       notifyListeners();
       await _refreshAfterMutation();
       return null;
@@ -194,6 +222,10 @@ class TripController extends ChangeNotifier {
         return _error;
       }
 
+      if (_userId != tripToPersist.userId) {
+        _trips = [];
+      }
+      _userId = tripToPersist.userId;
       final index = _trips.indexWhere(
         (candidate) => candidate.id == tripToPersist.id,
       );

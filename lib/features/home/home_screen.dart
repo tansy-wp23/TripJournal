@@ -69,6 +69,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       userId = (widget.userIdProvider ?? currentUserIdProvider).requireUserId();
     } on UnauthenticatedTripUserException catch (e) {
       if (!mounted) return;
+      ref.read(tripControllerProvider.notifier).clearLoadedTrips();
       setState(() {
         _identityError = e.toString();
         _entryCounts = {};

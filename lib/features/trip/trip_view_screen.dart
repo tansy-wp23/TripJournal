@@ -38,6 +38,8 @@ class TripViewScreen extends ConsumerStatefulWidget {
 class _TripViewScreenState extends ConsumerState<TripViewScreen> {
   bool _searchVisible = false;
   bool _dataLoadInProgress = false;
+  bool _identityResolved = false;
+  String? _resolvedUserId;
   String? _identityError;
 
   /// First-use hint dismissal, in-memory only for this screen instance --
@@ -64,30 +66,84 @@ class _TripViewScreenState extends ConsumerState<TripViewScreen> {
   Future<void> _loadDataOnce() async {
     if (!mounted) return;
     final tripController = ref.read(tripControllerProvider.notifier);
-    if (ref.read(tripControllerProvider).trips.isEmpty) {
+    setState(() {
+      _identityResolved = false;
+      _resolvedUserId = null;
+      _identityError = null;
+    });
+
+    String? stableUserId;
+    for (var attempt = 0; attempt < 3; attempt++) {
       late final String userId;
       try {
         userId = (widget.userIdProvider ?? currentUserIdProvider)
             .requireUserId();
       } on UnauthenticatedTripUserException catch (e) {
-        if (!mounted) return;
-        setState(() => _identityError = e.toString());
+        _showIdentityError(tripController, e.toString());
         return;
       }
-      await tripController.loadTrips(userId);
+
+      if (tripController.loadedUserId != userId) {
+        await tripController.loadTrips(userId);
+      }
+      if (!mounted) return;
+
+      late final String verifiedUserId;
+      try {
+        verifiedUserId = (widget.userIdProvider ?? currentUserIdProvider)
+            .requireUserId();
+      } on UnauthenticatedTripUserException catch (e) {
+        _showIdentityError(tripController, e.toString());
+        return;
+      }
+      if (verifiedUserId == userId &&
+          tripController.loadedUserId == verifiedUserId) {
+        stableUserId = verifiedUserId;
+        break;
+      }
     }
-    if (!mounted) return;
-    if (_identityError != null) {
-      setState(() => _identityError = null);
+
+    if (stableUserId == null) {
+      _showIdentityError(
+        tripController,
+        'Your account changed while this trip was loading. Please try again.',
+      );
+      return;
     }
+
+    final trip = _findTrip(tripController.trips, stableUserId);
+    if (trip == null) {
+      setState(() {
+        _identityResolved = true;
+        _resolvedUserId = stableUserId;
+      });
+      return;
+    }
+
     await ref
         .read(journalControllerProvider.notifier)
         .loadEntries(widget.tripId);
+    if (!mounted) return;
+    setState(() {
+      _identityResolved = true;
+      _resolvedUserId = stableUserId;
+    });
   }
 
-  Trip? _findTrip(List<Trip> trips) {
+  void _showIdentityError(TripController controller, String message) {
+    controller.clearLoadedTrips();
+    if (!mounted) return;
+    setState(() {
+      _identityResolved = true;
+      _resolvedUserId = null;
+      _identityError = message;
+    });
+  }
+
+  Trip? _findTrip(List<Trip> trips, String? userId) {
+    if (userId == null) return null;
     for (final trip in trips) {
-      if (trip.id == widget.tripId) return trip;
+      if (trip.id == widget.tripId && trip.userId == userId) return trip;
     }
     return null;
   }
@@ -154,11 +210,15 @@ class _TripViewScreenState extends ConsumerState<TripViewScreen> {
     final tripController = ref.watch(tripControllerProvider);
     final journalController = ref.watch(journalControllerProvider);
 
+    if (!_identityResolved) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+
     if (_identityError != null) {
       return Scaffold(body: Center(child: Text(_identityError!)));
     }
 
-    final trip = _findTrip(tripController.trips);
+    final trip = _findTrip(tripController.trips, _resolvedUserId);
 
     if (trip == null) {
       return const Scaffold(body: Center(child: Text('Trip not found.')));

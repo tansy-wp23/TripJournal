@@ -257,7 +257,12 @@ class _TripFormScreenState extends ConsumerState<TripFormScreen> {
       // Fresh trip — go straight to its timeline instead of back to the form.
       final movedToTrash = await Navigator.push<bool>(
         context,
-        MaterialPageRoute(builder: (_) => TripViewScreen(tripId: tripId)),
+        MaterialPageRoute(
+          builder: (_) => TripViewScreen(
+            tripId: tripId,
+            userIdProvider: widget.userIdProvider,
+          ),
+        ),
       );
       if (!mounted) return;
       Navigator.pop(context, movedToTrash == true ? true : null);
