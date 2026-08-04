@@ -138,7 +138,7 @@ class TripController extends ChangeNotifier {
       for (final entry in entries) {
         await _journalRepository.deleteEntry(entry.id);
       }
-      await _tripRepository.deleteTrip(id);
+      await _tripRepository.moveToTrash(id);
       await _refresh();
     } catch (e) {
       _error = e.toString();
