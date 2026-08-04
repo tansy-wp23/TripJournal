@@ -123,6 +123,41 @@ void main() {
     expect(find.text('Please sign in to manage trips.'), findsOneWidget);
   });
 
+  testWidgets('unexpected current-user errors are shown and Save re-enables', (
+    tester,
+  ) async {
+    final controller = TripController(
+      MockTripRepository(),
+      MockJournalRepository(),
+      MockTripCoverStorage(),
+    );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [tripControllerProvider.overrideWith((ref) => controller)],
+        child: const MaterialApp(
+          home: TripFormScreen(
+            userIdProvider: _UnexpectedErrorCurrentUserIdProvider(),
+          ),
+        ),
+      ),
+    );
+    await tester.enterText(
+      find.byKey(const Key('trip-title-field')),
+      'Provider failure',
+    );
+
+    await tester.tap(find.byKey(const Key('save-trip-button')));
+    await tester.pump();
+
+    expect(find.textContaining('identity provider failed'), findsOneWidget);
+    final saveButton = tester.widget<FilledButton>(
+      find.byKey(const Key('save-trip-button')),
+    );
+    expect(saveButton.onPressed, isNotNull);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('editing preserves the existing trip identity', (tester) async {
     final repository = MockTripRepository();
     final existing = Trip(
@@ -271,6 +306,14 @@ final class _UnauthenticatedCurrentUserIdProvider
 
   @override
   String requireUserId() => throw const UnauthenticatedTripUserException();
+}
+
+final class _UnexpectedErrorCurrentUserIdProvider
+    implements CurrentUserIdProvider {
+  const _UnexpectedErrorCurrentUserIdProvider();
+
+  @override
+  String requireUserId() => throw StateError('identity provider failed');
 }
 
 final class _RecordingCurrentUserIdProvider implements CurrentUserIdProvider {

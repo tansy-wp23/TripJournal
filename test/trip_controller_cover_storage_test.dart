@@ -171,6 +171,25 @@ void main() {
   );
 
   test(
+    'edit failure does not delete an upload URL identical to the previous cover',
+    () async {
+      final original = _trip(id: 'existing', coverPhotoPath: _oldCoverUrl);
+      repository.trips.add(original);
+      repository.failUpdate = true;
+      storage.uploadedUrl = _oldCoverUrl;
+      await controller.loadTrips(kMockUserId);
+
+      final error = await controller.editTrip(
+        _trip(id: 'existing', coverPhotoPath: r'C:\photos\replacement.png'),
+      );
+
+      expect(error, contains('update failed'));
+      expect(storage.deletedUrls, isEmpty);
+      expect(repository.trips.single.coverPhotoPath, _oldCoverUrl);
+    },
+  );
+
+  test(
     'edit remains successful when only the post-write refresh fails',
     () async {
       final original = _trip(id: 'existing', coverPhotoPath: _oldCoverUrl);
@@ -419,7 +438,7 @@ final class _UploadCall {
 final class _RecordingTripCoverStorage implements TripCoverStorage {
   _RecordingTripCoverStorage(this.events);
 
-  final String uploadedUrl =
+  String uploadedUrl =
       'https://project.supabase.co/storage/v1/object/public/trip-covers/'
       '$kMockUserId/new-trip/new.jpg';
   final List<_UploadCall> uploads = [];

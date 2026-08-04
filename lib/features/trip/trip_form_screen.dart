@@ -174,6 +174,13 @@ class _TripFormScreenState extends ConsumerState<TripFormScreen> {
         _saving = false;
       });
       return;
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _dateRangeError = e.toString();
+        _saving = false;
+      });
+      return;
     }
     final notes = _notesController.text.trim();
 

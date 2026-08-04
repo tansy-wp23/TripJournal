@@ -184,7 +184,7 @@ class TripController extends ChangeNotifier {
         }
         await _tripRepository.updateTrip(tripToPersist);
       } catch (e) {
-        if (uploadedCoverUrl != null) {
+        if (uploadedCoverUrl != null && uploadedCoverUrl != previousCover) {
           await _cleanupCover(uploadedCoverUrl);
         }
         _error = e.toString();
