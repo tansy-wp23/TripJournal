@@ -22,6 +22,7 @@ import 'widgets/delete_trip_confirmation_dialog.dart';
 import 'widgets/journal_search_bar.dart';
 import 'widgets/trip_cover_photo.dart';
 import 'widgets/wellness_stats_row.dart';
+import 'ai/trip_summary_locator.dart';
 
 /// The "journey" screen (IMPLEMENTATION_PLAN_HOMEPAGE.md Phase 5) — a
 /// vertical day-by-day timeline for one trip, reached from the homepage.
@@ -41,6 +42,9 @@ class _TripViewScreenState extends ConsumerState<TripViewScreen> {
   bool _identityResolved = false;
   String? _resolvedUserId;
   String? _identityError;
+  bool _generatingSummary = false;
+  String? _tripSummary;
+  String? _summaryError;
 
   /// First-use hint dismissal, in-memory only for this screen instance --
   /// reappears next time the trip is opened, which is fine for a low-stakes
@@ -202,6 +206,30 @@ class _TripViewScreenState extends ConsumerState<TripViewScreen> {
           const SnackBar(content: Text('Could not export this trip as a PDF.')),
         );
       }
+    }
+  }
+
+  Future<void> _generateTripSummary(
+    Trip trip,
+    List<JournalEntry> entries,
+  ) async {
+    if (entries.isEmpty) return;
+    setState(() {
+      _generatingSummary = true;
+      _summaryError = null;
+    });
+    try {
+      final summary = await tripSummaryService.summaryFor(
+        trip: trip,
+        entries: entries,
+      );
+      if (!mounted) return;
+      setState(() => _tripSummary = summary);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _summaryError = 'Could not generate the trip summary.');
+    } finally {
+      if (mounted) setState(() => _generatingSummary = false);
     }
   }
 
@@ -383,6 +411,14 @@ class _TripViewScreenState extends ConsumerState<TripViewScreen> {
                       setState(() => _tapToEditHintDismissed = true),
                 ),
               ],
+              const SizedBox(height: 16),
+              _TripSummaryCard(
+                hasEntries: entries.isNotEmpty,
+                isGenerating: _generatingSummary,
+                summary: _tripSummary,
+                error: _summaryError,
+                onGenerate: () => _generateTripSummary(trip, entries),
+              ),
               const SizedBox(height: 16),
               Card(
                 color: Theme.of(context).colorScheme.secondaryContainer,
@@ -593,6 +629,76 @@ class _EntryTile extends StatelessWidget {
               ],
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _TripSummaryCard extends StatelessWidget {
+  const _TripSummaryCard({
+    required this.hasEntries,
+    required this.isGenerating,
+    required this.summary,
+    required this.error,
+    required this.onGenerate,
+  });
+
+  final bool hasEntries;
+  final bool isGenerating;
+  final String? summary;
+  final String? error;
+  final VoidCallback onGenerate;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Card(
+      key: const Key('trip-summary-card'),
+      color: colorScheme.secondaryContainer,
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Trip Summary', style: Theme.of(context).textTheme.titleSmall),
+            const SizedBox(height: 6),
+            if (!hasEntries)
+              Text(
+                'Add a journal entry to generate a summary of this trip.',
+                style: TextStyle(color: colorScheme.onSecondaryContainer),
+              )
+            else if (isGenerating)
+              const Row(
+                children: [
+                  SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                  SizedBox(width: 10),
+                  Text('Generating your trip summary...'),
+                ],
+              )
+            else ...[
+              if (summary != null) Text(summary!),
+              if (error != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Text(
+                    error!,
+                    style: TextStyle(color: colorScheme.error),
+                  ),
+                ),
+              const SizedBox(height: 4),
+              TextButton.icon(
+                key: const Key('generate-trip-summary-button'),
+                onPressed: onGenerate,
+                icon: const Icon(Icons.auto_awesome_outlined),
+                label: Text(summary == null ? 'Generate summary' : 'Regenerate summary'),
+              ),
+            ],
+          ],
         ),
       ),
     );
