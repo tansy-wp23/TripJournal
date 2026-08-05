@@ -174,10 +174,10 @@ Supabase (PostgreSQL). The schema is already applied — see `tripjournal_schema
 | Module | Owner | Status |
 |---|---|---|
 | **Wellness Journal** (entries, health logging, meals, AI advice) | Tan Sang You | ✅ Built |
-| **Trip Management** (create/edit/delete trip, homepage CRUD) | Nicholas Loo Jin Jack   |🔲 Open  |
-| **Trip Recap** (location/date tagging, AI trip summary) | Siow Wei Juin | 🔲 Open |
-| **Authentication / User Management** | 🔲 Mah Chao Wei | 🔲 Open |
-| **Admin** | 🔲 Siow Wei Juin | 🔲 Open |
+| **Trip Management** (create/edit/delete trip, homepage CRUD) | Nicholas Loo Jin Jack   |In Progress |
+| **Trip Recap** (location/date tagging, AI trip summary) | Siow Wei Juin | In Progress |
+| **Authentication / User Management** |  Mah Chao Wei | In Progress|
+| **Admin** |  Khor Zhen Yin| In Progress |
 
 ### Notes for whoever picks up the open modules
 
