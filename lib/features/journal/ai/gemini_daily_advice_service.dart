@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import '../../../models/meal.dart';
 import '../../../models/mood.dart';
 import 'daily_advice_service.dart';
+import 'gemini_model.dart';
 
 /// Real text-model implementation (IMPLEMENTATION_PLAN_REAL_AI.md #2 — the
 /// deferred real-AI phase). Sends the day's meals/steps/mood to Gemini under
@@ -21,9 +22,8 @@ class GeminiDailyAdviceService implements DailyAdviceService {
   final String apiKey;
   final http.Client _client;
 
-  static const _model = 'gemini-2.0-flash';
   static const _endpoint =
-      'https://generativelanguage.googleapis.com/v1beta/models/$_model:generateContent';
+      'https://generativelanguage.googleapis.com/v1beta/models/$geminiModel:generateContent';
 
   /// The tone/safety contract every implementation of [DailyAdviceService]
   /// must uphold — see the constraint documented on the interface itself.

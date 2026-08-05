@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:http/http.dart' as http;
 
 import 'food_detection_service.dart';
+import 'gemini_model.dart';
 
 /// Real vision-model implementation (IMPLEMENTATION_PLAN_UX_POLISH.md §2 —
 /// the deferred real-AI phase). Sends the photo inline to Gemini and asks
@@ -17,8 +18,7 @@ class GeminiFoodDetectionService implements FoodDetectionService {
   final String apiKey;
   final http.Client _client;
 
-  static const _model = 'gemini-2.0-flash';
-  static const _endpoint = 'https://generativelanguage.googleapis.com/v1beta/models/$_model:generateContent';
+  static const _endpoint = 'https://generativelanguage.googleapis.com/v1beta/models/$geminiModel:generateContent';
 
   static const _prompt =
       'Identify the single main food item in this photo and estimate its '

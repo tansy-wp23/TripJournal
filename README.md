@@ -68,10 +68,32 @@ Leave it blank (or omit it) to keep using `MockDailyAdviceService` /
 design (why it's dotenv-based, the safety/tone constraints sent to the model,
 etc.).
 
-> ⚠️ A valid key isn't a guarantee of working calls — a Google Cloud project
-> with zero free-tier quota for `generateContent` will still fail (gracefully;
-> the UI falls back to a "tap to retry" affordance). If real advice never
-> comes back, check quota/billing on the project the key belongs to.
+The model name is centralized in `lib/features/journal/ai/gemini_model.dart`
+(`geminiModel`, currently `gemini-flash-latest`) — both
+`GeminiDailyAdviceService` and `GeminiFoodDetectionService` read it from
+there, so there's one place to change if it ever needs to move.
+
+> ⚠️ A valid key isn't a guarantee of working calls — free-tier quota is
+> granted **per model, not per key**, and Google periodically retires model
+> versions. `gemini-2.0-flash` (the original choice) later returned 429
+> `RESOURCE_EXHAUSTED` (`limit: 0`) even with billing enabled on the project.
+> `gemini-flash-latest` is Google's maintained alias for the current
+> recommended flash model, chosen specifically so this doesn't need to be
+> re-diagnosed every time a version is deprecated — but if it ever fails
+> again, check [the models list](https://ai.google.dev/gemini-api/docs/models)
+> for current availability and swap the constant. Failures are graceful:
+> daily advice falls back to a "tap to retry" affordance, food detection
+> falls back to manual entry.
+
+> ⚠️ **Real device note:** on some Android OEM skins (confirmed on an Infinix
+> running XOS), the modern Android Photo Picker silently reports
+> `RESULT_CANCELED` for every pick, so `ImagePicker().pickImage()` returns
+> `null` before food detection is ever reached — no Gemini call, no error,
+> just silent failure. Fixed via `android/app/src/main/AndroidManifest.xml`
+> (`io.flutter.plugins.imagepicker.useAndroidPhotoPicker` set to `false`),
+> which forces the classic `ACTION_GET_CONTENT` picker instead. If photo
+> pick silently does nothing on your test device, this is the first thing to
+> check.
 
 ---
 
