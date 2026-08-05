@@ -149,13 +149,13 @@ Supabase (PostgreSQL). The schema is already applied — see `tripjournal_schema
 
 ## Module Ownership
 
-| Module | Owner | Status |
-|---|---|---|
-| **Wellness Journal** (entries, health logging, meals, AI advice) | Tan Sang You | ✅ Built |
-| **Trip Management** (create/edit/delete trip, homepage CRUD) | Nicholas Loo Jin Jack   |🔲 Open  |
-| **Trip Recap** (location/date tagging, AI trip summary) | Siow Wei Juin | 🔲 Open |
-| **Authentication / User Management** | 🔲 Mah Chao Wei | 🔲 Open |
-| **Admin** | 🔲 Siow Wei Juin | 🔲 Open |
+| Module | Owner                 | Status |
+|---|-----------------------|---|
+| **Wellness Journal** (entries, health logging, meals, AI advice) | Tan Sang You          | ✅ Built |
+| **Trip Management** (create/edit/delete trip, homepage CRUD) | Nicholas Loo Jin Jack |🔲 Open  |
+| **Trip Recap** (location/date tagging, AI trip summary) | Siow Wei Juin         | 🔲 Open |
+| **Authentication / User Management** | 🔲 Mah Chao Wei       | 🔲 Open |
+| **Admin** | 🔲 Khor Zhen Yin      | 🔲 Open |
 
 ### Notes for whoever picks up the open modules
 
