@@ -17,6 +17,7 @@ class Trip {
   final String? notes;
   final DateTime createdAt;
   final DateTime updatedAt;
+  final DateTime? deletedAt;
 
   const Trip({
     required this.id,
@@ -28,10 +29,28 @@ class Trip {
     this.notes,
     required this.createdAt,
     required this.updatedAt,
+    this.deletedAt,
   });
 
+  DateTime? get trashExpiresAt =>
+      deletedAt?.toUtc().add(const Duration(days: 30));
+
+  bool isRecoverableAt(DateTime now) {
+    final expiry = trashExpiresAt;
+    return expiry != null && now.toUtc().isBefore(expiry);
+  }
+
+  int remainingRecoveryDaysAt(DateTime now) {
+    final expiry = trashExpiresAt;
+    if (expiry == null) return 0;
+    final microseconds = expiry.difference(now.toUtc()).inMicroseconds;
+    if (microseconds <= 0) return 0;
+    return (microseconds - 1) ~/ Duration.microsecondsPerDay + 1;
+  }
+
   /// Inclusive day count, e.g. a single-day trip (start == end) is 1.
-  int get durationDays => _dateOnly(endDate).difference(_dateOnly(startDate)).inDays + 1;
+  int get durationDays =>
+      _dateOnly(endDate).difference(_dateOnly(startDate)).inDays + 1;
 
   /// True if [date] falls within [startDate, endDate] inclusive.
   bool isActiveOn(DateTime date) {
@@ -70,6 +89,9 @@ class Trip {
       notes: json['notes'] as String?,
       createdAt: DateTime.parse(json['createdAt'] as String),
       updatedAt: DateTime.parse(json['updatedAt'] as String),
+      deletedAt: json['deletedAt'] == null
+          ? null
+          : DateTime.parse(json['deletedAt'] as String),
     );
   }
 
@@ -84,6 +106,7 @@ class Trip {
       'notes': notes,
       'createdAt': createdAt.toIso8601String(),
       'updatedAt': updatedAt.toIso8601String(),
+      'deletedAt': deletedAt?.toIso8601String(),
     };
   }
 
@@ -97,6 +120,8 @@ class Trip {
     String? notes,
     DateTime? createdAt,
     DateTime? updatedAt,
+    DateTime? deletedAt,
+    bool clearDeletedAt = false,
   }) {
     return Trip(
       id: id ?? this.id,
@@ -108,6 +133,7 @@ class Trip {
       notes: notes ?? this.notes,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
+      deletedAt: clearDeletedAt ? null : deletedAt ?? this.deletedAt,
     );
   }
 }

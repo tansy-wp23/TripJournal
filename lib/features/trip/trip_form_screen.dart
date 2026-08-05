@@ -1,21 +1,33 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:uuid/uuid.dart';
 
+import '../../data/current_user_id_provider.dart';
+import '../../data/trip_cover_storage.dart';
+import '../../data/trip_repository_locator.dart';
 import '../../models/trip.dart';
 import '../../validation/photo_validation.dart';
 import '../../validation/trip_validation.dart';
 import '../journal/widgets/format_utils.dart';
 import 'controller/trip_controller.dart';
-import 'mock_user.dart';
+import 'controller/trip_trash_controller.dart';
 import 'trip_view_screen.dart';
 import 'widgets/delete_trip_confirmation_dialog.dart';
+import 'widgets/trip_cover_photo.dart';
 
 /// Create/Edit Trip form (IMPLEMENTATION_PLAN_HOMEPAGE.md Phase 6).
 class TripFormScreen extends ConsumerStatefulWidget {
-  const TripFormScreen({super.key, this.existingTrip});
+  const TripFormScreen({
+    super.key,
+    this.existingTrip,
+    this.userIdProvider,
+    this.restoreOnSave = false,
+  }) : assert(!restoreOnSave || existingTrip != null);
 
   final Trip? existingTrip;
+  final CurrentUserIdProvider? userIdProvider;
+  final bool restoreOnSave;
 
   @override
   ConsumerState<TripFormScreen> createState() => _TripFormScreenState();
@@ -28,9 +40,12 @@ class _TripFormScreenState extends ConsumerState<TripFormScreen> {
   late DateTime _startDate;
   late DateTime _endDate;
   String? _coverPhotoPath;
+  TripCoverDraft? _coverPhotoDraft;
   String? _dateRangeError;
+  bool _saving = false;
 
   bool get _isEditing => widget.existingTrip != null;
+  bool get _isRestoring => widget.restoreOnSave;
 
   @override
   void initState() {
@@ -42,7 +57,11 @@ class _TripFormScreenState extends ConsumerState<TripFormScreen> {
     _notesController = TextEditingController(text: trip?.notes ?? '');
     _startDate = trip == null
         ? today
-        : DateTime(trip.startDate.year, trip.startDate.month, trip.startDate.day);
+        : DateTime(
+            trip.startDate.year,
+            trip.startDate.month,
+            trip.startDate.day,
+          );
     _endDate = trip == null
         ? today
         : DateTime(trip.endDate.year, trip.endDate.month, trip.endDate.day);
@@ -117,65 +136,129 @@ class _TripFormScreenState extends ConsumerState<TripFormScreen> {
       final picked = await ImagePicker().pickImage(source: source);
       if (picked == null) return; // user backed out of the OS picker
 
-      final sizeError = validatePhotoSize(await picked.length());
+      final draft = await TripCoverDraft.fromXFile(picked);
+      final sizeError = validatePhotoSize(draft.previewBytes!.length);
       if (sizeError != null) {
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(sizeError)));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(sizeError)));
         return;
       }
 
-      setState(() => _coverPhotoPath = picked.path);
+      setState(() {
+        _coverPhotoPath = null;
+        _coverPhotoDraft = draft;
+      });
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Couldn't access photos — you can still save without one.")),
+        const SnackBar(
+          content: Text(
+            "Couldn't access photos — you can still save without one.",
+          ),
+        ),
       );
     }
   }
 
-  void _removeCoverPhoto() => setState(() => _coverPhotoPath = null);
+  void _removeCoverPhoto() => setState(() {
+    _coverPhotoPath = null;
+    _coverPhotoDraft = null;
+  });
 
   Future<void> _save() async {
+    if (_saving) return;
+
     // Immediate UI-level feedback — the controller re-checks all of this
     // (plus overlap) as the authoritative backstop before persisting.
     final titleValid = _formKey.currentState?.validate() ?? false;
     final dateRangeError = validateTripDateRange(_startDate, _endDate);
     setState(() => _dateRangeError = dateRangeError);
     if (!titleValid || dateRangeError != null) return;
+    setState(() => _saving = true);
 
     final now = DateTime.now();
     final existing = widget.existingTrip;
-    final tripId = existing?.id ?? 'trip-${now.microsecondsSinceEpoch}';
+    final tripId = existing?.id ?? const Uuid().v4();
+    late final String userId;
+    try {
+      userId =
+          existing?.userId ??
+          (widget.userIdProvider ?? currentUserIdProvider).requireUserId();
+    } on UnauthenticatedTripUserException catch (e) {
+      setState(() {
+        _dateRangeError = e.toString();
+        _saving = false;
+      });
+      return;
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _dateRangeError = e.toString();
+        _saving = false;
+      });
+      return;
+    }
     final notes = _notesController.text.trim();
 
     final trip = Trip(
       id: tripId,
-      userId: existing?.userId ?? kMockUserId,
+      userId: userId,
       title: _titleController.text.trim(),
-      coverPhotoPath: _coverPhotoPath,
+      coverPhotoPath: _isRestoring ? existing?.coverPhotoPath : _coverPhotoPath,
       startDate: _startDate,
       endDate: _endDate,
       notes: notes.isEmpty ? null : notes,
       createdAt: existing?.createdAt ?? now,
       updatedAt: now,
+      deletedAt: existing?.deletedAt,
     );
 
-    final controller = ref.read(tripControllerProvider.notifier);
-    final error = _isEditing ? await controller.editTrip(trip) : await controller.createTrip(trip);
-    if (error != null) {
-      setState(() => _dateRangeError = error);
+    if (_isRestoring) {
+      final result = await ref
+          .read(tripTrashControllerProvider.notifier)
+          .restoreWithChanges(trip);
+      if (!mounted) return;
+      if (result.status == TripRestoreStatus.restored) {
+        Navigator.pop(context, true);
+        return;
+      }
+      setState(() {
+        _dateRangeError = result.message ?? 'Could not restore this trip.';
+        _saving = false;
+      });
       return;
     }
+
+    final controller = ref.read(tripControllerProvider.notifier);
+    final error = _isEditing
+        ? await controller.editTrip(trip, coverDraft: _coverPhotoDraft)
+        : await controller.createTrip(trip, coverDraft: _coverPhotoDraft);
     if (!mounted) return;
+    if (error != null) {
+      setState(() {
+        _dateRangeError = error;
+        _saving = false;
+      });
+      return;
+    }
 
     if (_isEditing) {
       Navigator.pop(context);
     } else {
       // Fresh trip — go straight to its timeline instead of back to the form.
-      Navigator.pushReplacement(
+      final movedToTrash = await Navigator.push<bool>(
         context,
-        MaterialPageRoute(builder: (_) => TripViewScreen(tripId: tripId)),
+        MaterialPageRoute(
+          builder: (_) => TripViewScreen(
+            tripId: tripId,
+            userIdProvider: widget.userIdProvider,
+          ),
+        ),
       );
+      if (!mounted) return;
+      Navigator.pop(context, movedToTrash == true ? true : null);
     }
   }
 
@@ -184,33 +267,39 @@ class _TripFormScreenState extends ConsumerState<TripFormScreen> {
     if (existing == null) return;
 
     final tripController = ref.read(tripControllerProvider.notifier);
-    final entryCount = await tripController.countEntriesForTrip(existing.id);
-    if (!mounted) return;
-
     final confirmed = await showDeleteTripConfirmationDialog(
       context,
       tripTitle: existing.title,
-      entryCount: entryCount,
     );
     if (!confirmed || !mounted) return;
 
-    await tripController.deleteTrip(existing.id);
+    final error = await tripController.moveToTrash(existing.id);
     if (!mounted) return;
-    // The trip is gone — go all the way back to Home rather than leaving a
-    // "Trip not found" Trip View screen on the stack.
-    Navigator.popUntil(context, (route) => route.isFirst);
+    if (error != null) {
+      setState(() => _dateRangeError = error);
+      return;
+    }
+    // Signal Trip View to close as well; Home then refreshes its dashboard.
+    Navigator.pop(context, true);
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(_isEditing ? 'Edit trip' : 'New trip'),
+        title: Text(
+          _isRestoring
+              ? 'Restore trip'
+              : _isEditing
+              ? 'Edit trip'
+              : 'New trip',
+        ),
         actions: [
-          if (_isEditing)
+          if (_isEditing && !_isRestoring)
             IconButton(
               key: const Key('delete-trip-button'),
               icon: const Icon(Icons.delete_outline),
+              tooltip: 'Move to Trash',
               onPressed: _confirmAndDelete,
             ),
         ],
@@ -252,28 +341,49 @@ class _TripFormScreenState extends ConsumerState<TripFormScreen> {
             ),
             if (_dateRangeError != null) ...[
               const SizedBox(height: 8),
-              Text(_dateRangeError!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+              Text(
+                _dateRangeError!,
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
+              ),
             ],
             const SizedBox(height: 16),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text('Cover photo', style: Theme.of(context).textTheme.titleSmall),
-                TextButton.icon(
-                  key: const Key('add-cover-photo-button'),
-                  onPressed: _addCoverPhoto,
-                  icon: const Icon(Icons.add_a_photo),
-                  label: const Text('Add photo'),
+                Text(
+                  'Cover photo',
+                  style: Theme.of(context).textTheme.titleSmall,
                 ),
+                if (!_isRestoring)
+                  TextButton.icon(
+                    key: const Key('add-cover-photo-button'),
+                    onPressed: _addCoverPhoto,
+                    icon: const Icon(Icons.add_a_photo),
+                    label: const Text('Add photo'),
+                  ),
               ],
             ),
-            if (_coverPhotoPath == null)
+            if (_coverPhotoPath == null && _coverPhotoDraft == null)
               const Text('No cover photo added.')
             else
-              Chip(
-                avatar: const Icon(Icons.photo, size: 18),
-                label: Text(basename(_coverPhotoPath!)),
-                onDeleted: _removeCoverPhoto,
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  TripCoverPhoto(
+                    photoPath: _coverPhotoPath,
+                    coverDraft: _coverPhotoDraft,
+                    height: 160,
+                    width: double.infinity,
+                  ),
+                  const SizedBox(height: 8),
+                  Chip(
+                    avatar: const Icon(Icons.photo, size: 18),
+                    label: Text(
+                      _coverPhotoDraft?.name ?? basename(_coverPhotoPath!),
+                    ),
+                    onDeleted: _isRestoring ? null : _removeCoverPhoto,
+                  ),
+                ],
               ),
             const SizedBox(height: 16),
             TextFormField(
@@ -288,8 +398,8 @@ class _TripFormScreenState extends ConsumerState<TripFormScreen> {
             const SizedBox(height: 24),
             FilledButton(
               key: const Key('save-trip-button'),
-              onPressed: _save,
-              child: const Text('Save'),
+              onPressed: _saving ? null : _save,
+              child: Text(_isRestoring ? 'Restore' : 'Save'),
             ),
           ],
         ),
@@ -299,7 +409,12 @@ class _TripFormScreenState extends ConsumerState<TripFormScreen> {
 }
 
 class _DatePickerField extends StatelessWidget {
-  const _DatePickerField({super.key, required this.label, required this.date, required this.onTap});
+  const _DatePickerField({
+    super.key,
+    required this.label,
+    required this.date,
+    required this.onTap,
+  });
 
   final String label;
   final DateTime date;
@@ -310,7 +425,10 @@ class _DatePickerField extends StatelessWidget {
     return InkWell(
       onTap: onTap,
       child: InputDecorator(
-        decoration: InputDecoration(labelText: label, border: const OutlineInputBorder()),
+        decoration: InputDecoration(
+          labelText: label,
+          border: const OutlineInputBorder(),
+        ),
         child: Text(formatDate(date)),
       ),
     );

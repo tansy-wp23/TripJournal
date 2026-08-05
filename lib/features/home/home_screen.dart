@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../data/current_user_id_provider.dart';
+import '../../data/trip_repository_locator.dart';
 import '../journal/controller/journal_controller.dart';
 import '../journal/screens/create_edit_entry_screen.dart';
 import '../journal/widgets/format_utils.dart';
 import '../journal/widgets/mood_display.dart';
 import '../trip/controller/trip_controller.dart';
-import '../trip/mock_user.dart';
+import '../trip/screens/trip_trash_screen.dart';
 import '../trip/trip_summary_stats.dart';
 import '../trip/trip_form_screen.dart';
 import '../trip/trip_list_sort.dart';
@@ -21,7 +23,9 @@ import '../../models/trip.dart';
 /// 4). NOTE: not yet wired as the app's actual home route — that's Phase 7.
 /// Settings/Log out remain "coming soon" placeholders (Auth isn't built).
 class HomeScreen extends ConsumerStatefulWidget {
-  const HomeScreen({super.key});
+  const HomeScreen({super.key, this.userIdProvider});
+
+  final CurrentUserIdProvider? userIdProvider;
 
   @override
   ConsumerState<HomeScreen> createState() => _HomeScreenState();
@@ -31,6 +35,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   Map<String, int> _entryCounts = {};
   TripSortOption _sort = TripSortOption.defaultOrder;
   TripStatusFilter _statusFilter = TripStatusFilter.all;
+  String? _identityError;
+  bool _dashboardLoadInProgress = false;
+  bool _dashboardReloadRequested = false;
 
   @override
   void initState() {
@@ -39,18 +46,51 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   Future<void> _loadDashboardData() async {
+    if (_dashboardLoadInProgress) {
+      _dashboardReloadRequested = true;
+      return;
+    }
+
+    _dashboardLoadInProgress = true;
+    try {
+      do {
+        _dashboardReloadRequested = false;
+        await _loadDashboardOnce();
+      } while (mounted && _dashboardReloadRequested);
+    } finally {
+      _dashboardLoadInProgress = false;
+    }
+  }
+
+  Future<void> _loadDashboardOnce() async {
     if (!mounted) return;
+    late final String userId;
+    try {
+      userId = (widget.userIdProvider ?? currentUserIdProvider).requireUserId();
+    } on UnauthenticatedTripUserException catch (e) {
+      if (!mounted) return;
+      ref.read(tripControllerProvider.notifier).clearLoadedTrips();
+      setState(() {
+        _identityError = e.toString();
+        _entryCounts = {};
+      });
+      return;
+    }
+
     final tripController = ref.read(tripControllerProvider.notifier);
-    await tripController.loadTrips(kMockUserId);
+    await tripController.loadTrips(userId);
     if (!mounted) return;
 
     final trips = ref.read(tripControllerProvider).trips;
     final counts = <String, int>{};
     for (final trip in trips) {
       counts[trip.id] = await tripController.countEntriesForTrip(trip.id);
+      if (!mounted) return;
     }
-    if (!mounted) return;
-    setState(() => _entryCounts = counts);
+    setState(() {
+      _identityError = null;
+      _entryCounts = counts;
+    });
 
     final activeTrip = ref.read(tripControllerProvider).activeTrip;
     if (activeTrip != null) {
@@ -66,18 +106,43 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     ).showSnackBar(SnackBar(content: Text('$feature is not wired up yet.')));
   }
 
-  void _openTripView(Trip trip) {
-    Navigator.push(
+  Future<void> _openTripView(Trip trip) async {
+    final movedToTrash = await Navigator.push<bool>(
       context,
-      MaterialPageRoute(builder: (_) => TripViewScreen(tripId: trip.id)),
+      MaterialPageRoute(
+        builder: (_) => TripViewScreen(
+          tripId: trip.id,
+          userIdProvider: widget.userIdProvider,
+        ),
+      ),
     );
+    if (movedToTrash == true) {
+      await _loadDashboardData();
+    }
   }
 
-  void _openCreateTrip() {
-    Navigator.push(
+  Future<void> _openCreateTrip() async {
+    final movedToTrash = await Navigator.push<bool>(
       context,
-      MaterialPageRoute(builder: (_) => const TripFormScreen()),
+      MaterialPageRoute(
+        builder: (_) => TripFormScreen(userIdProvider: widget.userIdProvider),
+      ),
     );
+    if (movedToTrash == true) {
+      await _loadDashboardData();
+    }
+  }
+
+  Future<void> _onProfileMenuSelected(String value) async {
+    if (value == 'recently-deleted') {
+      final restored = await Navigator.push<bool>(
+        context,
+        MaterialPageRoute(builder: (_) => const TripTrashScreen()),
+      );
+      if (restored == true) await _loadDashboardData();
+      return;
+    }
+    _showComingSoon(value == 'settings' ? 'Settings' : 'Log out');
   }
 
   @override
@@ -90,15 +155,18 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         title: const Text('TripJournal'),
         actions: [
           PopupMenuButton<String>(
-            onSelected: (value) =>
-                _showComingSoon(value == 'settings' ? 'Settings' : 'Log out'),
+            onSelected: _onProfileMenuSelected,
             itemBuilder: (context) => const [
+              PopupMenuItem(
+                value: 'recently-deleted',
+                child: Text('Recently Deleted'),
+              ),
               PopupMenuItem(value: 'settings', child: Text('Settings')),
               PopupMenuItem(value: 'logout', child: Text('Log out')),
             ],
             child: Padding(
               padding: const EdgeInsets.only(right: 16),
-              child: CircleAvatar(child: Text(kMockUserDisplayName[0])),
+              child: const CircleAvatar(child: Icon(Icons.person)),
             ),
           ),
         ],
@@ -117,6 +185,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     TripController tripController,
     JournalController journalController,
   ) {
+    if (_identityError != null) {
+      return Center(child: Text(_identityError!));
+    }
     if (tripController.loading) {
       return const Center(child: CircularProgressIndicator());
     }

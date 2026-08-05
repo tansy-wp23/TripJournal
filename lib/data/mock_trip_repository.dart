@@ -3,11 +3,32 @@ import '../models/trip.dart';
 import 'trip_repository.dart';
 
 class MockTripRepository implements TripRepository {
+  MockTripRepository({DateTime Function()? clock})
+    : _clock = clock ?? DateTime.now;
+
+  final DateTime Function() _clock;
   final List<Trip> _trips = _seedTrips();
 
   @override
   Future<List<Trip>> getTrips(String userId) async {
-    return _trips.where((t) => t.userId == userId).toList();
+    return _trips
+        .where((trip) => trip.userId == userId && trip.deletedAt == null)
+        .toList();
+  }
+
+  @override
+  Future<List<Trip>> getDeletedTrips(String userId) async {
+    final now = _clock();
+    final deletedTrips = _trips
+        .where(
+          (trip) =>
+              trip.userId == userId &&
+              trip.deletedAt != null &&
+              trip.isRecoverableAt(now),
+        )
+        .toList();
+    deletedTrips.sort((a, b) => b.deletedAt!.compareTo(a.deletedAt!));
+    return deletedTrips;
   }
 
   @override
@@ -33,8 +54,19 @@ class MockTripRepository implements TripRepository {
   }
 
   @override
-  Future<void> deleteTrip(String id) async {
-    _trips.removeWhere((t) => t.id == id);
+  Future<void> moveToTrash(String id) async {
+    final index = _trips.indexWhere((trip) => trip.id == id);
+    if (index != -1) {
+      _trips[index] = _trips[index].copyWith(deletedAt: _clock().toUtc());
+    }
+  }
+
+  @override
+  Future<void> restoreTrip(Trip trip) async {
+    final index = _trips.indexWhere((storedTrip) => storedTrip.id == trip.id);
+    if (index != -1) {
+      _trips[index] = trip.copyWith(clearDeletedAt: true);
+    }
   }
 
   static List<Trip> _seedTrips() {
