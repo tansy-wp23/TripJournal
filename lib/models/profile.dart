@@ -1,3 +1,4 @@
+
 /// App-specific profile fields that Supabase Auth knows nothing about.
 ///
 /// `userID` is a 1:1 foreign key to `auth.users.id`. The `status` field
@@ -32,6 +33,7 @@ class Profile {
 
   bool get isActive => status == AccountStatus.active;
   bool get isDeactivated => status == AccountStatus.deactivated;
+  bool get isSuspended => status == AccountStatus.suspended;
 
   factory Profile.fromJson(Map<String, dynamic> json) {
     return Profile(
@@ -103,4 +105,18 @@ class Profile {
 enum UserRole { user, admin }
 
 /// Whether the account is currently usable.
-enum AccountStatus { active, deactivated }
+///
+/// `suspended` (added for the Admin module, `ADMIN_MODULE_IMPLEMENTATION_PLAN.md`
+/// Open Decision #2) is deliberately distinct from `deactivated`: a
+/// `deactivated` account was closed by the user themselves and can be
+/// reopened through the User Management module's self-service
+/// `AccountLifecycleRepository.confirmReactivation` (Google sign-in + emailed
+/// code). A `suspended` account was closed by an administrator
+/// (`AdminAccountActionsRepository.suspendUser`) and must **not** be
+/// reopenable through that same self-service flow — only
+/// `AdminAccountActionsRepository.reactivateUser` may clear it. Wiring that
+/// guard into `confirmReactivation` is Phase 5 of the Admin module plan;
+/// until that lands, `suspended` exists as a status value but isn't yet
+/// enforced against self-service reactivation — flagged as a known gap in
+/// `docs/admin/PROGRESS.md`.
+enum AccountStatus { active, deactivated, suspended }
