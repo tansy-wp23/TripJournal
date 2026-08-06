@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:tripjournal/main.dart';
+import 'package:tripjournal/features/trip/trip_view_screen.dart';
 
 void main() {
   testWidgets('create -> view -> edit -> delete golden path', (WidgetTester tester) async {
@@ -12,12 +13,10 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
 
-    await tester.pumpWidget(const TripJournalApp());
-    await tester.pumpAndSettle();
-
-    // Home -> Trip View for the active (Kyoto) trip. "Kyoto Trip" appears
-    // twice (hero card + Your Trips list) — only the list card is tappable.
-    await tester.tap(find.text('Kyoto Trip').last);
+    // Pump the trip view directly (Kyoto = trip-001) rather than the full
+    // app: this golden-path test is about the journal flow, not auth
+    // routing or Home's trip list.
+    await tester.pumpWidget(const ProviderScope(child: MaterialApp(home: TripViewScreen(tripId: 'trip-001'))));
     await tester.pumpAndSettle();
 
     // Trip View shows seeded mock entries grouped onto their days.

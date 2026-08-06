@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:tripjournal/main.dart';
+import 'package:tripjournal/features/trip/trip_view_screen.dart';
 
 /// `Printing.sharePdf` needs a real platform channel. Under `flutter_test`
 /// that call never resolves at all (no plugin registered to reply), so
@@ -10,13 +11,15 @@ import 'package:tripjournal/main.dart';
 /// loading state without throwing. The PDF bytes themselves (the part that
 /// can actually break) are covered by journal_pdf_export_test.dart.
 void main() {
+  // Pump the trip view directly (Kyoto = trip-001) rather than the full app:
+  // these tests are about PDF export, not auth routing or Home's trip list.
   Future<void> pumpApp(WidgetTester tester) async {
     tester.view.physicalSize = const Size(1200, 2600);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
 
-    await tester.pumpWidget(const TripJournalApp());
+    await tester.pumpWidget(const ProviderScope(child: MaterialApp(home: TripViewScreen(tripId: 'trip-001'))));
     await tester.pumpAndSettle();
   }
 
@@ -24,8 +27,6 @@ void main() {
     'tapping export on an entry starts PDF generation and shows a loading indicator',
     (tester) async {
       await pumpApp(tester);
-      await tester.tap(find.text('Kyoto Trip').last);
-      await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('entry-tile-entry-1')));
       await tester.pumpAndSettle();
 
@@ -45,8 +46,6 @@ void main() {
     'tapping export on a trip starts PDF generation and shows a loading indicator',
     (tester) async {
       await pumpApp(tester);
-      await tester.tap(find.text('Kyoto Trip').last);
-      await tester.pumpAndSettle();
 
       await tester.tap(find.byKey(const Key('trip-view-export-pdf-button')));
       await tester.pump();

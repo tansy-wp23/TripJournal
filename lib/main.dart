@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import 'features/home/home_screen.dart';
+import 'features/auth/auth_gate.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();      // required before async in main
@@ -28,7 +28,7 @@ class TripJournalApp extends StatelessWidget {
       child: MaterialApp(
         title: 'TripJournal',
         theme: ThemeData(colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple)),
-        home: const HomeScreen(),
+        home: const AuthGate(),
       ),
     );
   }

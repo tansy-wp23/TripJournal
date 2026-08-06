@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:tripjournal/data/repository_locator.dart';
-import 'package:tripjournal/main.dart';
+import 'package:tripjournal/features/trip/trip_view_screen.dart';
 
 void main() {
   testWidgets(
@@ -14,7 +15,10 @@ void main() {
       addTearDown(tester.view.resetPhysicalSize);
       addTearDown(tester.view.resetDevicePixelRatio);
 
-      await tester.pumpWidget(const TripJournalApp());
+      // Pump the trip view directly (Kyoto = trip-001) rather than the full
+      // app: this test is about meal recomputation, not auth routing or
+      // Home's trip list.
+      await tester.pumpWidget(const ProviderScope(child: MaterialApp(home: TripViewScreen(tripId: 'trip-001'))));
       await tester.pumpAndSettle();
 
       // Seeded entry-1 ("Arrival in Kyoto") has three meals summing to
@@ -22,8 +26,6 @@ void main() {
       final before = await journalRepository.getEntry('entry-1');
       expect(before?.healthLog?.caloriesEaten, 1950);
 
-      await tester.tap(find.text('Kyoto Trip').last);
-      await tester.pumpAndSettle();
       await tester.tap(find.text('Arrival in Kyoto'));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('edit-entry-button')));

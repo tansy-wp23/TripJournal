@@ -1,15 +1,16 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:tripjournal/main.dart';
+import 'package:tripjournal/features/trip/trip_view_screen.dart';
 
 Future<void> _openCreateEntryForKyotoDay1(WidgetTester tester) async {
-  await tester.pumpWidget(const TripJournalApp());
+  // Pump the trip view directly (Kyoto = trip-001) rather than the full app:
+  // this test is about entry-form validation, not auth routing or Home's
+  // trip list. Day 1's "Add entry" reaches the same create-entry screen.
+  await tester.pumpWidget(const ProviderScope(child: MaterialApp(home: TripViewScreen(tripId: 'trip-001'))));
   await tester.pumpAndSettle();
 
-  // Home -> Trip View for the active (Kyoto) trip -> Day 1's "Add entry".
-  await tester.tap(find.text('Kyoto Trip').last);
-  await tester.pumpAndSettle();
   await tester.tap(find.byKey(const Key('add-entry-day-1')));
   await tester.pumpAndSettle();
 }

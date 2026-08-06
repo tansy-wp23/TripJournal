@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:tripjournal/data/trip_repository_locator.dart';
 import 'package:tripjournal/features/trip/trip_form_screen.dart';
-import 'package:tripjournal/main.dart';
+import 'package:tripjournal/features/trip/trip_view_screen.dart';
 
 void main() {
   Future<void> openKyotoTripView(WidgetTester tester) async {
@@ -12,9 +13,10 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
 
-    await tester.pumpWidget(const TripJournalApp());
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Kyoto Trip').last);
+    // Pump the trip view directly (Kyoto = trip-001) rather than the full
+    // app: these tests are about the notes editor, not auth routing or
+    // Home's trip list.
+    await tester.pumpWidget(const ProviderScope(child: MaterialApp(home: TripViewScreen(tripId: 'trip-001'))));
     await tester.pumpAndSettle();
   }
 
@@ -160,9 +162,10 @@ void main() {
       addTearDown(tester.view.resetPhysicalSize);
       addTearDown(tester.view.resetDevicePixelRatio);
 
-      await tester.pumpWidget(const TripJournalApp());
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Osaka Trip'));
+      // Pump the trip view directly (Osaka = trip-002) rather than the full
+      // app: this test is about the notes placeholder, not auth routing or
+      // Home's trip list.
+      await tester.pumpWidget(const ProviderScope(child: MaterialApp(home: TripViewScreen(tripId: 'trip-002'))));
       await tester.pumpAndSettle();
 
       expect(find.text('No notes yet — tap to add.'), findsOneWidget);

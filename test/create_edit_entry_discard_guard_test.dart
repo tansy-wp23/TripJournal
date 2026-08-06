@@ -1,15 +1,17 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:tripjournal/data/repository_locator.dart';
-import 'package:tripjournal/main.dart';
+import 'package:tripjournal/features/trip/trip_view_screen.dart';
 
 Future<void> _openCreateEntryForKyotoDay(WidgetTester tester, int day) async {
-  await tester.pumpWidget(const TripJournalApp());
+  // Pump the trip view directly (Kyoto = trip-001) rather than the full app:
+  // this suite is about the create-entry discard guard, not auth routing or
+  // Home's trip list.
+  await tester.pumpWidget(const ProviderScope(child: MaterialApp(home: TripViewScreen(tripId: 'trip-001'))));
   await tester.pumpAndSettle();
 
-  await tester.tap(find.text('Kyoto Trip').last);
-  await tester.pumpAndSettle();
   await tester.tap(find.byKey(Key('add-entry-day-$day')));
   await tester.pumpAndSettle();
 }

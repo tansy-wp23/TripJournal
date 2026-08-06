@@ -5,7 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:tripjournal/data/repository_locator.dart';
 import 'package:tripjournal/data/trip_repository_locator.dart';
 import 'package:tripjournal/features/journal/screens/create_edit_entry_screen.dart';
-import 'package:tripjournal/main.dart';
+import 'package:tripjournal/features/trip/trip_view_screen.dart';
 
 void main() {
   testWidgets('backfilling a past day (trip-002, fully in the past) stamps the entry at noon, not midnight', (
@@ -16,11 +16,12 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
 
-    await tester.pumpWidget(const TripJournalApp());
+    // Pump the trip view directly (Osaka = trip-002) rather than the full
+    // app: this test is about day-derivation on the create-entry screen, not
+    // auth routing or Home's trip list.
+    await tester.pumpWidget(const ProviderScope(child: MaterialApp(home: TripViewScreen(tripId: 'trip-002'))));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Osaka Trip').last);
-    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('add-entry-day-1')));
     await tester.pumpAndSettle();
 

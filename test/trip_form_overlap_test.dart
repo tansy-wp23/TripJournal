@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:tripjournal/main.dart';
+import 'package:tripjournal/features/home/home_screen.dart';
+import 'package:tripjournal/features/trip/trip_view_screen.dart';
 
 void main() {
   testWidgets(
@@ -13,7 +15,12 @@ void main() {
       addTearDown(tester.view.resetPhysicalSize);
       addTearDown(tester.view.resetDevicePixelRatio);
 
-      await tester.pumpWidget(const TripJournalApp());
+      // Pump Home directly rather than the full app (bypassing AuthGate),
+      // then reach the trip form the same way a real user would: overlap
+      // validation reads from TripController's already-loaded trips
+      // (see trip_controller.dart's _validate doc comment), which only
+      // happens once Home has loaded them.
+      await tester.pumpWidget(const ProviderScope(child: MaterialApp(home: HomeScreen())));
       await tester.pumpAndSettle();
 
       await tester.tap(find.text('Create Trip'));
@@ -41,11 +48,12 @@ void main() {
       addTearDown(tester.view.resetPhysicalSize);
       addTearDown(tester.view.resetDevicePixelRatio);
 
-      await tester.pumpWidget(const TripJournalApp());
+      // Pump the trip view directly (Osaka = trip-002) rather than the full
+      // app: this test is about overlap validation on save, not auth
+      // routing or Home's trip list.
+      await tester.pumpWidget(const ProviderScope(child: MaterialApp(home: TripViewScreen(tripId: 'trip-002'))));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('Osaka Trip').last);
-      await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('trip-view-edit-button')));
       await tester.pumpAndSettle();
 

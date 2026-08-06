@@ -10,7 +10,6 @@ import 'package:tripjournal/data/mock_trip_cover_storage.dart';
 import 'package:tripjournal/data/mock_trip_repository.dart';
 import 'package:tripjournal/features/trip/controller/trip_controller.dart';
 import 'package:tripjournal/features/trip/trip_form_screen.dart';
-import 'package:tripjournal/main.dart';
 import 'package:tripjournal/models/trip.dart';
 
 void main() {
@@ -22,10 +21,10 @@ void main() {
       addTearDown(tester.view.resetPhysicalSize);
       addTearDown(tester.view.resetDevicePixelRatio);
 
-      await tester.pumpWidget(const TripJournalApp());
-      await tester.pumpAndSettle();
-
-      await tester.tap(find.text('Create Trip'));
+      // Pump the trip form directly rather than the full app: this test is
+      // about the cover photo picker, not auth routing or Home's
+      // "Create Trip" button.
+      await tester.pumpWidget(const ProviderScope(child: MaterialApp(home: TripFormScreen())));
       await tester.pumpAndSettle();
 
       expect(find.text('No cover photo added.'), findsOneWidget);

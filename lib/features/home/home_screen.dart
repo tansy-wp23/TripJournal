@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/current_user_id_provider.dart';
 import '../../data/trip_repository_locator.dart';
+import '../auth/controller/auth_controller.dart';
 import '../journal/controller/journal_controller.dart';
 import '../journal/screens/create_edit_entry_screen.dart';
 import '../journal/widgets/format_utils.dart';
@@ -20,8 +21,11 @@ import '../../models/journal_entry.dart';
 import '../../models/trip.dart';
 
 /// The screen shown after login (see IMPLEMENTATION_PLAN_HOMEPAGE.md Phase
-/// 4). NOTE: not yet wired as the app's actual home route — that's Phase 7.
-/// Settings/Log out remain "coming soon" placeholders (Auth isn't built).
+/// 4), reached via `AuthGate` once `authControllerProvider.status` is
+/// `authenticated`. Log out calls `AuthController.signOut()` directly —
+/// `AuthGate` reacts to the resulting `signedOut` status and swaps back to
+/// `LoginScreen` on its own, so no navigation happens here. Settings remains
+/// a "coming soon" placeholder.
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key, this.userIdProvider});
 
@@ -142,7 +146,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       if (restored == true) await _loadDashboardData();
       return;
     }
-    _showComingSoon(value == 'settings' ? 'Settings' : 'Log out');
+    if (value == 'logout') {
+      await ref.read(authControllerProvider.notifier).signOut();
+      // AuthGate watches authControllerProvider and swaps to LoginScreen
+      // once status flips to signedOut — no navigation needed here.
+      return;
+    }
+    _showComingSoon('Settings');
   }
 
   @override

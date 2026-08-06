@@ -4,7 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:tripjournal/data/repository_locator.dart';
 import 'package:tripjournal/features/journal/screens/create_edit_entry_screen.dart';
-import 'package:tripjournal/main.dart';
+import 'package:tripjournal/features/trip/trip_view_screen.dart';
 
 void main() {
   testWidgets(
@@ -15,11 +15,12 @@ void main() {
       addTearDown(tester.view.resetPhysicalSize);
       addTearDown(tester.view.resetDevicePixelRatio);
 
-      await tester.pumpWidget(const TripJournalApp());
+      // Pump the trip view directly (Kyoto = trip-001) rather than the full
+      // app: these tests are about the save flow, not auth routing or Home's
+      // trip list.
+      await tester.pumpWidget(const ProviderScope(child: MaterialApp(home: TripViewScreen(tripId: 'trip-001'))));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('Kyoto Trip').last);
-      await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('add-entry-day-1')));
       await tester.pumpAndSettle();
 
@@ -54,11 +55,12 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
 
-    await tester.pumpWidget(const TripJournalApp());
+    // Pump the trip view directly (Kyoto = trip-001) rather than the full
+    // app: these tests are about the save flow, not auth routing or Home's
+    // trip list.
+    await tester.pumpWidget(const ProviderScope(child: MaterialApp(home: TripViewScreen(tripId: 'trip-001'))));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Kyoto Trip').last);
-    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('add-entry-day-1')));
     await tester.pumpAndSettle();
 
@@ -128,11 +130,12 @@ void main() {
       addTearDown(tester.view.resetPhysicalSize);
       addTearDown(tester.view.resetDevicePixelRatio);
 
-      await tester.pumpWidget(const TripJournalApp());
+      // Pump the trip view directly (Kyoto = trip-001) rather than the full
+      // app: these tests are about the save flow, not auth routing or Home's
+      // trip list.
+      await tester.pumpWidget(const ProviderScope(child: MaterialApp(home: TripViewScreen(tripId: 'trip-001'))));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('Kyoto Trip').last);
-      await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('add-entry-day-1')));
       await tester.pumpAndSettle();
 
@@ -152,11 +155,12 @@ void main() {
       addTearDown(tester.view.resetPhysicalSize);
       addTearDown(tester.view.resetDevicePixelRatio);
 
-      await tester.pumpWidget(const TripJournalApp());
+      // Pump the trip view directly (Kyoto = trip-001) rather than the full
+      // app: these tests are about the save flow, not auth routing or Home's
+      // trip list.
+      await tester.pumpWidget(const ProviderScope(child: MaterialApp(home: TripViewScreen(tripId: 'trip-001'))));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('Kyoto Trip').last);
-      await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('add-entry-day-1')));
       await tester.pumpAndSettle();
 
@@ -181,11 +185,12 @@ void main() {
       addTearDown(tester.view.resetPhysicalSize);
       addTearDown(tester.view.resetDevicePixelRatio);
 
-      await tester.pumpWidget(const TripJournalApp());
+      // Pump the trip view directly (Kyoto = trip-001) rather than the full
+      // app: these tests are about the save flow, not auth routing or Home's
+      // trip list.
+      await tester.pumpWidget(const ProviderScope(child: MaterialApp(home: TripViewScreen(tripId: 'trip-001'))));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('Kyoto Trip').last);
-      await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('add-entry-day-1')));
       await tester.pumpAndSettle();
 
