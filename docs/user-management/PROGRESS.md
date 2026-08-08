@@ -422,6 +422,20 @@ in the implementation plan's "Known Issues" section.
   `FocusNode` directly to the `TextField`. Backspace-to-previous is now
   handled by detecting an empty value on an already-empty box in
   `_onChanged` (clears the previous box and focuses it).
+- **Backspace-on-empty-box fix (post-Phase-4 manual test)** — the initial
+  `_onChanged`-based backspace detection was dead code: pressing backspace
+  on an *already-empty* `TextField` never fires `onChanged` (the text value
+  didn't change), so nothing happened. Reworked to wrap each box in a
+  `Focus` widget with `onKeyEvent` that intercepts the backspace **after**
+  the TextField has had its own chance to consume it. Two cases:
+  - Backspace on an **empty** box → the TextField does nothing, so the
+    ancestor `Focus` handler clears the previous box and moves focus back.
+  - Backspace on a **filled** box → the TextField clears it (observed via
+    `onChanged`), and a `_boxClearedByTextField` flag tells the bubbling
+    `Focus` handler to swallow the event rather than clear yet another box.
+  Uses **two FocusNodes per box** (one for the `Focus` ancestor, one owned
+  by the `TextField`) so `requestFocus()` still moves the real cursor.
+  Covered by `test/otp_code_input_test.dart` (4 widget tests).
 - **Tests** — `test/code_entry_screen_test.dart` (new — 6 widget tests) and
   expanded `test/auth_controller_test.dart` (added 7 controller tests for
   the lifecycle methods + deactivated-auto-send).
