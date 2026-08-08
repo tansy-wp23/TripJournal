@@ -39,7 +39,32 @@ class _CodeEntryScreenState extends ConsumerState<CodeEntryScreen> {
   bool _submitting = false;
   String? _error;
 
-  bool get _isReactivation => widget.purpose == VerificationPurpose.reactivation;
+  bool get _isReactivation =>
+      widget.purpose == VerificationPurpose.reactivation;
+
+  @override
+  void initState() {
+    super.initState();
+    // Auto-send a code when the screen opens. Reactivation already has a
+    // code sent during sign-in (AuthController.signInWithGoogle), but
+    // deactivation does not — without this, entering the code would fail
+    // until the user manually presses "Resend code".
+    if (!_isReactivation) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _sendInitialCode();
+      });
+    }
+  }
+
+  Future<void> _sendInitialCode() async {
+    try {
+      await ref.read(authControllerProvider.notifier).requestDeactivation();
+    } catch (e) {
+      if (mounted) {
+        setState(() => _error = 'Failed to send code: $e');
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -149,7 +174,12 @@ class _CodeEntryScreenState extends ConsumerState<CodeEntryScreen> {
         await ref
             .read(authControllerProvider.notifier)
             .confirmDeactivation(_code);
-        // On success, AuthController signs out → AuthGate routes to login.
+        // On success, AuthController signs out → AuthGate swaps to
+        // LoginScreen. Pop any pushed routes (the Profile screen, this
+        // screen) so the root AuthGate's LoginScreen is actually visible.
+        if (mounted) {
+          Navigator.of(this.context).popUntil((route) => route.isFirst);
+        }
       }
     } on CodeValidationException catch (e) {
       setState(() {

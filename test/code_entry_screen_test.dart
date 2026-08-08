@@ -8,6 +8,7 @@ import 'package:tripjournal/data/mock_profile_repository.dart';
 import 'package:tripjournal/data/mock_verification_code_repository.dart';
 import 'package:tripjournal/features/auth/controller/auth_controller.dart';
 import 'package:tripjournal/features/auth/screens/code_entry_screen.dart';
+import 'package:tripjournal/models/profile.dart';
 import 'package:tripjournal/models/verification_code.dart';
 
 void main() {
@@ -131,6 +132,19 @@ void main() {
       expect(find.byKey(const Key('code-entry-input')), findsOneWidget);
     });
 
+    testWidgets('auto-sends a deactivation code when the screen opens',
+        (tester) async {
+      await tester.pumpWidget(wrapped(VerificationPurpose.deactivation));
+      await tester.pumpAndSettle();
+
+      // The screen should have automatically sent a deactivation code.
+      expect(
+        verificationCodeRepository.activeCode?.purpose,
+        VerificationPurpose.deactivation,
+      );
+      expect(verificationCodeRepository.activeCode, isNotNull);
+    });
+
     testWidgets('cancel pops back without side effects', (tester) async {
       await tester.pumpWidget(wrapped(VerificationPurpose.deactivation));
       await tester.pumpAndSettle();
@@ -140,6 +154,48 @@ void main() {
 
       // The screen should be popped (no longer visible).
       expect(find.byType(CodeEntryScreen), findsNothing);
+
+      // Profile should still be active and session intact.
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(MaterialApp)),
+      );
+      final auth = container.read(authControllerProvider);
+      expect(auth.status, AuthStatus.signedOut); // not signed in in this setup
+    });
+
+    testWidgets('confirm with valid code deactivates the profile and signs out',
+        (tester) async {
+      // Sign in first so the profile exists and the session is active.
+      final preAuth = AuthController(
+        authRepository,
+        profileRepository,
+        lifecycleRepository,
+      );
+      await preAuth.signInWithGoogle();
+      preAuth.dispose();
+
+      await tester.pumpWidget(wrapped(VerificationPurpose.deactivation));
+      await tester.pumpAndSettle();
+
+      // The screen auto-sends a code on open (verified above); the mock
+      // already has an active deactivation code.
+
+      // Enter the valid mock code.
+      for (var i = 0; i < 6; i++) {
+        await tester.enterText(
+          find.byKey(Key('otp-digit-$i')),
+          MockVerificationCodeRepository.mockCode[i],
+        );
+        await tester.pump();
+      }
+
+      await tester.tap(find.byKey(const Key('code-entry-confirm')));
+      await tester.pumpAndSettle();
+
+      // Profile should now be deactivated.
+      final profile = await profileRepository.getProfile('user-001');
+      expect(profile!.status, AccountStatus.deactivated);
+      expect(profile.deactivatedAt, isNotNull);
     });
   });
 }

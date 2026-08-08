@@ -490,13 +490,83 @@ in the implementation plan's "Known Issues" section.
 - [x] Cancelling from this screen signs the user out
 - [x] OTP auto-advance focus bug fixed (Known Issues)
 
-### Next phase (Phase 5) should start with
+---
 
-Account lifecycle: the deactivation entry point from the Profile screen
-(PB-13) — a "Deactivate Account" button that opens `CodeEntryScreen` with
-`purpose: deactivation`, then calls `confirmDeactivation(code)` which ends
-the session (PB-14 — `AuthController.confirmDeactivation` already signs
-out; Phase 5 wires the UI). Reactivation confirmation is also partially
-wired (Phase 4's `confirmReactivation` on `CodeEntryScreen`); Phase 5
-verifies the end-to-end flow and adds the cancel-option edge cases from
-the plan.
+## Phase 5 — Sprint 3: Account Lifecycle (mock) (complete)
+
+### What was built
+
+The account lifecycle flows, end-to-end against the mocks. Deactivation now
+has a UI entry point from the Profile screen, and the reactivation flow
+(partially wired in Phase 4) is verified end-to-end.
+
+- **Deactivation entry point** (`lib/features/profile/screens/profile_view_screen.dart`)
+  — a "Deactivate Account" button (PB-13) at the bottom of the profile view,
+  styled with the error color, plus a short explanatory caption. Tapping it
+  opens `CodeEntryScreen` with `purpose: VerificationPurpose.deactivation`.
+- **Deactivation confirmation** (`lib/features/auth/screens/code_entry_screen.dart`)
+  — on a valid code, `confirmDeactivation(code)` sets the profile to
+  `deactivated` and signs the user out (PB-14). The screen now also
+  `popUntil(isFirst)` after a successful deactivation, so the pushed
+  Profile + code-entry routes are removed and the root `AuthGate`'s
+  `LoginScreen` is actually visible (previously the routes would have
+  remained stacked above it).
+- **Auto-send deactivation code on open (post-Phase-5 manual test)** — the
+  deactivation `CodeEntryScreen` did not have a code sent when it opened
+  (only reactivation gets one, via `AuthController.signInWithGoogle()`), so
+  entering `123456` initially failed until the user manually pressed
+  "Resend code". Fixed by auto-sending a deactivation code in `initState`
+  (via `addPostFrameCallback` → `requestDeactivation()`), mirroring the
+  reactivation flow. Verified by a new widget test
+  ("auto-sends a deactivation code when the screen opens").
+- **Reactivation flow (verified end-to-end)** — already wired in Phase 4:
+  deactivated sign-in → auto-send code → `CodeEntryScreen` (reactivation) →
+  valid code → profile active → `AuthGate` routes into the app. No second
+  Google prompt (the gated session becomes fully authenticated).
+- **Cancellable flows** — deactivation cancel pops back to the Profile
+  screen with no side effects; reactivation cancel signs out (Architecture
+  Decision 7).
+
+### Files touched (Phase 5)
+
+- `lib/features/profile/screens/profile_view_screen.dart` (modified — added
+  "Deactivate Account" button + explanatory caption)
+- `lib/features/auth/screens/code_entry_screen.dart` (modified — pop pushed
+  routes after successful deactivation)
+- `test/code_entry_screen_test.dart` (modified — added deactivation
+  confirm test)
+
+### Deviations from plan
+
+- **`popUntil(isFirst)` after deactivation** — the plan didn't specify this,
+  but without it the pushed Profile + code-entry routes would remain stacked
+  above the `AuthGate`'s `LoginScreen` after sign-out, so the user would see
+  a stale screen instead of the login. Discovered during Phase 5 testing.
+
+### Verification
+
+- `flutter analyze` — no issues found.
+- `flutter test` (auth_controller 14 + code_entry_screen 7 + otp_code_input
+  4 + profile_controller 6) — all passed (31 tests).
+
+### Definition of Done
+
+- [x] Full deactivate → session ends → back at login, works against mocks
+- [x] Full reactivate (starting from a deactivated sign-in attempt) → ends
+      with the user signed in and inside the app, without a second Google
+      prompt, works against mocks
+- [x] Both flows are cancellable before confirmation
+
+### Checkpoint
+
+At this point the entire user-management module works end-to-end against
+mocks. This is a good point to demo/review before touching real
+infrastructure (Phase 6).
+
+### Next phase (Phase 6) should start with
+
+Real backend: enable the Google provider in the Supabase Auth dashboard;
+SQL migrations for `Profile` and `VerificationCode`; the `handle_new_user`
+trigger; RLS policies; and the privileged Edge Functions
+(`verification-send` / `verification-validate` / `verification-resend` /
+`account-deactivate-confirm` / `account-reactivate-confirm`).
