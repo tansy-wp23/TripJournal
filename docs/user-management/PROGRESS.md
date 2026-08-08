@@ -379,12 +379,110 @@ documented in `lib/validation/profile_validation.dart`.
 - [x] Invalid input is rejected with a visible message, valid input saves
 - [x] Decision on editable fields documented in PROGRESS.md
 
-### Next phase (Phase 4) should start with
+---
 
-Build the shared OTP component standalone: the code-entry screen (reusable
-widget, takes a `purpose` so it can be used for both deactivation and
-reactivation), send/resend code UI + logic against
-`VerificationCodeRepository`, validate code logic (wrong-code and
-expired-code error states), and deactivated-account detection. **Also fix
-the OTP auto-advance focus bug** noted in the implementation plan's
-"Known Issues" section.
+## Phase 4 — Sprint 2b: Verification Code Component (mock) (complete)
+
+### What was built
+
+The shared OTP component, built standalone since both deactivation and
+reactivation depend on it. Also fixes the OTP auto-advance focus bug noted
+in the implementation plan's "Known Issues" section.
+
+- **`CodeEntryScreen`** (`lib/features/auth/screens/code_entry_screen.dart`)
+  — the reusable code-entry screen (PB-15 through PB-18). Takes a
+  `VerificationPurpose` so it's used for both reactivation and deactivation.
+  Handles:
+  - **Code entry** — the 6-digit OTP widget with error-border state.
+  - **Send/resend** — "Resend code" button calls
+    `requestReactivation()`/`requestDeactivation()` (which invalidate the
+    prior code and send a fresh one).
+  - **Validation** — distinguish wrong-code ("Incorrect code. Please try
+    again.") from expired-code ("This code has expired. Please resend a new
+    one.") via the `CodeValidationResult` enum.
+  - **Cancel** — reactivation cancel calls `signOut()` (Architecture
+    Decision 7 — don't leave a gated session hanging); deactivation cancel
+    pops back without side effects.
+- **`ReactivationScreen`** (`lib/features/auth/screens/reactivation_screen.dart`)
+  — now a **thin wrapper** around `CodeEntryScreen` with
+  `purpose: VerificationPurpose.reactivation`. No longer a stub.
+- **`AuthController`** (`lib/features/auth/controller/auth_controller.dart`) —
+  now takes `AccountLifecycleRepository` as a third constructor parameter
+  and exposes the lifecycle methods the code-entry screen needs:
+  `requestReactivation()`, `confirmReactivation(code)`,
+  `requestDeactivation()`, `confirmDeactivation(code)`. `signInWithGoogle()`
+  now **automatically sends a reactivation code** when the profile is
+  deactivated (PB-06 detection completed — no manual "request code" step
+  needed; the user lands on the code-entry screen with a code already on
+  its way).
+- **OTP auto-advance focus fix** (`lib/features/auth/widgets/otp_code_input.dart`)
+  — the `KeyboardListener` wrapper previously held a separate `FocusNode`
+  from the `TextField` inside it, so `requestFocus()` didn't move the
+  cursor. Fix: **removed the `KeyboardListener` entirely** and pass the
+  `FocusNode` directly to the `TextField`. Backspace-to-previous is now
+  handled by detecting an empty value on an already-empty box in
+  `_onChanged` (clears the previous box and focuses it).
+- **Tests** — `test/code_entry_screen_test.dart` (new — 6 widget tests) and
+  expanded `test/auth_controller_test.dart` (added 7 controller tests for
+  the lifecycle methods + deactivated-auto-send).
+
+### Files touched (Phase 4)
+
+- `lib/features/auth/screens/code_entry_screen.dart` (new)
+- `lib/features/auth/screens/reactivation_screen.dart` (rewritten — wrapper
+  around `CodeEntryScreen`)
+- `lib/features/auth/controller/auth_controller.dart` (modified — added
+  `AccountLifecycleRepository`, lifecycle methods, and deactivated auto-send)
+- `lib/features/auth/widgets/otp_code_input.dart` (modified — fixed OTP
+  auto-advance focus bug)
+- `test/code_entry_screen_test.dart` (new — 6 widget tests)
+- `test/auth_controller_test.dart` (modified — 7 new tests)
+- `test/profile_controller_test.dart` (modified — constructor arg update)
+
+### Deviations from plan
+
+- **The `KeyboardListener` was removed entirely, not just given the
+  `FocusNode`.** The plan suggested passing the `FocusNode` to the
+  `TextField` *while keeping* `KeyboardListener`, but sharing one
+  `FocusNode` between two widgets caused Flutter's
+  "Tried to make a child into a parent of itself" assertion (the
+  `KeyboardListener` was reparenting the `TextField`'s subtree). The
+  simpler fix that actually works: delete `KeyboardListener`, pass the
+  `FocusNode` directly to `TextField`, and detect backspace-on-empty via
+  `onChanged` (empty value on an already-empty box = backspace was pressed).
+- **`confirmDeactivation` is implemented in Phase 4, not Phase 5**, because
+  the code-entry screen is shared and needs both branches to compile.
+  Phase 5 adds the Profile-screen entry point and the actual
+  deactivation flow UI.
+- **Deactivated-auto-send lives in `AuthController.signInWithGoogle()`
+  rather than the `AuthGate`.** This keeps the "check profile status →
+  send code" logic in one testable place (the controller) instead of
+  spreading it across widgets. The `AuthGate` still routes on
+  `AuthStatus.deactivated` as before.
+
+### Verification
+
+- `flutter analyze` — no issues found.
+- `flutter test` (auth_controller 16 + code_entry_screen 6 +
+  profile_controller 6) — all passed (26 tests).
+
+### Definition of Done
+
+- [x] Code entry screen reusable for both purposes (reactivation + deactivation)
+- [x] Expired code and wrong code both produce correct UI feedback
+- [x] Resend invalidates the prior code (verified in widget test)
+- [x] Deactivated sign-in attempt correctly and automatically routes to
+      this screen with a code already sent
+- [x] Cancelling from this screen signs the user out
+- [x] OTP auto-advance focus bug fixed (Known Issues)
+
+### Next phase (Phase 5) should start with
+
+Account lifecycle: the deactivation entry point from the Profile screen
+(PB-13) — a "Deactivate Account" button that opens `CodeEntryScreen` with
+`purpose: deactivation`, then calls `confirmDeactivation(code)` which ends
+the session (PB-14 — `AuthController.confirmDeactivation` already signs
+out; Phase 5 wires the UI). Reactivation confirmation is also partially
+wired (Phase 4's `confirmReactivation` on `CodeEntryScreen`); Phase 5
+verifies the end-to-end flow and adds the cancel-option edge cases from
+the plan.

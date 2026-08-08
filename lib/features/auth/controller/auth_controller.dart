@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/legacy.dart';
 
+import '../../../data/account_lifecycle_repository.dart';
 import '../../../data/auth_repository.dart';
 import '../../../data/profile_repository.dart';
 import '../../../data/user_management_repository_locator.dart';
@@ -20,12 +21,14 @@ class AuthController extends ChangeNotifier {
   AuthController(
     this._authRepository,
     this._profileRepository,
+    this._accountLifecycleRepository,
   ) {
     _sessionSubscription = _authRepository.authStateChanges().listen(_onAuthStateChanged);
   }
 
   final AuthRepository _authRepository;
   final ProfileRepository _profileRepository;
+  final AccountLifecycleRepository _accountLifecycleRepository;
 
   late StreamSubscription<AppSession> _sessionSubscription;
 
@@ -54,6 +57,7 @@ class AuthController extends ChangeNotifier {
   /// 1. Google sign-in via Supabase Auth (mocked).
   /// 2. Create profile if missing (PB-03, first-time account creation).
   /// 3. Branch on profile status (PB-04 active / PB-06 deactivated).
+  ///    If deactivated, automatically send a reactivation code (PB-06).
   Future<void> signInWithGoogle() async {
     _loading = true;
     _error = null;
@@ -71,6 +75,13 @@ class AuthController extends ChangeNotifier {
       );
       _profile = profile;
       _error = null;
+
+      // PB-06: if the account is deactivated, automatically send a
+      // reactivation code so the user lands on the code-entry screen with
+      // a code already on its way.
+      if (profile.isDeactivated) {
+        await _accountLifecycleRepository.requestReactivation();
+      }
     } on AuthException catch (e) {
       _error = e.kind == AuthExceptionKind.cancelled
           ? 'Sign-in cancelled.'
@@ -94,8 +105,38 @@ class AuthController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Called when the user successfully reactivates (Phase 5 will wire the
-  /// full flow; this updates the local profile state so the UI can react).
+  /// Sends a reactivation code to the user's email. Called automatically
+  /// when a deactivated user signs in (PB-06) and on resend.
+  Future<void> requestReactivation() async {
+    await _accountLifecycleRepository.requestReactivation();
+  }
+
+  /// Confirms reactivation with [code]. On success, refreshes the profile
+  /// (status becomes active) so the UI routes into the app.
+  ///
+  /// Throws [CodeValidationException] if the code is wrong or expired.
+  Future<void> confirmReactivation(String code) async {
+    await _accountLifecycleRepository.confirmReactivation(code);
+    await onReactivated();
+  }
+
+  /// Sends a deactivation code to the user's email. Used by the
+  /// deactivation flow (Phase 5).
+  Future<void> requestDeactivation() async {
+    await _accountLifecycleRepository.requestDeactivation();
+  }
+
+  /// Confirms deactivation with [code]. On success, signs the user out
+  /// (PB-14 — ends the session) and returns to the login screen.
+  ///
+  /// Throws [CodeValidationException] if the code is wrong or expired.
+  Future<void> confirmDeactivation(String code) async {
+    await _accountLifecycleRepository.confirmDeactivation(code);
+    await signOut();
+  }
+
+  /// Called when the user successfully reactivates — refreshes the local
+  /// profile state so the UI can react (status becomes authenticated).
   Future<void> onReactivated() async {
     final userId = _session?.userId;
     if (userId == null) return;
@@ -139,5 +180,6 @@ final authControllerProvider = ChangeNotifierProvider<AuthController>(
   (ref) => AuthController(
     authRepository,
     profileRepository,
+    accountLifecycleRepository,
   ),
 );

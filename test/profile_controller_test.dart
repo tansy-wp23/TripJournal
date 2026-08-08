@@ -1,7 +1,9 @@
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:tripjournal/data/mock_account_lifecycle_repository.dart';
 import 'package:tripjournal/data/mock_auth_repository.dart';
 import 'package:tripjournal/data/mock_profile_repository.dart';
+import 'package:tripjournal/data/mock_verification_code_repository.dart';
 import 'package:tripjournal/features/auth/controller/auth_controller.dart';
 import 'package:tripjournal/features/profile/controller/profile_controller.dart';
 import 'package:tripjournal/validation/profile_validation.dart';
@@ -9,13 +11,20 @@ import 'package:tripjournal/validation/profile_validation.dart';
 void main() {
   late MockAuthRepository authRepository;
   late MockProfileRepository profileRepository;
+  late MockVerificationCodeRepository verificationCodeRepository;
+  late MockAccountLifecycleRepository lifecycleRepository;
   late AuthController authController;
   late ProfileController controller;
 
   setUp(() {
     authRepository = MockAuthRepository();
     profileRepository = MockProfileRepository(state: MockProfileState.active);
-    authController = AuthController(authRepository, profileRepository);
+    verificationCodeRepository = MockVerificationCodeRepository();
+    lifecycleRepository = MockAccountLifecycleRepository(
+      profileRepository: profileRepository,
+      verificationCodeRepository: verificationCodeRepository,
+    );
+    authController = AuthController(authRepository, profileRepository, lifecycleRepository);
     controller = ProfileController(profileRepository, authController);
   });
 
