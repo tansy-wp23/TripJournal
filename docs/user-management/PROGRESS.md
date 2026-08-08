@@ -511,6 +511,14 @@ has a UI entry point from the Profile screen, and the reactivation flow
   Profile + code-entry routes are removed and the root `AuthGate`'s
   `LoginScreen` is actually visible (previously the routes would have
   remained stacked above it).
+- **Auto-send deactivation code on open (post-Phase-5 manual test)** — the
+  deactivation `CodeEntryScreen` did not have a code sent when it opened
+  (only reactivation gets one, via `AuthController.signInWithGoogle()`), so
+  entering `123456` initially failed until the user manually pressed
+  "Resend code". Fixed by auto-sending a deactivation code in `initState`
+  (via `addPostFrameCallback` → `requestDeactivation()`), mirroring the
+  reactivation flow. Verified by a new widget test
+  ("auto-sends a deactivation code when the screen opens").
 - **Reactivation flow (verified end-to-end)** — already wired in Phase 4:
   deactivated sign-in → auto-send code → `CodeEntryScreen` (reactivation) →
   valid code → profile active → `AuthGate` routes into the app. No second

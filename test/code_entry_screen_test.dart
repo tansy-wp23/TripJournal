@@ -132,6 +132,19 @@ void main() {
       expect(find.byKey(const Key('code-entry-input')), findsOneWidget);
     });
 
+    testWidgets('auto-sends a deactivation code when the screen opens',
+        (tester) async {
+      await tester.pumpWidget(wrapped(VerificationPurpose.deactivation));
+      await tester.pumpAndSettle();
+
+      // The screen should have automatically sent a deactivation code.
+      expect(
+        verificationCodeRepository.activeCode?.purpose,
+        VerificationPurpose.deactivation,
+      );
+      expect(verificationCodeRepository.activeCode, isNotNull);
+    });
+
     testWidgets('cancel pops back without side effects', (tester) async {
       await tester.pumpWidget(wrapped(VerificationPurpose.deactivation));
       await tester.pumpAndSettle();
@@ -164,8 +177,8 @@ void main() {
       await tester.pumpWidget(wrapped(VerificationPurpose.deactivation));
       await tester.pumpAndSettle();
 
-      // Request a deactivation code so one exists for the mock repo.
-      await lifecycleRepository.requestDeactivation();
+      // The screen auto-sends a code on open (verified above); the mock
+      // already has an active deactivation code.
 
       // Enter the valid mock code.
       for (var i = 0; i < 6; i++) {
