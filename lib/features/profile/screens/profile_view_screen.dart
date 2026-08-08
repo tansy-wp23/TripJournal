@@ -1,8 +1,10 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../controller/profile_controller.dart';
 import '../../../models/profile.dart';
+import '../../../models/verification_code.dart';
+import '../../auth/screens/code_entry_screen.dart';
+import '../controller/profile_controller.dart';
 import 'profile_edit_screen.dart';
 
 class ProfileViewScreen extends ConsumerStatefulWidget {
@@ -99,7 +101,7 @@ class _ProfileViewScreenState extends ConsumerState<ProfileViewScreen> {
                 _InfoRow(
                   label: 'Status',
                   value: profile.status.toString().split('.').last,
-                ), 
+                ),
                 const Divider(),
                 _InfoRow(
                   label: 'Member since',
@@ -116,6 +118,27 @@ class _ProfileViewScreenState extends ConsumerState<ProfileViewScreen> {
             ),
           ),
         ),
+        const SizedBox(height: 32),
+        OutlinedButton.icon(
+          key: const Key('deactivate-account-button'),
+          onPressed: () => _openDeactivation(context),
+          icon: const Icon(Icons.person_off),
+          label: const Text('Deactivate Account'),
+          style: OutlinedButton.styleFrom(
+            foregroundColor: Theme.of(context).colorScheme.error,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Center(
+          child: Text(
+            'Deactivating closes your account and signs you out. You can '
+            'reactivate later by signing in with the same Google account.',
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ),
       ],
     );
   }
@@ -124,6 +147,16 @@ class _ProfileViewScreenState extends ConsumerState<ProfileViewScreen> {
     await Navigator.push(
       context,
       MaterialPageRoute(builder: (_) => const ProfileEditScreen()),
+    );
+  }
+
+  Future<void> _openDeactivation(BuildContext context) async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) =>
+            const CodeEntryScreen(purpose: VerificationPurpose.deactivation),
+      ),
     );
   }
 
@@ -153,8 +186,8 @@ class _InfoRow extends StatelessWidget {
             child: Text(
               label,
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  ),
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
             ),
           ),
           Expanded(

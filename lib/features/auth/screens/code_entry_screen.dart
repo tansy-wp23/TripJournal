@@ -149,7 +149,12 @@ class _CodeEntryScreenState extends ConsumerState<CodeEntryScreen> {
         await ref
             .read(authControllerProvider.notifier)
             .confirmDeactivation(_code);
-        // On success, AuthController signs out → AuthGate routes to login.
+        // On success, AuthController signs out → AuthGate swaps to
+        // LoginScreen. Pop any pushed routes (the Profile screen, this
+        // screen) so the root AuthGate's LoginScreen is actually visible.
+        if (mounted) {
+          Navigator.of(this.context).popUntil((route) => route.isFirst);
+        }
       }
     } on CodeValidationException catch (e) {
       setState(() {
