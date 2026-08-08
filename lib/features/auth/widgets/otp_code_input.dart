@@ -34,8 +34,22 @@ class OtpCodeInput extends StatefulWidget {
 
 class _OtpCodeInputState extends State<OtpCodeInput> {
   late List<TextEditingController> _controllers;
-  late List<FocusNode> _focusNodes;
+  // Box focus nodes — ancestors of each TextField. They intercept backspace
+  // events that bubble up AFTER the TextField has had its own chance to
+  // consume them (e.g. backspace on an already-empty box, where the
+  // TextField does nothing and `onChanged` never fires).
+  late List<FocusNode> _boxFocusNodes;
+  // TextField focus nodes — owned by the TextField itself so requestFocus()
+  // actually moves the cursor (this was the original auto-advance bug, see
+  // the implementation plan's "Known Issues" section).
+  late List<FocusNode> _textFocusNodes;
   late List<String> _digits;
+
+  // Set when the TextField itself cleared a filled box (via its own
+  // backspace handling, observed through `onChanged`). The bubbling key
+  // event that caused it will then reach this box's ancestor `Focus`
+  // handler, which must NOT clear ANOTHER box — it should just swallow it.
+  int? _boxClearedByTextField;
 
   @override
   void initState() {
@@ -45,7 +59,8 @@ class _OtpCodeInputState extends State<OtpCodeInput> {
       widget.length,
       (_) => TextEditingController(),
     );
-    _focusNodes = List.generate(widget.length, (_) => FocusNode());
+    _boxFocusNodes = List.generate(widget.length, (_) => FocusNode());
+    _textFocusNodes = List.generate(widget.length, (_) => FocusNode());
   }
 
   @override
@@ -53,7 +68,10 @@ class _OtpCodeInputState extends State<OtpCodeInput> {
     for (final c in _controllers) {
       c.dispose();
     }
-    for (final f in _focusNodes) {
+    for (final f in _boxFocusNodes) {
+      f.dispose();
+    }
+    for (final f in _textFocusNodes) {
       f.dispose();
     }
     super.dispose();
@@ -61,7 +79,41 @@ class _OtpCodeInputState extends State<OtpCodeInput> {
 
   String get _code => _digits.join();
 
+  /// Handles backspace at the box level. This runs after the TextField's own
+  /// key handling (Flutter dispatches key events to the focused node first,
+  /// then bubbles to ancestor `Focus` widgets).
+  ///
+  /// Two cases reach here:
+  /// - Backspace on an **empty** box → the TextField does nothing and
+  ///   `onChanged` never fires, so we clear the PREVIOUS box and move focus.
+  /// - Backspace on a **filled** box → the TextField already cleared it
+  ///   (via `_onChanged`), so we must NOT clear yet another box; just
+  ///   swallow the event so the key-up doesn't re-trigger.
+  KeyEventResult _onKey(int index, KeyEvent event) {
+    if (event is KeyDownEvent &&
+        event.logicalKey == LogicalKeyboardKey.backspace &&
+        index > 0) {
+      if (_boxClearedByTextField == index) {
+        // The TextField already handled this backspace for this box.
+        _boxClearedByTextField = null;
+        return KeyEventResult.handled;
+      }
+
+      if (_digits[index].isEmpty) {
+        // Backspace on an empty box → clear the previous box and focus it.
+        _digits[index - 1] = '';
+        _controllers[index - 1].clear();
+        _textFocusNodes[index - 1].requestFocus();
+        widget.onChanged?.call(_code);
+        return KeyEventResult.handled;
+      }
+    }
+    return KeyEventResult.ignored;
+  }
+
   void _onChanged(int index, String value) {
+    final wasFilled = _digits[index].isNotEmpty;
+
     // Only keep the last character typed (in case of paste or fast typing).
     final digit = value.isEmpty ? '' : value[value.length - 1];
     if (digit.isNotEmpty && !RegExp(r'^[0-9]$').hasMatch(digit)) return;
@@ -71,27 +123,25 @@ class _OtpCodeInputState extends State<OtpCodeInput> {
 
     widget.onChanged?.call(_code);
 
+    // The TextField cleared a digit that was previously filled (user pressed
+    // backspace with the cursor in a filled box). Move focus back to the
+    // previous box and remember that the TextField consumed this backspace,
+    // so the bubbling key event doesn't also clear the previous box.
+    if (digit.isEmpty && wasFilled && index > 0) {
+      _textFocusNodes[index - 1].requestFocus();
+      _boxClearedByTextField = index;
+      return;
+    }
+
     // Auto-advance to the next box.
     if (digit.isNotEmpty && index < widget.length - 1) {
-      _focusNodes[index + 1].requestFocus();
+      _textFocusNodes[index + 1].requestFocus();
     }
 
     // Check if all digits are entered.
     if (_code.length == widget.length && !_digits.contains('')) {
       widget.onCompleted?.call(_code);
-      _focusNodes[index].unfocus();
-    }
-  }
-
-  void _onKey(int index, KeyEvent event) {
-    if (event.logicalKey == LogicalKeyboardKey.backspace) {
-      if (_digits[index].isEmpty && index > 0) {
-        // Backspace on an empty box → clear the previous box and focus it.
-        _digits[index - 1] = '';
-        _controllers[index - 1].clear();
-        _focusNodes[index - 1].requestFocus();
-        widget.onChanged?.call(_code);
-      }
+      _textFocusNodes[index].unfocus();
     }
   }
 
@@ -110,12 +160,16 @@ class _OtpCodeInputState extends State<OtpCodeInput> {
           width: 48,
           height: 56,
           margin: EdgeInsets.only(right: i < widget.length - 1 ? 8 : 0),
-          child: KeyboardListener(
-            focusNode: _focusNodes[i],
-            onKeyEvent: (e) => _onKey(i, e),
+          child: Focus(
+            focusNode: _boxFocusNodes[i],
+            onKeyEvent: (node, event) => _onKey(i, event),
             child: TextField(
               key: Key('otp-digit-$i'),
               controller: _controllers[i],
+              // The TextField owns this node directly so requestFocus()
+              // moves the actual cursor (fixes the auto-advance + backspace
+              // navigation that the old KeyboardListener wrapping couldn't).
+              focusNode: _textFocusNodes[i],
               textAlign: TextAlign.center,
               textAlignVertical: TextAlignVertical.center,
               keyboardType: TextInputType.number,
