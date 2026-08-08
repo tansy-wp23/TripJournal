@@ -312,9 +312,79 @@ reactivation screen instead of let in.
 - [x] Signed-in state persists across screen navigation
 - [x] Manual test steps documented in `PROGRESS.md`
 
-### Next phase (Phase 3) should start with
+---
 
-Logout component (button → `signOut()` → back to login, driven by
-`authStateChanges()`), profile view screen (`getProfile()`), profile edit
-screen (`updateProfile()`), and validation rules for editable profile
-fields. Screens go in `lib/features/profile/`.
+## Phase 3 — Sprint 2a: Logout + Profile (mock) (complete)
+
+### What was built
+
+**Note:** The **logout component** was already completed in a separate
+commit (`785a032 feat(auth): route app root through AuthGate, wire logout
+button`) before this session — `HomeScreen`'s "Log out" menu item calls
+`AuthController.signOut()`, and `AuthGate` reacts to the resulting
+`signedOut` status and swaps back to `LoginScreen`. This phase added the
+remaining profile work.
+
+- **`ProfileController`** (`lib/features/profile/controller/profile_controller.dart`)
+  — loads the profile for the signed-in user via `ProfileRepository.getProfile()`
+  and updates the display name via `updateProfile()`. Reads the current user id
+  from `AuthController.currentUserId` (which derives it from the session).
+  Uses `validateProfileDisplayName()` as the save-time backstop.
+- **`ProfileViewScreen`** (`lib/features/profile/screens/profile_view_screen.dart`)
+  — profile view screen (PB-10). Shows avatar, display name, email, role,
+  status, member-since, and last-login. "Edit" icon navigates to the edit
+  screen.
+- **`ProfileEditScreen`** (`lib/features/profile/screens/profile_edit_screen.dart`)
+  — profile edit screen (PB-11). Edits `display_name` with inline validation
+  via `validateProfileDisplayName()`. Shows the email (read-only, owned by
+  Google/Supabase Auth) with a note explaining it cannot be changed. Cancel
+  discards changes; Save calls `updateDisplayName()` and pops back on success.
+- **`validateProfileDisplayName`** (`lib/validation/profile_validation.dart`)
+  — rejects empty/whitespace-only names and names over 50 chars. `email` is
+  deliberately NOT editable/validated here (owned by Google/Supabase Auth).
+- **`Profile` menu item** wired into `HomeScreen`'s popup menu → navigates to
+  `ProfileViewScreen`.
+
+### Files touched (Phase 3)
+
+- `lib/features/profile/controller/profile_controller.dart` (new)
+- `lib/features/profile/screens/profile_view_screen.dart` (new)
+- `lib/features/profile/screens/profile_edit_screen.dart` (new)
+- `lib/validation/profile_validation.dart` (new)
+- `lib/features/home/home_screen.dart` (modified — added Profile menu item)
+- `test/profile_validation_test.dart` (new — 4 tests)
+- `test/profile_controller_test.dart` (new — 6 tests)
+
+### Decision: what's editable
+
+Only `display_name` is editable. `email` is owned by Google/Supabase Auth and
+is not independently editable (per the plan: "email is owned by
+Google/Supabase Auth and probably shouldn't be independently editable here
+— decide and note the decision in PROGRESS.md"). This decision is also
+documented in `lib/validation/profile_validation.dart`.
+
+### Verification
+
+- `flutter analyze` — no issues found.
+- `flutter test` (profile_validation_test 4 + profile_controller_test 6) —
+  all passed.
+- Full regression check (`auth_controller_test`, `home_screen_nudge_test`,
+  `widget_test`) — all passed.
+
+### Definition of Done
+
+- [x] Logout returns user to login screen (done in commit `785a032`,
+      verified here)
+- [x] Profile view + edit both work against the mock repo
+- [x] Invalid input is rejected with a visible message, valid input saves
+- [x] Decision on editable fields documented in PROGRESS.md
+
+### Next phase (Phase 4) should start with
+
+Build the shared OTP component standalone: the code-entry screen (reusable
+widget, takes a `purpose` so it can be used for both deactivation and
+reactivation), send/resend code UI + logic against
+`VerificationCodeRepository`, validate code logic (wrong-code and
+expired-code error states), and deactivated-account detection. **Also fix
+the OTP auto-advance focus bug** noted in the implementation plan's
+"Known Issues" section.
