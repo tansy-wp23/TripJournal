@@ -42,7 +42,11 @@ class _TripFormScreenState extends ConsumerState<TripFormScreen> {
     _notesController = TextEditingController(text: trip?.notes ?? '');
     _startDate = trip == null
         ? today
-        : DateTime(trip.startDate.year, trip.startDate.month, trip.startDate.day);
+        : DateTime(
+            trip.startDate.year,
+            trip.startDate.month,
+            trip.startDate.day,
+          );
     _endDate = trip == null
         ? today
         : DateTime(trip.endDate.year, trip.endDate.month, trip.endDate.day);
@@ -120,7 +124,9 @@ class _TripFormScreenState extends ConsumerState<TripFormScreen> {
       final sizeError = validatePhotoSize(await picked.length());
       if (sizeError != null) {
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(sizeError)));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(sizeError)));
         return;
       }
 
@@ -128,7 +134,11 @@ class _TripFormScreenState extends ConsumerState<TripFormScreen> {
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Couldn't access photos — you can still save without one.")),
+        const SnackBar(
+          content: Text(
+            "Couldn't access photos — you can still save without one.",
+          ),
+        ),
       );
     }
   }
@@ -156,12 +166,15 @@ class _TripFormScreenState extends ConsumerState<TripFormScreen> {
       startDate: _startDate,
       endDate: _endDate,
       notes: notes.isEmpty ? null : notes,
+      summary: existing?.summary,
       createdAt: existing?.createdAt ?? now,
       updatedAt: now,
     );
 
     final controller = ref.read(tripControllerProvider.notifier);
-    final error = _isEditing ? await controller.editTrip(trip) : await controller.createTrip(trip);
+    final error = _isEditing
+        ? await controller.editTrip(trip)
+        : await controller.createTrip(trip);
     if (error != null) {
       setState(() => _dateRangeError = error);
       return;
@@ -252,13 +265,19 @@ class _TripFormScreenState extends ConsumerState<TripFormScreen> {
             ),
             if (_dateRangeError != null) ...[
               const SizedBox(height: 8),
-              Text(_dateRangeError!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+              Text(
+                _dateRangeError!,
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
+              ),
             ],
             const SizedBox(height: 16),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text('Cover photo', style: Theme.of(context).textTheme.titleSmall),
+                Text(
+                  'Cover photo',
+                  style: Theme.of(context).textTheme.titleSmall,
+                ),
                 TextButton.icon(
                   key: const Key('add-cover-photo-button'),
                   onPressed: _addCoverPhoto,
@@ -299,7 +318,12 @@ class _TripFormScreenState extends ConsumerState<TripFormScreen> {
 }
 
 class _DatePickerField extends StatelessWidget {
-  const _DatePickerField({super.key, required this.label, required this.date, required this.onTap});
+  const _DatePickerField({
+    super.key,
+    required this.label,
+    required this.date,
+    required this.onTap,
+  });
 
   final String label;
   final DateTime date;
@@ -310,7 +334,10 @@ class _DatePickerField extends StatelessWidget {
     return InkWell(
       onTap: onTap,
       child: InputDecorator(
-        decoration: InputDecoration(labelText: label, border: const OutlineInputBorder()),
+        decoration: InputDecoration(
+          labelText: label,
+          border: const OutlineInputBorder(),
+        ),
         child: Text(formatDate(date)),
       ),
     );

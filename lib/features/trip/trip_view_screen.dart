@@ -37,8 +37,10 @@ class TripViewScreen extends ConsumerStatefulWidget {
 class _TripViewScreenState extends ConsumerState<TripViewScreen> {
   bool _searchVisible = false;
   bool _generatingSummary = false;
+  bool _editingSummary = false;
   String? _tripSummary;
   String? _summaryError;
+  TextEditingController? _summaryController;
 
   /// First-use hint dismissal, in-memory only for this screen instance --
   /// reappears next time the trip is opened, which is fine for a low-stakes
@@ -131,6 +133,58 @@ class _TripViewScreenState extends ConsumerState<TripViewScreen> {
     } finally {
       if (mounted) setState(() => _generatingSummary = false);
     }
+  }
+
+  void _startEditingSummary(String summary) {
+    _summaryController?.dispose();
+    setState(() {
+      _summaryController = TextEditingController(text: summary);
+      _editingSummary = true;
+      _summaryError = null;
+    });
+  }
+
+  void _cancelEditingSummary() {
+    _summaryController?.dispose();
+    setState(() {
+      _summaryController = null;
+      _editingSummary = false;
+    });
+  }
+
+  Future<void> _saveEditedSummary(Trip trip) async {
+    final summary = _summaryController?.text.trim() ?? '';
+    if (summary.isEmpty) {
+      setState(() => _summaryError = 'Trip summary cannot be empty.');
+      return;
+    }
+
+    final updatedTrip = trip.copyWith(
+      summary: summary,
+      updatedAt: DateTime.now(),
+    );
+    final error = await ref
+        .read(tripControllerProvider.notifier)
+        .editTrip(updatedTrip);
+    if (!mounted) return;
+    if (error != null) {
+      setState(() => _summaryError = error);
+      return;
+    }
+
+    _summaryController?.dispose();
+    setState(() {
+      _summaryController = null;
+      _tripSummary = summary;
+      _editingSummary = false;
+      _summaryError = null;
+    });
+  }
+
+  @override
+  void dispose() {
+    _summaryController?.dispose();
+    super.dispose();
   }
 
   @override
@@ -249,6 +303,7 @@ class _TripViewScreenState extends ConsumerState<TripViewScreen> {
     List<JournalEntry> entries,
   ) {
     final notes = trip.notes;
+    final summary = _tripSummary ?? trip.summary;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -310,9 +365,16 @@ class _TripViewScreenState extends ConsumerState<TripViewScreen> {
               _TripSummaryCard(
                 hasEntries: entries.isNotEmpty,
                 isGenerating: _generatingSummary,
-                summary: _tripSummary,
+                summary: summary,
                 error: _summaryError,
+                isEditing: _editingSummary,
+                summaryController: _summaryController,
                 onGenerate: () => _generateTripSummary(trip, entries),
+                onEdit: summary == null
+                    ? null
+                    : () => _startEditingSummary(summary),
+                onSaveEdit: () => _saveEditedSummary(trip),
+                onCancelEdit: _cancelEditingSummary,
               ),
               const SizedBox(height: 16),
               Card(
@@ -536,14 +598,24 @@ class _TripSummaryCard extends StatelessWidget {
     required this.isGenerating,
     required this.summary,
     required this.error,
+    required this.isEditing,
+    required this.summaryController,
     required this.onGenerate,
+    required this.onEdit,
+    required this.onSaveEdit,
+    required this.onCancelEdit,
   });
 
   final bool hasEntries;
   final bool isGenerating;
   final String? summary;
   final String? error;
+  final bool isEditing;
+  final TextEditingController? summaryController;
   final VoidCallback onGenerate;
+  final VoidCallback? onEdit;
+  final VoidCallback onSaveEdit;
+  final VoidCallback onCancelEdit;
 
   @override
   Widget build(BuildContext context) {
@@ -576,7 +648,32 @@ class _TripSummaryCard extends StatelessWidget {
                 ],
               )
             else ...[
-              if (summary != null) Text(summary!),
+              if (summary != null && !isEditing)
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(child: Text(summary!)),
+                    IconButton(
+                      key: const Key('edit-trip-summary-button'),
+                      icon: const Icon(Icons.edit_outlined),
+                      tooltip: 'Edit summary',
+                      onPressed: onEdit,
+                    ),
+                  ],
+                ),
+              if (isEditing)
+                TextField(
+                  key: const Key('trip-summary-editor-field'),
+                  controller: summaryController,
+                  decoration: const InputDecoration(
+                    labelText: 'Trip Summary',
+                    alignLabelWithHint: true,
+                    border: OutlineInputBorder(),
+                  ),
+                  minLines: 4,
+                  maxLines: null,
+                  textAlignVertical: TextAlignVertical.top,
+                ),
               if (error != null)
                 Padding(
                   padding: const EdgeInsets.only(top: 6),
@@ -586,12 +683,32 @@ class _TripSummaryCard extends StatelessWidget {
                   ),
                 ),
               const SizedBox(height: 4),
-              TextButton.icon(
-                key: const Key('generate-trip-summary-button'),
-                onPressed: onGenerate,
-                icon: const Icon(Icons.auto_awesome_outlined),
-                label: Text(summary == null ? 'Generate summary' : 'Regenerate summary'),
-              ),
+              if (isEditing)
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    TextButton(
+                      key: const Key('cancel-edit-trip-summary-button'),
+                      onPressed: onCancelEdit,
+                      child: const Text('Cancel'),
+                    ),
+                    const SizedBox(width: 8),
+                    FilledButton(
+                      key: const Key('save-trip-summary-button'),
+                      onPressed: onSaveEdit,
+                      child: const Text('Save'),
+                    ),
+                  ],
+                )
+              else
+                TextButton.icon(
+                  key: const Key('generate-trip-summary-button'),
+                  onPressed: onGenerate,
+                  icon: const Icon(Icons.auto_awesome_outlined),
+                  label: Text(
+                    summary == null ? 'Generate summary' : 'Regenerate summary',
+                  ),
+                ),
             ],
           ],
         ),

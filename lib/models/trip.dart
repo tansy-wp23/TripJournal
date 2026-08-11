@@ -15,6 +15,9 @@ class Trip {
   final DateTime startDate;
   final DateTime endDate;
   final String? notes;
+
+  /// The generated summary, optionally edited by the user.
+  final String? summary;
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -26,12 +29,14 @@ class Trip {
     required this.startDate,
     required this.endDate,
     this.notes,
+    this.summary,
     required this.createdAt,
     required this.updatedAt,
   });
 
   /// Inclusive day count, e.g. a single-day trip (start == end) is 1.
-  int get durationDays => _dateOnly(endDate).difference(_dateOnly(startDate)).inDays + 1;
+  int get durationDays =>
+      _dateOnly(endDate).difference(_dateOnly(startDate)).inDays + 1;
 
   /// True if [date] falls within [startDate, endDate] inclusive.
   bool isActiveOn(DateTime date) {
@@ -68,6 +73,7 @@ class Trip {
       startDate: DateTime.parse(json['startDate'] as String),
       endDate: DateTime.parse(json['endDate'] as String),
       notes: json['notes'] as String?,
+      summary: json['summary'] as String?,
       createdAt: DateTime.parse(json['createdAt'] as String),
       updatedAt: DateTime.parse(json['updatedAt'] as String),
     );
@@ -82,6 +88,7 @@ class Trip {
       'startDate': startDate.toIso8601String(),
       'endDate': endDate.toIso8601String(),
       'notes': notes,
+      'summary': summary,
       'createdAt': createdAt.toIso8601String(),
       'updatedAt': updatedAt.toIso8601String(),
     };
@@ -95,6 +102,7 @@ class Trip {
     DateTime? startDate,
     DateTime? endDate,
     String? notes,
+    String? summary,
     DateTime? createdAt,
     DateTime? updatedAt,
   }) {
@@ -106,6 +114,7 @@ class Trip {
       startDate: startDate ?? this.startDate,
       endDate: endDate ?? this.endDate,
       notes: notes ?? this.notes,
+      summary: summary ?? this.summary,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );

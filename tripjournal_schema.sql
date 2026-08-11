@@ -37,6 +37,7 @@ create table public.trips (
   start_date     date not null,
   end_date       date not null,
   notes          text,                              -- trip-level Notes/Reminders; optional
+  summary        text,                              -- generated summary, optionally user-edited
   created_at     timestamptz not null default now(),
   updated_at     timestamptz not null default now(),
   constraint trips_end_after_start check (end_date >= start_date)

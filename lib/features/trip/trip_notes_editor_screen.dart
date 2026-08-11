@@ -17,7 +17,8 @@ class TripNotesEditorScreen extends ConsumerStatefulWidget {
   final Trip trip;
 
   @override
-  ConsumerState<TripNotesEditorScreen> createState() => _TripNotesEditorScreenState();
+  ConsumerState<TripNotesEditorScreen> createState() =>
+      _TripNotesEditorScreenState();
 }
 
 class _TripNotesEditorScreenState extends ConsumerState<TripNotesEditorScreen> {
@@ -56,25 +57,35 @@ class _TripNotesEditorScreenState extends ConsumerState<TripNotesEditorScreen> {
       startDate: trip.startDate,
       endDate: trip.endDate,
       notes: notes.isEmpty ? null : notes,
+      summary: trip.summary,
       createdAt: trip.createdAt,
       updatedAt: DateTime.now(),
     );
 
     final controller = ref.read(tripControllerProvider.notifier);
-    final validationError = controller.validate(updated, excludingTripId: updated.id);
+    final validationError = controller.validate(
+      updated,
+      excludingTripId: updated.id,
+    );
     if (validationError != null) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(validationError)));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(validationError)));
       return;
     }
 
     final confirmed = await _confirmSave();
-    if (!confirmed || !mounted) return; // Cancel — stay in the editor, input intact.
+    if (!confirmed || !mounted) {
+      return;
+    }
 
     final error = await controller.editTrip(updated);
     if (error != null) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error)));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error)));
       return;
     }
     if (!mounted) return;
