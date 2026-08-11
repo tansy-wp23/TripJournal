@@ -1,9 +1,12 @@
+import 'package:cross_file/cross_file.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/legacy.dart';
 
+import '../../../data/profile_avatar_storage.dart';
 import '../../../data/profile_repository.dart';
 import '../../../data/user_management_repository_locator.dart';
 import '../../../models/profile.dart';
+import '../../../validation/photo_validation.dart';
 import '../../../validation/profile_validation.dart';
 import '../../auth/controller/auth_controller.dart';
 
@@ -14,10 +17,15 @@ import '../../auth/controller/auth_controller.dart';
 /// [ProfileRepository]. Maps to the "Profile Management" component from
 /// Component.md.
 class ProfileController extends ChangeNotifier {
-  ProfileController(this._profileRepository, this._authController);
+  ProfileController(
+    this._profileRepository,
+    this._authController,
+    this._profileAvatarStorage,
+  );
 
   final ProfileRepository _profileRepository;
   final AuthController _authController;
+  final ProfileAvatarStorage _profileAvatarStorage;
 
   Profile? _profile;
   bool _loading = false;
@@ -78,6 +86,68 @@ class ProfileController extends ChangeNotifier {
       return _error;
     }
   }
+
+  /// Validates [photo]'s size, uploads it, and points the profile at the
+  /// result. The previous avatar (if any) is deleted only after the profile
+  /// update succeeds, so a failed upload never orphans the old one. Returns
+  /// an error message on failure, or null on success.
+  Future<String?> updateAvatar(XFile photo) async {
+    final current = _profile;
+    if (current == null) return 'No profile to update.';
+
+    final Uint8List bytes;
+    try {
+      bytes = await photo.readAsBytes();
+    } catch (_) {
+      return "Couldn't read that photo.";
+    }
+    final sizeError = validatePhotoSize(bytes.length);
+    if (sizeError != null) return sizeError;
+
+    _error = null;
+    try {
+      final uploadedUrl = await _profileAvatarStorage.uploadAvatar(
+        userId: current.userID,
+        photo: photo,
+      );
+      final previousUrl = current.avatarUrl;
+      _profile = await _profileRepository.updateProfile(
+        current.copyWith(avatarUrl: uploadedUrl, updatedAt: DateTime.now()),
+      );
+      if (previousUrl != null && previousUrl != uploadedUrl) {
+        await _profileAvatarStorage.deleteAvatarUrl(previousUrl);
+      }
+      notifyListeners();
+      return null;
+    } catch (e) {
+      _error = e.toString();
+      notifyListeners();
+      return _error;
+    }
+  }
+
+  /// Clears the profile's avatar. Returns an error message on failure, or
+  /// null on success (including when there was no avatar to remove).
+  Future<String?> removeAvatar() async {
+    final current = _profile;
+    if (current == null) return 'No profile to update.';
+    final previousUrl = current.avatarUrl;
+    if (previousUrl == null) return null;
+
+    _error = null;
+    try {
+      _profile = await _profileRepository.updateProfile(
+        current.copyWith(clearAvatarUrl: true, updatedAt: DateTime.now()),
+      );
+      await _profileAvatarStorage.deleteAvatarUrl(previousUrl);
+      notifyListeners();
+      return null;
+    } catch (e) {
+      _error = e.toString();
+      notifyListeners();
+      return _error;
+    }
+  }
 }
 
 /// The single place the app resolves its [ProfileController] from — mirrors
@@ -86,5 +156,6 @@ final profileControllerProvider = ChangeNotifierProvider<ProfileController>(
   (ref) => ProfileController(
     profileRepository,
     ref.watch(authControllerProvider),
+    profileAvatarStorage,
   ),
 );

@@ -5,6 +5,7 @@ import '../../../models/profile.dart';
 import '../../../models/verification_code.dart';
 import '../../auth/screens/code_entry_screen.dart';
 import '../controller/profile_controller.dart';
+import '../widgets/profile_avatar.dart';
 import 'profile_edit_screen.dart';
 
 class ProfileViewScreen extends ConsumerStatefulWidget {
@@ -63,13 +64,13 @@ class _ProfileViewScreenState extends ConsumerState<ProfileViewScreen> {
       padding: const EdgeInsets.all(16),
       children: [
         const SizedBox(height: 16),
-        CircleAvatar(
-          radius: 40,
-          child: Text(
-            profile.displayName.isNotEmpty
+        Center(
+          child: ProfileAvatar(
+            radius: 40,
+            avatarUrl: profile.avatarUrl,
+            initial: profile.displayName.isNotEmpty
                 ? profile.displayName[0].toUpperCase()
                 : '?',
-            style: Theme.of(context).textTheme.headlineMedium,
           ),
         ),
         const SizedBox(height: 16),

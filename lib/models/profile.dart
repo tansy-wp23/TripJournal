@@ -12,6 +12,7 @@ class Profile {
   final String userID;
   final String email;
   final String displayName;
+  final String? avatarUrl;
   final UserRole role;
   final AccountStatus status;
   final DateTime? deactivatedAt;
@@ -23,6 +24,7 @@ class Profile {
     required this.userID,
     required this.email,
     required this.displayName,
+    this.avatarUrl,
     this.role = UserRole.user,
     this.status = AccountStatus.active,
     this.deactivatedAt,
@@ -40,6 +42,7 @@ class Profile {
       userID: json['userID'] as String,
       email: json['email'] as String,
       displayName: json['displayName'] as String,
+      avatarUrl: json['avatarUrl'] as String?,
       role: UserRole.values.firstWhere(
         (r) => r.name == json['role'],
         orElse: () => UserRole.user,
@@ -64,6 +67,7 @@ class Profile {
       'userID': userID,
       'email': email,
       'displayName': displayName,
+      'avatarUrl': avatarUrl,
       'role': role.name,
       'status': status.name,
       'deactivatedAt': deactivatedAt?.toIso8601String(),
@@ -77,6 +81,8 @@ class Profile {
     String? userID,
     String? email,
     String? displayName,
+    String? avatarUrl,
+    bool clearAvatarUrl = false,
     UserRole? role,
     AccountStatus? status,
     DateTime? deactivatedAt,
@@ -89,6 +95,7 @@ class Profile {
       userID: userID ?? this.userID,
       email: email ?? this.email,
       displayName: displayName ?? this.displayName,
+      avatarUrl: clearAvatarUrl ? null : (avatarUrl ?? this.avatarUrl),
       role: role ?? this.role,
       status: status ?? this.status,
       deactivatedAt:
