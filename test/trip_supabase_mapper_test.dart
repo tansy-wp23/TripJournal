@@ -10,6 +10,7 @@ void main() {
         'id': 'trip-123',
         'user_id': 'user-456',
         'title': 'Penang Weekend',
+        'destination': 'Penang, Malaysia',
         'cover_photo_url': 'trip-covers/penang.jpg',
         'start_date': '2026-08-05',
         'end_date': '2026-08-07',
@@ -22,6 +23,7 @@ void main() {
       expect(trip.id, 'trip-123');
       expect(trip.userId, 'user-456');
       expect(trip.title, 'Penang Weekend');
+      expect(trip.destination, 'Penang, Malaysia');
       expect(trip.coverPhotoPath, 'trip-covers/penang.jpg');
       expect(trip.startDate, DateTime(2026, 8, 5));
       expect(trip.endDate, DateTime(2026, 8, 7));
@@ -39,6 +41,7 @@ void main() {
           id: 'trip-123',
           userId: 'user-456',
           title: 'Penang Weekend',
+          destination: 'Penang, Malaysia',
           coverPhotoPath: 'trip-covers/penang.jpg',
           startDate: DateTime(2026, 8, 5, 15, 30),
           endDate: DateTime(2026, 8, 7, 23, 59),
@@ -52,6 +55,7 @@ void main() {
         'id': 'trip-123',
         'user_id': 'user-456',
         'title': 'Penang Weekend',
+        'destination': 'Penang, Malaysia',
         'cover_photo_url': 'trip-covers/penang.jpg',
         'start_date': '2026-08-05',
         'end_date': '2026-08-07',
@@ -73,6 +77,7 @@ void main() {
         id: 'trip-123',
         userId: 'user-456',
         title: 'Penang Weekend',
+        destination: 'Penang, Malaysia',
         coverPhotoPath: 'trip-covers/penang.jpg',
         startDate: DateTime(2026, 8, 5),
         endDate: DateTime(2026, 8, 7),
@@ -85,6 +90,7 @@ void main() {
 
     expect(row, {
       'title': 'Penang Weekend',
+      'destination': 'Penang, Malaysia',
       'cover_photo_url': 'trip-covers/penang.jpg',
       'start_date': '2026-08-05',
       'end_date': '2026-08-07',

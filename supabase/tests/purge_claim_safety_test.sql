@@ -369,6 +369,7 @@ begin
     perform public.restore_trip(
       '11111111-1111-4111-8111-111111111111',
       'Restore blocked',
+      'Blocked destination',
       null,
       date '2026-07-01',
       date '2026-07-02',

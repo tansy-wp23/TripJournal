@@ -259,6 +259,10 @@ void main() {
       find.byKey(const Key('trip-title-field')),
       'Created Provider Trip',
     );
+    await tester.enterText(
+      find.byKey(const Key('trip-destination-field')),
+      'Test destination',
+    );
     await tester.tap(find.byKey(const Key('save-trip-button')));
     await tester.pumpAndSettle();
 
@@ -271,6 +275,7 @@ Trip _trip({required String userId}) => Trip(
   id: 'provider-trip',
   userId: userId,
   title: 'Provider Trip',
+  destination: 'Test destination',
   startDate: DateTime(2040, 1, 1),
   endDate: DateTime(2040, 1, 2),
   createdAt: DateTime.utc(2039, 12, 1),

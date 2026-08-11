@@ -1,5 +1,12 @@
 const kTripTitleMaxLength = 100;
 
+String? validateTripDestination(String? destination) {
+  if ((destination?.trim() ?? '').isEmpty) {
+    return 'Please enter a destination.';
+  }
+  return null;
+}
+
 /// Model-level invariant, reused as both the form field's live validator and
 /// the controller's save-time backstop — see
 /// IMPLEMENTATION_PLAN_VALIDATION.md "Where Validation Lives".

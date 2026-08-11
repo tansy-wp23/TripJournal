@@ -339,6 +339,7 @@ Trip _trip({
     id: id,
     userId: kMockUserId,
     title: title,
+    destination: 'Test destination',
     startDate: start ?? DateTime(2026, 10, 1),
     endDate: end ?? DateTime(2026, 10, 3),
     createdAt: DateTime.utc(2026, 7, 1),

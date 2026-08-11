@@ -38,12 +38,16 @@ class TripListControls extends StatelessWidget {
     required this.statusFilter,
     required this.onSortChanged,
     required this.onStatusFilterChanged,
+    required this.searchVisible,
+    required this.onSearchToggle,
   });
 
   final TripSortOption sort;
   final TripStatusFilter statusFilter;
   final ValueChanged<TripSortOption> onSortChanged;
   final ValueChanged<TripStatusFilter> onStatusFilterChanged;
+  final bool searchVisible;
+  final VoidCallback onSearchToggle;
 
   @override
   Widget build(BuildContext context) {
@@ -94,6 +98,12 @@ class TripListControls extends StatelessWidget {
               ],
             ),
           ),
+        ),
+        IconButton(
+          key: const Key('trip-search-toggle'),
+          tooltip: searchVisible ? 'Close trip search' : 'Search trips',
+          onPressed: onSearchToggle,
+          icon: Icon(searchVisible ? Icons.search_off : Icons.search),
         ),
       ],
     );

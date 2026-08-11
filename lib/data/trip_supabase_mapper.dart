@@ -5,6 +5,7 @@ Trip tripFromSupabaseRow(Map<String, dynamic> row) {
     id: row['id'] as String,
     userId: row['user_id'] as String,
     title: row['title'] as String,
+    destination: row['destination'] as String?,
     coverPhotoPath: row['cover_photo_url'] as String?,
     startDate: DateTime.parse(row['start_date'] as String),
     endDate: DateTime.parse(row['end_date'] as String),
@@ -22,6 +23,7 @@ Map<String, dynamic> tripToSupabaseRow(Trip trip) {
     'id': trip.id,
     'user_id': trip.userId,
     'title': trip.title,
+    'destination': trip.destination,
     'cover_photo_url': trip.coverPhotoPath,
     'start_date': _formatDateOnly(trip.startDate),
     'end_date': _formatDateOnly(trip.endDate),
@@ -35,6 +37,7 @@ Map<String, dynamic> tripToSupabaseRow(Trip trip) {
 Map<String, dynamic> tripEditableFieldsToSupabaseRow(Trip trip) {
   return {
     'title': trip.title,
+    'destination': trip.destination,
     'cover_photo_url': trip.coverPhotoPath,
     'start_date': _formatDateOnly(trip.startDate),
     'end_date': _formatDateOnly(trip.endDate),

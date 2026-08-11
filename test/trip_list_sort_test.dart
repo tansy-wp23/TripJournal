@@ -3,8 +3,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:tripjournal/features/trip/trip_list_sort.dart';
 import 'package:tripjournal/models/trip.dart';
 
-Trip _trip({required String id, required String title, required DateTime start, required DateTime end}) {
-  return Trip(id: id, userId: 'u', title: title, startDate: start, endDate: end, createdAt: start, updatedAt: start);
+Trip _trip({required String id, required String title, String? destination, required DateTime start, required DateTime end}) {
+  return Trip(id: id, userId: 'u', title: title, destination: destination, startDate: start, endDate: end, createdAt: start, updatedAt: start);
 }
 
 void main() {
@@ -15,6 +15,7 @@ void main() {
   final upcomingNear = _trip(
     id: 'upcoming-near',
     title: 'Bali',
+    destination: 'Indonesia',
     start: DateTime(2026, 7, 1),
     end: DateTime(2026, 7, 5),
   );
@@ -35,6 +36,29 @@ void main() {
   final trips = [pastOld, upcomingFar, active, pastRecent, upcomingNear];
 
   group('sortAndFilterTrips', () {
+    test('query matches title or destination case-insensitively after trimming', () {
+      expect(
+        sortAndFilterTrips(trips, sort: TripSortOption.defaultOrder, statusFilter: TripStatusFilter.all, query: '  bali ', now: now)
+            .map((trip) => trip.id),
+        ['upcoming-near'],
+      );
+      expect(
+        sortAndFilterTrips(trips, sort: TripSortOption.defaultOrder, statusFilter: TripStatusFilter.all, query: 'INDONES', now: now)
+            .map((trip) => trip.id),
+        ['upcoming-near'],
+      );
+    });
+
+    test('query composes with status filtering before sorting', () {
+      final result = sortAndFilterTrips(
+        trips,
+        sort: TripSortOption.titleAZ,
+        statusFilter: TripStatusFilter.upcoming,
+        query: 'a',
+        now: now,
+      );
+      expect(result.map((trip) => trip.title), ['Anchorage', 'Bali']);
+    });
     test('defaultOrder + all reproduces active, then upcoming soonest-first, then past newest-first', () {
       final result = sortAndFilterTrips(
         trips,

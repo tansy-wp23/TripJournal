@@ -77,6 +77,7 @@ void main() {
       find.byKey(const Key('trip-title-field')),
       'Provider identity trip',
     );
+    await tester.enterText(find.byKey(const Key('trip-destination-field')), 'Test destination');
     await tester.tap(find.byKey(const Key('save-trip-button')));
     await tester.pumpAndSettle();
 
@@ -116,6 +117,7 @@ void main() {
       find.byKey(const Key('trip-title-field')),
       'Requires sign in',
     );
+    await tester.enterText(find.byKey(const Key('trip-destination-field')), 'Test destination');
     await tester.tap(find.byKey(const Key('save-trip-button')));
     await tester.pump();
 
@@ -145,6 +147,7 @@ void main() {
       find.byKey(const Key('trip-title-field')),
       'Provider failure',
     );
+    await tester.enterText(find.byKey(const Key('trip-destination-field')), 'Test destination');
 
     await tester.tap(find.byKey(const Key('save-trip-button')));
     await tester.pump();
@@ -163,6 +166,7 @@ void main() {
       id: 'existing-trip-id',
       userId: '22222222-2222-4222-8222-222222222222',
       title: 'Original title',
+      destination: 'Test destination',
       startDate: DateTime(2042, 1, 1),
       endDate: DateTime(2042, 1, 2),
       createdAt: DateTime.utc(2041, 12, 1),
@@ -222,6 +226,7 @@ void main() {
       find.byKey(const Key('trip-title-field')),
       'Only one trip',
     );
+    await tester.enterText(find.byKey(const Key('trip-destination-field')), 'Test destination');
 
     await tester.tap(find.byKey(const Key('save-trip-button')));
     await tester.tap(find.byKey(const Key('save-trip-button')));
@@ -278,6 +283,7 @@ void main() {
       find.byKey(const Key('trip-title-field')),
       'Disposed save',
     );
+    await tester.enterText(find.byKey(const Key('trip-destination-field')), 'Test destination');
     await tester.tap(find.byKey(const Key('save-trip-button')));
     await tester.pump();
 

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -5,6 +7,8 @@ import '../../data/current_user_id_provider.dart';
 import '../../data/trip_repository_locator.dart';
 import '../auth/controller/auth_controller.dart';
 import '../profile/screens/profile_view_screen.dart';
+import '../settings/settings_providers.dart';
+import '../settings/settings_screen.dart';
 import '../journal/controller/journal_controller.dart';
 import '../journal/screens/create_edit_entry_screen.dart';
 import '../journal/widgets/format_utils.dart';
@@ -40,6 +44,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   Map<String, int> _entryCounts = {};
   TripSortOption _sort = TripSortOption.defaultOrder;
   TripStatusFilter _statusFilter = TripStatusFilter.all;
+  bool _tripSearchVisible = false;
+  String _tripQuery = '';
   String? _identityError;
   bool _dashboardLoadInProgress = false;
   bool _dashboardReloadRequested = false;
@@ -103,6 +109,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           .read(journalControllerProvider.notifier)
           .loadEntries(activeTrip.id);
     }
+    unawaited(ref.read(journalReminderCoordinatorProvider).reconcile(trips));
   }
 
   void _showComingSoon(String feature) {
@@ -160,13 +167,25 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       // once status flips to signedOut — no navigation needed here.
       return;
     }
-    _showComingSoon('Settings');
+    if (value == 'settings') {
+      await Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => const SettingsScreen()),
+      );
+      return;
+    }
+    _showComingSoon(value);
   }
 
   @override
   Widget build(BuildContext context) {
     final tripController = ref.watch(tripControllerProvider);
     final journalController = ref.watch(journalControllerProvider);
+    ref.listen(tripControllerProvider, (_, next) {
+      unawaited(
+        ref.read(journalReminderCoordinatorProvider).reconcile(next.trips),
+      );
+    });
 
     return Scaffold(
       appBar: AppBar(
@@ -222,6 +241,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       tripController.trips,
       sort: _sort,
       statusFilter: _statusFilter,
+      query: _tripQuery,
     );
 
     return ListView(
@@ -239,12 +259,35 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           onSortChanged: (sort) => setState(() => _sort = sort),
           onStatusFilterChanged: (filter) =>
               setState(() => _statusFilter = filter),
+          searchVisible: _tripSearchVisible,
+          onSearchToggle: () => setState(() {
+            _tripSearchVisible = !_tripSearchVisible;
+            if (!_tripSearchVisible) _tripQuery = '';
+          }),
         ),
+        if (_tripSearchVisible) ...[
+          const SizedBox(height: 8),
+          TextField(
+            key: const Key('trip-search-field'),
+            autofocus: true,
+            decoration: const InputDecoration(
+              hintText: 'Search trips by title or destination...',
+              prefixIcon: Icon(Icons.search),
+              border: OutlineInputBorder(),
+              isDense: true,
+            ),
+            onChanged: (value) => setState(() => _tripQuery = value),
+          ),
+        ],
         const SizedBox(height: 8),
         if (orderedTrips.isEmpty)
           TripListNoMatchesState(
             onClearFilter: () =>
-                setState(() => _statusFilter = TripStatusFilter.all),
+                setState(() {
+                  _statusFilter = TripStatusFilter.all;
+                  _tripQuery = '';
+                  _tripSearchVisible = false;
+                }),
           )
         else
           for (final trip in orderedTrips)

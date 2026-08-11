@@ -73,4 +73,17 @@ void main() {
     expect(find.text('Osaka Trip'), findsOneWidget);
     expect(find.text('Taipei Trip'), findsOneWidget);
   });
+
+  testWidgets('search expands beside filters and narrows trips by destination', (tester) async {
+    await pumpHome(tester);
+
+    await tester.tap(find.byKey(const Key('trip-search-toggle')));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const Key('trip-search-field')), 'Japan');
+    await tester.pumpAndSettle();
+
+    expect(find.text('Kyoto Trip'), findsNWidgets(2));
+    expect(find.text('Osaka Trip'), findsOneWidget);
+    expect(find.text('Taipei Trip'), findsNothing);
+  });
 }

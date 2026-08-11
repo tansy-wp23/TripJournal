@@ -7,6 +7,7 @@ import '../../data/trip_repository_locator.dart';
 import '../../models/journal_entry.dart';
 import '../../models/trip.dart';
 import '../journal/controller/journal_controller.dart';
+import '../journal/journal_filter.dart';
 import '../journal/pdf/journal_pdf_export.dart';
 import '../journal/screens/create_edit_entry_screen.dart';
 import '../journal/screens/entry_detail_screen.dart';
@@ -20,6 +21,7 @@ import 'trip_notes_editor_screen.dart';
 import 'trip_summary_stats.dart';
 import 'widgets/delete_trip_confirmation_dialog.dart';
 import 'widgets/journal_search_bar.dart';
+import 'widgets/journal_filter_sheet.dart';
 import 'widgets/trip_cover_photo.dart';
 import 'widgets/wellness_stats_row.dart';
 import 'ai/trip_summary_locator.dart';
@@ -233,6 +235,17 @@ class _TripViewScreenState extends ConsumerState<TripViewScreen> {
     }
   }
 
+  Future<void> _openEntryFilters(JournalFilter filter) async {
+    final selected = await showModalBottomSheet<JournalFilter>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => JournalFilterSheet(initialFilter: filter),
+    );
+    if (selected != null && mounted) {
+      ref.read(journalControllerProvider.notifier).setFilter(selected);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final tripController = ref.watch(tripControllerProvider);
@@ -282,9 +295,22 @@ class _TripViewScreenState extends ConsumerState<TripViewScreen> {
             onPressed: () {
               setState(() => _searchVisible = !_searchVisible);
               if (!_searchVisible) {
-                ref.read(journalControllerProvider.notifier).clearFilter();
+                ref.read(journalControllerProvider.notifier).setFilter(
+                  filter.copyWith(query: ''),
+                );
               }
             },
+          ),
+          IconButton(
+            key: const Key('trip-view-filter-button'),
+            tooltip: 'Filter entries',
+            onPressed: () => _openEntryFilters(filter),
+            icon: Badge(
+              key: Key('journal-filter-count-${(filter.mood == null ? 0 : 1) + (filter.startDate == null && filter.endDate == null ? 0 : 1)}'),
+              isLabelVisible: filter.mood != null || filter.startDate != null || filter.endDate != null,
+              label: Text('${(filter.mood == null ? 0 : 1) + (filter.startDate == null && filter.endDate == null ? 0 : 1)}'),
+              child: const Icon(Icons.filter_alt_outlined),
+            ),
           ),
           IconButton(
             key: const Key('trip-view-edit-button'),

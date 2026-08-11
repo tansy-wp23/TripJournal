@@ -11,6 +11,7 @@ class Trip {
   final String id;
   final String userId;
   final String title;
+  final String? destination;
   final String? coverPhotoPath;
   final DateTime startDate;
   final DateTime endDate;
@@ -23,6 +24,7 @@ class Trip {
     required this.id,
     required this.userId,
     required this.title,
+    this.destination,
     this.coverPhotoPath,
     required this.startDate,
     required this.endDate,
@@ -83,6 +85,7 @@ class Trip {
       id: json['id'] as String,
       userId: json['userId'] as String,
       title: json['title'] as String,
+      destination: json['destination'] as String?,
       coverPhotoPath: json['coverPhotoPath'] as String?,
       startDate: DateTime.parse(json['startDate'] as String),
       endDate: DateTime.parse(json['endDate'] as String),
@@ -100,6 +103,7 @@ class Trip {
       'id': id,
       'userId': userId,
       'title': title,
+      'destination': destination,
       'coverPhotoPath': coverPhotoPath,
       'startDate': startDate.toIso8601String(),
       'endDate': endDate.toIso8601String(),
@@ -114,6 +118,7 @@ class Trip {
     String? id,
     String? userId,
     String? title,
+    String? destination,
     String? coverPhotoPath,
     DateTime? startDate,
     DateTime? endDate,
@@ -127,6 +132,7 @@ class Trip {
       id: id ?? this.id,
       userId: userId ?? this.userId,
       title: title ?? this.title,
+      destination: destination ?? this.destination,
       coverPhotoPath: coverPhotoPath ?? this.coverPhotoPath,
       startDate: startDate ?? this.startDate,
       endDate: endDate ?? this.endDate,

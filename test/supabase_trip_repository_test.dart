@@ -22,6 +22,7 @@ Map<String, dynamic> _tripRow({
     'id': id,
     'user_id': _userId,
     'title': 'Penang Weekend',
+    'destination': 'Penang, Malaysia',
     'cover_photo_url': 'trip-covers/penang.jpg',
     'start_date': '2026-08-05',
     'end_date': '2026-08-07',
@@ -37,6 +38,7 @@ Trip _trip() {
     id: '22222222-2222-4222-8222-222222222222',
     userId: _userId,
     title: 'Penang Weekend',
+    destination: 'Penang, Malaysia',
     coverPhotoPath: 'trip-covers/penang.jpg',
     startDate: DateTime(2026, 8, 5),
     endDate: DateTime(2026, 8, 7),
@@ -180,6 +182,7 @@ void main() {
             final body = jsonDecode(request.body) as Map<String, dynamic>;
             expect(body.keys, {
               'title',
+              'destination',
               'cover_photo_url',
               'start_date',
               'end_date',
@@ -221,6 +224,7 @@ void main() {
             expect(jsonDecode(request.body), {
               'p_trip_id': trip.id,
               'p_title': 'Penang Weekend',
+              'p_destination': 'Penang, Malaysia',
               'p_cover_photo_url': 'trip-covers/penang.jpg',
               'p_start_date': '2026-08-05',
               'p_end_date': '2026-08-07',

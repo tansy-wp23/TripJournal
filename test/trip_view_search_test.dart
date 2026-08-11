@@ -51,17 +51,19 @@ void main() {
     expect(find.text('Rainy day at the museum'), findsNothing);
   });
 
-  testWidgets('a mood chip filters the timeline immediately, no debounce needed', (tester) async {
+  testWidgets('filter button opens a sheet and applies mood independently', (tester) async {
     await setUpScreen(tester);
 
-    await tester.tap(find.byKey(const Key('trip-view-search-toggle')));
+    await tester.tap(find.byKey(const Key('trip-view-filter-button')));
     await tester.pumpAndSettle();
 
     await tester.tap(find.byKey(const Key('mood-filter-tired')));
+    await tester.tap(find.byKey(const Key('apply-journal-filters')));
     await tester.pumpAndSettle();
 
     expect(find.text('Fushimi Inari hike'), findsOneWidget);
     expect(find.text('Arrival in Kyoto'), findsNothing);
+    expect(find.byKey(const Key('journal-filter-count-1')), findsOneWidget);
   });
 
   testWidgets('a query with no matches shows the "No matching entries" empty state', (
@@ -79,14 +81,19 @@ void main() {
     expect(find.text('No matching entries'), findsOneWidget);
   });
 
-  testWidgets('closing the search bar clears the filter and restores the full timeline', (
+  testWidgets('closing search clears only query and preserves mood filter', (
     tester,
   ) async {
     await setUpScreen(tester);
 
     await tester.tap(find.byKey(const Key('trip-view-search-toggle')));
     await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const Key('journal-search-field')), 'Fushimi');
+    await tester.pump(const Duration(milliseconds: 350));
+    await tester.tap(find.byKey(const Key('trip-view-filter-button')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('mood-filter-tired')));
+    await tester.tap(find.byKey(const Key('apply-journal-filters')));
     await tester.pumpAndSettle();
     expect(find.text('Arrival in Kyoto'), findsNothing);
 
@@ -94,7 +101,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('journal-search-field')), findsNothing);
-    expect(find.text('Arrival in Kyoto'), findsOneWidget);
+    expect(find.text('Arrival in Kyoto'), findsNothing);
     expect(find.text('Fushimi Inari hike'), findsOneWidget);
   });
 }

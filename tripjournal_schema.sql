@@ -33,6 +33,7 @@ create table public.trips (
   id             uuid primary key default gen_random_uuid(),
   user_id        uuid not null references auth.users(id) on delete cascade,
   title          text not null check (char_length(title) <= 100),
+  destination    text,
   cover_photo_url text,                              -- single cover image URL (Storage); nullable
   start_date     date not null,
   end_date       date not null,
@@ -248,6 +249,7 @@ $$;
 create or replace function public.restore_trip(
   p_trip_id uuid,
   p_title text,
+  p_destination text,
   p_cover_photo_url text,
   p_start_date date,
   p_end_date date,
@@ -296,6 +298,7 @@ begin
   update public.trips
   set
     title = p_title,
+    destination = p_destination,
     cover_photo_url = p_cover_photo_url,
     start_date = p_start_date,
     end_date = p_end_date,
@@ -309,9 +312,9 @@ end;
 $$;
 
 revoke execute on function public.move_trip_to_trash(uuid) from public, anon;
-revoke execute on function public.restore_trip(uuid, text, text, date, date, text) from public, anon;
+revoke execute on function public.restore_trip(uuid, text, text, text, date, date, text) from public, anon;
 grant execute on function public.move_trip_to_trash(uuid) to authenticated;
-grant execute on function public.restore_trip(uuid, text, text, date, date, text) to authenticated;
+grant execute on function public.restore_trip(uuid, text, text, text, date, date, text) to authenticated;
 
 
 -- ============================================================================
@@ -509,7 +512,7 @@ create trigger journal_entries_guard_purge_claim
   for each row execute function public.guard_claimed_journal_mutation();
 
 revoke update on table public.trips from authenticated;
-grant update (title, cover_photo_url, start_date, end_date, notes)
+grant update (title, destination, cover_photo_url, start_date, end_date, notes)
   on table public.trips to authenticated;
 
 drop policy "trips_insert_own" on public.trips;
@@ -583,6 +586,7 @@ $$;
 create or replace function public.restore_trip(
   p_trip_id uuid,
   p_title text,
+  p_destination text,
   p_cover_photo_url text,
   p_start_date date,
   p_end_date date,
@@ -623,6 +627,7 @@ begin
   end if;
   update public.trips
   set title = p_title,
+      destination = p_destination,
       cover_photo_url = p_cover_photo_url,
       start_date = p_start_date,
       end_date = p_end_date,
@@ -636,11 +641,11 @@ $$;
 revoke execute on function public.move_trip_to_trash(uuid)
   from public, anon, service_role;
 revoke execute on function public.restore_trip(
-  uuid, text, text, date, date, text
+  uuid, text, text, text, date, date, text
 ) from public, anon, service_role;
 grant execute on function public.move_trip_to_trash(uuid) to authenticated;
 grant execute on function public.restore_trip(
-  uuid, text, text, date, date, text
+  uuid, text, text, text, date, date, text
 ) to authenticated;
 
 create or replace function public.storage_trip_mutation_allowed(

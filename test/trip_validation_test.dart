@@ -3,6 +3,17 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:tripjournal/validation/trip_validation.dart';
 
 void main() {
+  group('validateTripDestination', () {
+    test('blank destination is rejected', () {
+      expect(validateTripDestination(null), 'Please enter a destination.');
+      expect(validateTripDestination('   '), 'Please enter a destination.');
+    });
+
+    test('a trimmed destination is accepted', () {
+      expect(validateTripDestination(' Penang, Malaysia '), isNull);
+    });
+  });
+
   group('validateTripTitle', () {
     test('empty title is rejected', () {
       expect(validateTripTitle(''), 'Please enter a trip title.');

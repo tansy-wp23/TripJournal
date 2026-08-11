@@ -67,6 +67,7 @@ class SupabaseTripRepository implements TripRepository {
       params: {
         'p_trip_id': trip.id,
         'p_title': trip.title,
+        'p_destination': trip.destination,
         'p_cover_photo_url': trip.coverPhotoPath,
         'p_start_date': row['start_date'],
         'p_end_date': row['end_date'],

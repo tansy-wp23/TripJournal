@@ -17,17 +17,25 @@ List<Trip> sortAndFilterTrips(
   List<Trip> trips, {
   required TripSortOption sort,
   required TripStatusFilter statusFilter,
+  String query = '',
   DateTime? now,
 }) {
   final today = now ?? DateTime.now();
-  final active = trips.where((t) => t.isActiveOn(today)).toList();
+  final normalizedQuery = query.trim().toLowerCase();
+  final searched = normalizedQuery.isEmpty
+      ? trips
+      : trips.where((trip) {
+          return trip.title.toLowerCase().contains(normalizedQuery) ||
+              (trip.destination?.toLowerCase().contains(normalizedQuery) ?? false);
+        }).toList();
+  final active = searched.where((t) => t.isActiveOn(today)).toList();
   final upcoming =
-      trips
+      searched
           .where((t) => !t.isActiveOn(today) && t.startDate.isAfter(today))
           .toList()
         ..sort((a, b) => a.startDate.compareTo(b.startDate));
   final past =
-      trips
+      searched
           .where((t) => !t.isActiveOn(today) && t.endDate.isBefore(today))
           .toList()
         ..sort((a, b) => b.endDate.compareTo(a.endDate));

@@ -114,6 +114,10 @@ void main() {
         find.byKey(const Key('trip-title-field')),
         'Create then trash',
       );
+      await tester.enterText(
+        find.byKey(const Key('trip-destination-field')),
+        'Test destination',
+      );
       await tester.tap(find.byKey(const Key('save-trip-button')));
       await tester.pumpAndSettle();
       expect(find.text('Create then trash'), findsWidgets);

@@ -36,6 +36,7 @@ class TripFormScreen extends ConsumerStatefulWidget {
 class _TripFormScreenState extends ConsumerState<TripFormScreen> {
   final _formKey = GlobalKey<FormState>();
   late final TextEditingController _titleController;
+  late final TextEditingController _destinationController;
   late final TextEditingController _notesController;
   late DateTime _startDate;
   late DateTime _endDate;
@@ -54,6 +55,7 @@ class _TripFormScreenState extends ConsumerState<TripFormScreen> {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     _titleController = TextEditingController(text: trip?.title ?? '');
+    _destinationController = TextEditingController(text: trip?.destination ?? '');
     _notesController = TextEditingController(text: trip?.notes ?? '');
     _startDate = trip == null
         ? today
@@ -71,6 +73,7 @@ class _TripFormScreenState extends ConsumerState<TripFormScreen> {
   @override
   void dispose() {
     _titleController.dispose();
+    _destinationController.dispose();
     _notesController.dispose();
     super.dispose();
   }
@@ -206,6 +209,7 @@ class _TripFormScreenState extends ConsumerState<TripFormScreen> {
       id: tripId,
       userId: userId,
       title: _titleController.text.trim(),
+      destination: _destinationController.text.trim(),
       coverPhotoPath: _isRestoring ? existing?.coverPhotoPath : _coverPhotoPath,
       startDate: _startDate,
       endDate: _endDate,
@@ -315,6 +319,16 @@ class _TripFormScreenState extends ConsumerState<TripFormScreen> {
               decoration: const InputDecoration(labelText: 'Title'),
               maxLength: kTripTitleMaxLength,
               validator: validateTripTitle,
+            ),
+            const SizedBox(height: 8),
+            TextFormField(
+              key: const Key('trip-destination-field'),
+              controller: _destinationController,
+              decoration: const InputDecoration(
+                labelText: 'Destination',
+                hintText: 'City, region, or country',
+              ),
+              validator: validateTripDestination,
             ),
             const SizedBox(height: 16),
             Row(

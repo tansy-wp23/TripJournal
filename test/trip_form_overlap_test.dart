@@ -27,6 +27,7 @@ void main() {
       await tester.pumpAndSettle();
 
       await tester.enterText(find.byKey(const Key('trip-title-field')), 'Conflicting Trip');
+      await tester.enterText(find.byKey(const Key('trip-destination-field')), 'Test destination');
       // Dates are left at their default (today) — already inside trip-001's
       // (Kyoto) active range, so this must be rejected without needing to
       // drive the native date picker.
