@@ -1038,3 +1038,684 @@ but did nothing when tapped — not "more organised" and not "user friendly".
 - `flutter test` — full suite (641 tests) passes; all pre-existing
   dashboard/user-list tests passed unmodified (widget keys preserved),
   confirming the redesign didn't silently change unrelated behavior.
+
+---
+
+## Phase 9 — Mock Repositories (Sprint 2) (complete)
+
+### What was built
+
+- **`MockIssueReportRepository`** (`lib/data/mock_issue_report_repository.dart`)
+  — in-memory list seeded with 4 sample `IssueReport`s spanning all three
+  `IssueReportStatus` values (`open` ×2, `inProgress` ×1, `resolved` ×1)
+  across two `page` values (`TripViewScreen`, `HomeScreen`), mirroring
+  `MockAdminUserStore`'s `daysAgo`-based seeding pattern. `submitReport`
+  appends a new `open` report with a monotonic-counter id (mirrors
+  `MockAdminAuditLogRepository.nextLogId()`'s pattern, renamed
+  `_nextReportId`). `getAllReports`/`getReportById` are plain reads,
+  newest-first for the list. `updateStatus` is a composition, per
+  Architecture Decision 8: mutates the report's `status`/`adminRemarks`/
+  `updatedAt`, then writes through to the shared
+  `MockAdminAuditLogRepository` with `targetType: issueReport`. Each of the
+  three target statuses maps 1:1 to one of the three issue-specific
+  `AdminAction` values added in Phase 8 (`open → issueReopen`, `inProgress
+  → issueMarkInProgress`, `resolved → issueMarkResolved`) — the mapping
+  only needs the *target* status, not the report's previous one, since
+  Phase 8 added those three actions in exact correspondence with the three
+  statuses. A `null` `remarks` argument **preserves** the report's existing
+  remarks rather than clearing them (not explicitly specified by the plan;
+  chosen because Sprint 2 Open Decision 6 makes remarks optional per call,
+  and clearing on omission would let an accidental blank submission erase
+  a previous admin's notes).
+- **`MockAdminAuditLogRepository`** — already updated for the generalized
+  `getHistoryForTarget`/`getAllEntries` shape in Phase 8; nothing further
+  needed here, per Phase 8's own "next phase" note.
+- **Locator** (`lib/data/admin_repository_locator.dart`) — added
+  `issueReportRepository`, wired to `MockIssueReportRepository` sharing the
+  same `MockAdminAuditLogRepository` instance `adminAccountActionsRepository`
+  already writes to, so a suspend/reactivate entry and an issue-status entry
+  both land in one place for Phase 13's global audit view.
+
+### Files touched (Phase 9)
+
+- `lib/data/mock_issue_report_repository.dart` (new)
+- `lib/data/admin_repository_locator.dart` (modified — added
+  `issueReportRepository`)
+- `test/mock_issue_report_repository_test.dart` (new, 10 tests — seed
+  spans all three statuses, newest-first ordering, status-filtered read,
+  `getReportById` hit/miss, `submitReport` appends an `open` report,
+  `updateStatus` updates fields + records the matching audit entry, a
+  `null` remarks argument preserves existing remarks, each target status
+  maps to its own `AdminAction`, unknown report id throws)
+
+### Verification
+
+- `flutter analyze` — no issues found.
+- `flutter test` — full suite (651 tests) passes, including the 10 new
+  Phase 9 tests; no regressions.
+
+### Definition of Done
+
+- [x] `MockIssueReportRepository` implemented and unit-testable
+- [x] `MockAdminAuditLogRepository`'s existing (Sprint 1) tests still pass
+      against the generalized shape (unchanged this phase — already true
+      since Phase 8)
+- [x] Locator wires the new mock; still the one place mock vs. real is
+      decided
+
+### Next phase (Phase 10) should start with
+
+`ReportIssueButton` (`lib/features/admin/widgets/`) — description field +
+optional `image_picker` attachment, per Sprint 2 Open Decision 5 — placed
+on a small, representative set of non-admin screens (e.g. `HomeScreen`,
+`TripViewScreen`; cross-module touches, flag them here same as Sprint 1's
+`login_screen.dart` edit). Then `AdminIssueReportListScreen` +
+`IssueReportManagementController` (status badges, empty state, mirroring
+`AdminUserListScreen`'s precedent) with an entry point on
+`AdminDashboardScreen`'s app bar.
+
+---
+
+## Phase 10 — PB-06 (added) + PB-07: Submit + View Issue Reports (mock) (complete)
+
+### What was built
+
+- **`ReportIssueButton`** (`lib/features/admin/widgets/report_issue_button.dart`)
+  — a plain `StatelessWidget` (not `Consumer*`) that opens a modal bottom
+  sheet form: a required description field + an optional photo attachment.
+  Photo picking mirrors `ProfileEditScreen._pickAvatar`'s camera-vs-gallery
+  bottom sheet exactly, per Sprint 2 Open Decision 5 (an existing photo via
+  `image_picker`, not literal screen-capture). The picked file's local
+  device path is stored directly as `screenshotUrl` — mirrors
+  `CreateEditEntryScreen`'s journal-photo handling; unlike
+  `ProfileAvatarStorage`/`TripCoverStorage`, there is no upload step for
+  issue-report photos yet in mock mode. Submits via
+  `issueReportRepository.submitReport(...)` called directly from the
+  form's own local state (no dedicated controller for the write) —
+  mirrors `AdminUserDetailScreen`'s Suspend/Reactivate buttons, which call
+  `adminAccountActionsRepository` directly rather than through a
+  `ChangeNotifier`, since Phase 4/5 already established that precedent for
+  a one-shot write action backed by its own loading/error local state.
+  Resolves the current user id the same way the screens it's placed on
+  already do: `(userIdProvider ?? currentUserIdProvider).requireUserId()`
+  (`lib/data/trip_repository_locator.dart`'s shared instance, not
+  `AuthController.currentUserId` — reusing the identity source the host
+  screens already resolve with, rather than introducing a second one that
+  could diverge in mock mode). `userIdProvider` is an optional constructor
+  override, mirroring `HomeScreen`/`TripViewScreen`'s own
+  `CurrentUserIdProvider?` parameter, for the same test-injection reason.
+- **Cross-module placements** (flagged per the plan's coordination
+  convention, same as Sprint 1's `login_screen.dart` edit): `ReportIssueButton`
+  added to `HomeScreen`'s app bar (`page: 'HomeScreen'`) and
+  `TripViewScreen`'s app bar (`page: 'TripViewScreen'`) — 2 of the "small,
+  representative set" the plan calls for, enough to prove the flow works
+  end-to-end without instrumenting every screen.
+- **`IssueReportManagementController`** (`lib/features/admin/controller/issue_report_management_controller.dart`)
+  — loads via `IssueReportRepository.getAllReports`, exposing
+  loading/error/data, plus an optional `IssueReportStatus?` filter applied
+  server-side (the repository call itself takes `statusFilter`, unlike
+  `AdminUserManagementController`'s client-side filter layered on top of a
+  text search — PB-07 never asked for a text search over reports).
+- **`AdminIssueReportListScreen`** (`lib/features/admin/screens/admin_issue_report_list_screen.dart`)
+  — a row of `ChoiceChip`s (All + one per `IssueReportStatus`) instead of
+  `AdminUserListScreen`'s dismissible single-filter `Chip`, since a report
+  list has exactly one filter dimension with mutually exclusive values
+  (choosing one always replaces the last), rather than several independent
+  filters that can combine. Each tile shows a status icon/color, the
+  report's `page`, and a relative timestamp (`formatRelativeTime`, reused
+  from `admin_format_utils.dart`). Empty state
+  (`Key('admin-issue-list-empty-state')`) distinguishes "no reports at
+  all" from "no reports match this status", matching
+  `AdminUserListScreen`'s precedent. Loading/error states mirror
+  `AdminUserListScreen`'s spinner + error-with-retry pattern exactly.
+  Added `issueReportStatusLabel` to `admin_format_utils.dart` (shared
+  between this screen and Phase 11's future detail screen, so the two
+  can't drift on wording).
+- **Entry point**: `AdminDashboardScreen`'s app bar gained an "Issue
+  reports" action (`Key('admin-issue-reports')`), next to "Manage users",
+  mirroring that action's precedent exactly.
+- **`MockIssueReportRepository`/`admin_repository_locator.dart`**:
+  unchanged this phase — Phase 9 already wired them; Phase 10 only
+  consumes them.
+
+### Deviation from the plan
+
+Task 3 says the list screen should have "tap to open detail (Phase 11)".
+`IssueReportDetailScreen` doesn't exist yet — Phase 11 is the next phase,
+not this one. Rather than either (a) wiring a `Navigator.push` to a
+screen that doesn't exist (compile error) or (b) building a throwaway
+placeholder detail screen now that Phase 11 would need to replace, each
+`_ReportTile` has a `TODO(admin-module, phase-11)` marking exactly where
+the push goes, and no `onTap` at all (so the tile shows no tap ripple,
+rather than a tap that silently does nothing). Same reasoning Phase 4
+already applied to the not-yet-built Suspend/Reactivate buttons — see
+Phase 4's "Deviation from the plan" above — except here there's no open
+product decision blocking Phase 11 (the detail screen's fields are fully
+specified by Phase 8/the plan already); it's purely phase sequencing, not
+an undecided design question.
+
+### Files touched (Phase 10)
+
+- `lib/features/admin/widgets/report_issue_button.dart` (new)
+- `lib/features/admin/controller/issue_report_management_controller.dart` (new)
+- `lib/features/admin/screens/admin_issue_report_list_screen.dart` (new)
+- `lib/features/admin/admin_format_utils.dart` (modified — added
+  `issueReportStatusLabel`)
+- `lib/features/admin/screens/admin_dashboard_screen.dart` (modified —
+  "Issue reports" app bar action)
+- `lib/features/home/home_screen.dart` (modified, **cross-module** —
+  `ReportIssueButton` in the app bar)
+- `lib/features/trip/trip_view_screen.dart` (modified, **cross-module** —
+  `ReportIssueButton` in the app bar)
+- `test/issue_report_management_controller_test.dart` (new, 7 tests)
+- `test/admin_issue_report_list_screen_test.dart` (new, 6 tests — seeded
+  reports render, status-chip filtering narrows and restores, empty state
+  for zero reports, filter-specific empty state, failing-repository retry)
+- `test/report_issue_button_test.dart` (new, 5 tests — opens the form,
+  empty description blocked, cancel submits nothing, a filled-in
+  description submits and is visible via the repository, an
+  unauthenticated `userIdProvider` blocks submission with a visible error)
+- `test/admin_dashboard_screen_test.dart` (modified — 1 new test: tapping
+  "Issue reports" opens `AdminIssueReportListScreen`)
+
+### Verification
+
+- `flutter analyze` — no issues found (the one `TODO` lint on `_ReportTile`
+  is informational, not a warning/error).
+- `flutter test` — full suite (670 tests) passes, including the 19 new
+  Phase 10 tests; no regressions.
+
+### Definition of Done
+
+- [x] Submitting a report from a traveler-facing screen creates an
+      `IssueReport` an admin can see (verified both directly against the
+      repository in `report_issue_button_test.dart` and, structurally, by
+      `AdminIssueReportListScreen` reading from the same repository)
+- [x] The list shows status per report
+- [x] Empty state has visible UI, not a blank list
+
+### Next phase (Phase 11) should start with
+
+`IssueReportDetailScreen` (`lib/features/admin/screens/`) — full report
+view (page/module, description, attached photo if any, submitting user's
+`displayName`/`email` via `AdminUserDirectoryRepository.getUserById`,
+submission timestamp), wired up as the `_ReportTile.onTap` this phase left
+as a `TODO`. An unknown/deleted report id should show an error state with
+retry, mirroring `AdminUserDetailScreen`'s precedent.
+
+---
+
+## Phase 11 + Phase 12 — PB-08: View Issue Details + PB-09: Update Issue Status (mock) (complete)
+
+Built together in one session (team decision, 2026-08-12) rather than
+sequentially — the team asked mid-Phase-10 how status updates should work
+("add a resolve button, or edit the database directly?"); the answer
+(status-change buttons calling the existing composed `updateStatus`, never
+manual DB edits) meant `IssueReportDetailScreen` and its status control
+were designed as one screen from the start, so building Phase 11's read
+view and Phase 12's write control as two separate passes would have meant
+reopening the same file immediately after closing it. The plan's phase
+split (read screen first, write control second) still describes the
+underlying task breakdown accurately — this just collapses the *build*
+step, not the design.
+
+### What was built
+
+- **`IssueReportDetailController`** (`lib/features/admin/controller/issue_report_detail_controller.dart`)
+  — loads one `IssueReport` by id, the submitter's `Profile` (via
+  `AdminUserDirectoryRepository.getUserById` — reusing Sprint 1's lookup
+  rather than duplicating one, per the plan's Phase 11 task 1), and status
+  history (`AdminAuditLog`, `targetType: issueReport`). Read-only, same
+  split as `AdminUserDetailController`/`AdminUserDetailScreen`: the
+  controller loads, the screen calls `issueReportRepository.updateStatus`
+  directly for the write (PB-09) and then calls `load` again to refresh —
+  mirrors how Suspend/Reactivate work on `AdminUserDetailScreen`, not a
+  second controller-level write path. Deliberately **not** a global
+  `ChangeNotifierProvider`, same reasoning as `AdminUserDetailController`
+  — per-report, constructed fresh by the screen.
+- **`IssueReportDetailScreen`** (`lib/features/admin/screens/issue_report_detail_screen.dart`)
+  — status chip + page, description, an attached photo via `PhotoThumbnail`
+  (reused from the Journal module — same local-file-path rendering
+  `CreateEditEntryScreen`'s photos already use, cross-module reuse in the
+  same spirit as Sprint 1 reusing `stat_tile.dart`) when `screenshotUrl` is
+  set, submitter's `displayName`/`email` (or an explicit "unknown user"
+  message if the submitting account no longer resolves — a distinct case
+  from the report itself failing to load), submission timestamp. Loading/
+  error+retry mirrors `AdminUserDetailScreen` exactly
+  (`Key('admin-issue-detail-retry')`/`Key('admin-issue-detail-content')`).
+  **Status control** (`_StatusControl`, answering the team's question):
+  three explicit buttons (Open/In Progress/Resolved), not a single
+  "Resolve" button — an admin needs to walk a report *backward* too (e.g.
+  reopen one mistakenly marked resolved), and `AdminAction` already models
+  all three transitions, not just a forward-only resolve. The button
+  matching the report's *current* status renders disabled
+  (`FilledButton`, no `onPressed`) rather than hidden, so all three options
+  stay visible; the other two are tappable `OutlinedButton`s
+  (`Key('admin-issue-set-status-<name>')`). A persistent "Admin remarks"
+  text field (optional, per Sprint 2 Open Decision 6) sits above the
+  buttons — its current text is sent with whichever status button is
+  tapped, seeded once from `report.adminRemarks` on first load only (not
+  re-synced on every reload, so a just-submitted value isn't clobbered).
+  Tapping a button calls `issueReportRepository.updateStatus(...)` →
+  `_controller.load(reportId)` → confirmation snackbar, exactly mirroring
+  Sprint 1's suspend/reactivate UX, per the plan's task 2. Defense-in-depth
+  repeats the "already this status" check in `_updateStatus` even though
+  the matching button is already disabled — same pattern Phase 5 used for
+  suspend/reactivate.
+- **Shared audit-tile formatting extracted**: `adminActionLabel`/
+  `adminActionIcon` moved from `AdminUserDetailScreen`'s private
+  `_AuditLogTile` switch into `admin_format_utils.dart` (pure refactor, no
+  behavior change — `admin_user_detail_screen_test.dart` still passes
+  unmodified) so this screen's own status-history tiles don't duplicate
+  the switch. `admin_format_utils.dart` gained a `package:flutter/material.dart`
+  import for `IconData`/`Icons` as a result — still a pure-Dart-value
+  utils file, just one whose values now include Flutter icon constants.
+- **`AdminIssueReportListScreen`**: the Phase 10 `TODO` closed —
+  `_ReportTile.onTap` now pushes `IssueReportDetailScreen(reportId: ...)`.
+
+### Files touched (Phase 11 + 12)
+
+- `lib/features/admin/controller/issue_report_detail_controller.dart` (new)
+- `lib/features/admin/screens/issue_report_detail_screen.dart` (new)
+- `lib/features/admin/admin_format_utils.dart` (modified — added
+  `adminActionLabel`/`adminActionIcon`)
+- `lib/features/admin/screens/admin_user_detail_screen.dart` (modified —
+  `_AuditLogTile` now calls the shared helpers instead of its own switch)
+- `lib/features/admin/screens/admin_issue_report_list_screen.dart`
+  (modified — `_ReportTile.onTap` wired to `IssueReportDetailScreen`)
+- `test/issue_report_detail_controller_test.dart` (new, 9 tests — known/
+  unknown report id, submitter lookup found/unresolvable, status history
+  scoped to that report and to `targetType: issueReport` specifically,
+  `load()` reflects a status change on refresh)
+- `test/issue_report_detail_screen_test.dart` (new, 10 tests — report
+  fields render, unknown-submitter message, photo thumbnail shown/hidden,
+  empty and populated status-history states, unknown report id shows
+  error+retry, the current-status button is disabled, selecting a new
+  status updates/records/confirms, reopening a resolved report records
+  `issueReopen`)
+- `test/admin_issue_report_list_screen_test.dart` (modified — 1 new test:
+  tapping a report opens `IssueReportDetailScreen`)
+
+### Verification
+
+- `flutter analyze` — no issues found.
+- `flutter test` — full suite (690 tests) passes, including the 20 new
+  tests from this combined phase; no regressions, and
+  `admin_user_detail_screen_test.dart`'s existing tests pass unmodified
+  against the refactored `_AuditLogTile`.
+
+### Definition of Done
+
+- [x] Tapping a report in Phase 10's list opens this screen with every
+      field populated
+- [x] An unknown/deleted report id shows an error state with retry, not a
+      crash
+- [x] Status change persists and is reflected immediately in the detail
+      view and Phase 10's list (same shared `issueReportRepository`
+      instance backs both)
+- [x] An audit entry is recorded and independently verifiable via
+      `AdminAuditLogRepository`
+
+### Next phase (Phase 13) should start with
+
+`AuditLogScreen` — a **global** view (every admin, every target type),
+distinct from this phase's per-report status-history section, using
+`AdminAuditLogRepository.getAllEntries({filters})` (already defined since
+Phase 8). Filtering by target type, action, and date range at minimum.
+Entry point on `AdminDashboardScreen`'s app bar, alongside "Manage users"
+and "Issue reports".
+
+---
+
+## Post-Phase-12 addition — leaving `Resolved` now requires a confirmed remark (complete)
+
+### What prompted this
+
+Team discussion (2026-08-12) proposed requiring a remark specifically for
+**Resolved → In Progress**. Considered and generalized before building:
+singling out that one target status would have left **Resolved → Open**
+(arguably the bigger "undo" — a full reopen, not a partial one) still a
+silent one-tap action with no explanation, which is the more inconsistent
+outcome. Rule built instead: **any transition that leaves `Resolved`**
+(to either `open` or `inProgress`) requires a confirmed remark. Every other
+transition (the routine `Open → In Progress → Resolved` forward flow, plus
+Sprint 2 Open Decision 6's "remarks are optional" default) is unchanged.
+This mirrors Sprint 1's `SuspendConfirmationDialog` precedent — undoing a
+completed decision gets the same accountability bar as suspending an
+account — rather than Sprint 2's general "issue remarks don't carry that
+weight" default, which still holds everywhere else.
+
+### What was built
+
+- **`showLeavingResolvedRemarkDialog`** (`lib/features/admin/widgets/leaving_resolved_remark_dialog.dart`)
+  — `Future<String?> showLeavingResolvedRemarkDialog(context, {required
+  targetStatusLabel, initialRemarks = ''})`, structurally mirroring
+  `showSuspendConfirmationDialog`: a required text field, confirm button
+  disabled until non-empty, returns the trimmed remark on confirm or `null`
+  on cancel. Pre-fills from whatever's already typed in
+  `IssueReportDetailScreen`'s persistent remarks field, so an admin who
+  already explained themselves there isn't forced to retype it — but a
+  blank field still won't confirm.
+- **`IssueReportDetailScreen._updateStatus`** — when `report.status ==
+  IssueReportStatus.resolved` and the target status differs, awaits the
+  dialog before calling `updateStatus`; a `null` result (cancelled) returns
+  early with no repository call and no `_updatingStatus` spinner shown (the
+  wait is on a user decision, not a network call). A confirmed remark both
+  becomes the write's `remarks` value and is written back into the
+  persistent field, so the two stay in sync. Every other transition is
+  untouched — same optional-remarks behavior as before this addition.
+
+### Files touched
+
+- `lib/features/admin/widgets/leaving_resolved_remark_dialog.dart` (new)
+- `lib/features/admin/screens/issue_report_detail_screen.dart` (modified —
+  `_updateStatus` branches on `report.status == resolved`)
+- `test/leaving_resolved_remark_dialog_test.dart` (new, 5 tests — confirm
+  disabled until non-blank, whitespace-only doesn't enable it, cancel
+  resolves to `null`, confirm resolves to the trimmed remark, pre-fill from
+  `initialRemarks`)
+- `test/issue_report_detail_screen_test.dart` (modified — the existing
+  "reopening a resolved report" test now drives the dialog instead of
+  expecting an immediate status change; added 3 tests: cancelling leaves
+  the report status unchanged, Resolved → In Progress also requires the
+  dialog, and forward transitions still show no dialog while a confirmed
+  remark carries forward to pre-fill the next leaving-`Resolved` dialog)
+
+### Verification
+
+- `flutter analyze` — no issues found.
+- `flutter test` — full suite (698 tests) passes, including the 8 new/
+  modified tests from this addition; no regressions.
+
+---
+
+## Phase 13 — PB-10 (Sprint 2): Monitor Audit Log (mock) (complete)
+
+### What was built
+
+- **`AuditLogController`** (`lib/features/admin/controller/audit_log_controller.dart`,
+  `ChangeNotifier`, global provider) — calls
+  `AdminAuditLogRepository.getAllEntries({filters})` (defined since Phase 8,
+  never called by anything until now), exposing loading/error/data plus
+  four independent filters: `targetTypeFilter`, `actionFilter`, and a
+  `startDate`/`endDate` window. Mirrors `IssueReportManagementController`'s
+  plain manual loading/error convention. `setTargetTypeFilter` also drops
+  the current action filter if it no longer applies to the new target type
+  (e.g. switching to "User" while "Marked Resolved" was selected) — a
+  combination that could never match anything otherwise silently returning
+  zero results instead of surfacing that the two filters conflict.
+- **`actionsForTargetType`** (same file) — which `AdminAction` values are
+  meaningful for a given target-type filter (`user` → suspend/reactivate;
+  `issueReport` → the three issue actions; `null` → all five). Shared
+  between the controller (to drop a stale action filter) and the screen (to
+  populate the action dropdown's choices) so the two can't drift.
+- **`AuditLogScreen`** (`lib/features/admin/screens/audit_log_screen.dart`)
+  — the **global** view distinct from `AdminUserDetailScreen`'s and
+  `IssueReportDetailScreen`'s per-target "Status history" sections (both
+  still backed by `getHistoryForTarget`, unchanged). Filter row: target-type
+  `ChoiceChip`s (All/User/Issue Report, mirroring
+  `AdminIssueReportListScreen`'s status chips), an action `DropdownButtonFormField`
+  scoped to the current target-type filter via `actionsForTargetType`, and a
+  date-range button opening `showDateRangePicker` (plain `DateTime`s in the
+  controller/repository layer per Phase 8's own note; the picker is the only
+  place this screen touches `DateTimeRange`). An app-bar "Clear filters"
+  icon appears only when `hasActiveFilter` is true. Each entry renders via
+  `adminActionIcon`/`adminActionLabel` (reused from `admin_format_utils.dart`,
+  unchanged since Phase 11) plus a new `adminAuditTargetTypeLabel` helper —
+  the first screen that ever shows entries spanning more than one target
+  type at once, so it's the first to need that label. Loading/error+retry/
+  empty-state pattern mirrors `AdminIssueReportListScreen` exactly, with a
+  filter-aware empty message ("match these filters" vs. "have been recorded
+  yet").
+- **Entry point**: `AdminDashboardScreen`'s app bar gained an "Audit log"
+  action (`Key('admin-audit-log')`), next to "Manage users" and "Issue
+  reports", mirroring those actions' precedent exactly.
+
+### Deliberately not built
+
+- **Resolving `adminUserId`/`targetId` to a display name.** Every row shows
+  the raw id (`by admin admin-001`, `User user-101`) rather than looking up
+  and showing `displayName`. Unlike `IssueReportDetailScreen`'s single
+  submitter lookup, this list can show many different admins and targets
+  across two different repositories per page — batch-resolving all of them
+  would add real complexity (multiple repository round-trips, a name cache)
+  for a mock-data screen with one seeded admin account. Natural follow-up
+  once Phase 14's real backend makes a joined query the natural way to get
+  this rather than N client-side lookups.
+- **Pagination / infinite scroll.** `getAllEntries` returns everything
+  matching the filters in one call; fine for mock data volumes, would need
+  revisiting against a real table with real admin activity history.
+
+### Files touched (Phase 13)
+
+- `lib/features/admin/controller/audit_log_controller.dart` (new)
+- `lib/features/admin/screens/audit_log_screen.dart` (new)
+- `lib/features/admin/admin_format_utils.dart` (modified — added
+  `adminAuditTargetTypeLabel`)
+- `lib/features/admin/screens/admin_dashboard_screen.dart` (modified —
+  "Audit log" app bar action)
+- `test/audit_log_controller_test.dart` (new, 13 tests — initial state,
+  load populates newest-first, each filter narrows independently, switching
+  target type drops a now-irrelevant action filter, `clearFilters` resets
+  everything, loading flag transitions, a failing repository sets error,
+  retry after failure succeeds, `actionsForTargetType`'s three cases)
+- `test/audit_log_screen_test.dart` (new, 8 tests — entries from both
+  target types render, a recorded reason renders, target-type chip
+  narrows/restores, clear-filters action appears only when a filter is
+  active and resets it, empty states for zero entries and for a filter
+  matching nobody, failing-repository retry)
+- `test/admin_dashboard_screen_test.dart` (modified — 1 new test: tapping
+  "Audit log" opens `AuditLogScreen`)
+
+### Verification
+
+- `flutter analyze` — no issues found.
+- `flutter test` — full suite (720 tests) passes, including the 22 new
+  tests from this phase; no regressions.
+
+### Definition of Done
+
+- [x] Every audit entry from both Sprint 1 (suspend/reactivate) and Sprint
+      2 (issue status changes) appears in one place (verified — entries of
+      both target types render together in `audit_log_screen_test.dart`)
+- [x] At least one filter dimension demonstrably narrows the results
+      (verified for all three dimensions — target type, action, and date
+      range — in `audit_log_controller_test.dart`; target type additionally
+      covered end-to-end through the screen)
+
+**Sprint 2 complete.** PB-06 through PB-10 (Sprint 2's reused id) all work
+end-to-end against mocks. Phase 14 (real Supabase backend for Sprint 2) is
+out of scope here — see `ADMIN_MODULE_IMPLEMENTATION_PLAN.md`'s Phase 14
+outline (SQL migration for `issue_reports` and the generalized
+`admin_audit_log` shape, a storage bucket for attachments, RLS, and
+swapping `admin_repository_locator.dart` from `Mock*` to `Supabase*`).
+
+---
+
+## Post-Phase-13 improvement — audit log entries navigate to their target (complete)
+
+### What prompted this
+
+A post-Phase-13 review pass (2026-08-12) looked for improvements beyond the
+plan's checklist. Highest value-for-effort finding: `AuditLogScreen`'s
+entries showed `targetType`/`targetId` as inert text — an admin spotting
+something worth following up on (e.g. "Suspended user-101 — 3 weeks ago")
+had no way to get from that entry to the actual user or report without
+leaving the screen and searching by name/status elsewhere, which the entry
+itself doesn't even show.
+
+### What was built
+
+- **`_AuditLogEntryTile`** (`audit_log_screen.dart`) is now tappable —
+  `entry.targetType` selects `AdminUserDetailScreen(userId: entry.targetId)`
+  or `IssueReportDetailScreen(reportId: entry.targetId)`, the same two
+  screens `AdminUserListScreen`/`AdminIssueReportListScreen` already open.
+  No new screen was needed. Both destinations already handle an
+  unresolvable id with an error+retry state (Phase 4/Phase 11), so routing
+  a possibly-stale historical entry into them required no new handling —
+  confirmed by a dedicated test rather than assumed.
+- A `Key('admin-audit-entry-<logId>')` was added to each tile (previously
+  unkeyed) so individual entries are independently addressable in tests,
+  and a trailing chevron signals the new tap affordance, mirroring
+  `_DashboardStatCard`'s pattern for the same purpose.
+
+### Files touched
+
+- `lib/features/admin/screens/audit_log_screen.dart` (modified —
+  `_AuditLogEntryTile` gained `_openTarget`/`onTap`/key/chevron)
+- `test/audit_log_screen_test.dart` (modified — 3 new tests: a user-target
+  entry opens `AdminUserDetailScreen` for that user, an issue-report-target
+  entry opens `IssueReportDetailScreen`, and an entry whose target no
+  longer resolves shows that destination screen's own error state rather
+  than crashing)
+
+### Verification
+
+- `flutter analyze` — no issues found.
+- `flutter test` — full suite (723 tests) passes, including the 3 new
+  tests; no regressions.
+
+---
+
+## Post-Phase-13 improvement — raw ids resolved to display names; access attempts made actionable (complete)
+
+### What prompted this
+
+Continuing the post-Phase-13 review: two more findings from that pass.
+Raw ids (`admin-001`, `user-101`) shown as-is on `AuditLogScreen` aren't
+meaningful to an admin scanning history; and the dashboard's "Recent
+unauthorized admin sign-in attempts" section (post-Phase-3 addition) was
+still purely passive — no path from "I see this suspicious account" to
+"I'll review or suspend it," even though the team's original stated intent
+for building it was exactly that review-then-decide loop.
+
+### What was built
+
+**Name resolution (`AuditLogController`)** — now takes two more
+dependencies, `AdminUserDirectoryRepository` and `IssueReportRepository`,
+alongside `AdminAuditLogRepository`. After each `load()`, `_resolveLabels()`
+collects the *unique* ids across the loaded entries (every `adminUserId`,
+every `user`-type `targetId`, every `issueReport`-type `targetId`) and
+batch-resolves each once via `getUserById`/`getReportById`, caching results
+in `_userCache`/`_reportCache` (keyed by id; a cached `null` means "looked
+up, unresolvable" — distinct from "not yet looked up" — so a since-deleted
+account/report isn't re-fetched on every subsequent load). Exposes
+`adminLabel(adminUserId)` and `targetLabel(entry)`, both falling back to the
+raw id if the lookup came back null — same "degrade, don't blank out"
+principle as the tap-through improvement. A report has no "display name" the
+way a `Profile` does, so `targetLabel` for an `issueReport` target shows the
+report's `description` instead. The resolution step is wrapped in its own
+try/catch so a naming-lookup failure can't block the audit log's own
+entries from displaying — verified by a dedicated test. `AuditLogScreen`'s
+subtitle line now reads e.g. `"User: Alice Tan · by Admin Account"` instead
+of `"User user-101 · by admin admin-001"`.
+
+**Actionable access attempts (`AdminDashboardScreen._AccessAttemptTile`)**
+— `AdminAccessAttemptLog.attemptedUserId` is always the id Auth returned
+for the signed-in account (sign-in itself succeeded; only the role check
+failed), but a `Profile` only exists for it when the rejection reason isn't
+`noProfileFound`. The tile is now tappable **only** when
+`reason != noProfileFound` — for `notAnAdmin`/`adminAccountNotActive` it
+navigates to `AdminUserDetailScreen(userId: attempt.attemptedUserId)`,
+closing the loop back to Suspend/the account's own status. For
+`noProfileFound` there's genuinely nothing to navigate to (no chevron, no
+`onTap`) — a known-in-advance dead end, not left to the destination
+screen's error state the way the audit log's since-deleted targets are,
+since here it's knowable before the tap rather than something that could
+go stale later. The section's caption text was updated to describe this
+("Tap an entry with a matching account to review it").
+
+### Files touched
+
+- `lib/features/admin/controller/audit_log_controller.dart` (modified —
+  two new constructor dependencies, `_userCache`/`_reportCache`,
+  `adminLabel`/`targetLabel`, `_resolveLabels`)
+- `lib/features/admin/screens/audit_log_screen.dart` (modified —
+  `_AuditLogEntryTile` takes the controller and uses the resolved labels)
+- `lib/features/admin/screens/admin_dashboard_screen.dart` (modified —
+  `_AccessAttemptTile` gains conditional `onTap`/key/chevron; caption text
+  updated)
+- `test/audit_log_controller_test.dart` (modified — a `buildController`
+  helper wires the two new mock dependencies for every existing test; 6 new
+  tests under "label resolution": admin/target resolve to real seeded
+  names, both fall back to the raw id when unresolvable, and a failing
+  naming lookup doesn't block entries from loading)
+- `test/audit_log_screen_test.dart` (modified — same `buildController`
+  helper; existing tests otherwise unchanged since none asserted on the
+  old raw-id subtitle text)
+- `test/admin_dashboard_screen_test.dart` (modified — 2 new tests: a
+  matching-profile attempt navigates to `AdminUserDetailScreen`; a
+  `noProfileFound` attempt's tile has no `onTap`/`trailing`)
+
+### Verification
+
+- `flutter analyze` — no issues found.
+- `flutter test` — full suite (731 tests) passes, including the 8 new
+  tests from this addition; no regressions.
+
+---
+
+## Post-Phase-13 improvement — ReportIssueButton discard guard + autofocus (complete)
+
+### What prompted this
+
+A review pass on `ReportIssueButton` specifically (2026-08-12): it had no
+guard against silently losing a typed-out report. `CreateEditEntryScreen`
+already has a "Discard changes?" prompt for exactly this situation
+(`IMPLEMENTATION_PLAN_UX_POLISH.md` §6) — this form had no equivalent,
+despite the same kind of loss being possible (a filled-out bug report,
+gone on one accidental tap).
+
+### What was built
+
+- **`showModalBottomSheet`'s default silent-dismiss paths were disabled**
+  (`isDismissible: false`, `enableDrag: false`) — both scrim-tap and
+  drag-to-dismiss call `Navigator.pop` directly, which bypasses `PopScope`
+  entirely (it only intercepts *system*-initiated pop attempts, not
+  explicit calls app or framework code makes) — so leaving them enabled
+  would have meant the new guard could still be silently routed around.
+- **`_hasContent`** (`_descriptionController.text.trim().isNotEmpty ||
+  _pickedPhoto != null`) mirrors `CreateEditEntryScreen`'s `_dirty` flag —
+  gates the prompt so a pristine, untouched form still closes silently, no
+  nagging.
+- **`PopScope(canPop: !_hasContent, onPopInvokedWithResult:
+  _handleBackAttempt)`** wraps the form, exactly mirroring
+  `CreateEditEntryScreen`'s own `PopScope` usage — catches the system back
+  gesture.
+- **The Cancel button** now routes through `_handleCancelTap` (confirm only
+  if `_hasContent`) instead of calling `Navigator.pop` directly — it's an
+  explicit call too, so without this change it would have silently bypassed
+  the guard the same way scrim-tap/drag would have.
+- **`_confirmDiscard()`** — "Discard this report?" / "Your description and
+  photo will be lost.", "Keep editing" vs. "Discard", directly mirroring
+  `CreateEditEntryScreen._confirmDiscard`'s shape and copy style.
+- **Description field gained `onChanged: (_) => setState(() {})`** — needed
+  only so `_hasContent`'s derived `PopScope.canPop` value stays current as
+  the user types (the field's own displayed text doesn't need `setState`,
+  `TextEditingController` already handles that) — without it, `canPop`
+  would freeze at whatever it was on the sheet's first build.
+- **`autofocus: true`** added to the description field, matching
+  `SuspendConfirmationDialog`'s reason field precedent — the keyboard now
+  opens immediately when the sheet appears instead of requiring an extra
+  tap.
+- A successful **Submit** still closes without any prompt regardless of
+  `_hasContent` — its `Navigator.pop(context)` call is explicit, same as
+  Cancel's used to be, so it was never subject to `PopScope.canPop` in the
+  first place; no change was needed there.
+
+### Files touched
+
+- `lib/features/admin/widgets/report_issue_button.dart` (modified)
+- `test/report_issue_button_test.dart` (modified — the old single "cancel
+  closes the form" test split into 5: pristine-cancel closes silently,
+  dirty-cancel prompts, "Keep editing" preserves the typed text, "Discard"
+  closes without submitting, and the system back gesture — driven via
+  `Navigator.maybePop` rather than `tester.pageBack()`, since a bottom
+  sheet has no app-bar back button for that helper to find — triggers the
+  same prompt)
+
+### Verification
+
+- `flutter analyze` — no issues found.
+- `flutter test` — full suite (735 tests) passes, including the 4 net-new
+  tests from this addition; no regressions.

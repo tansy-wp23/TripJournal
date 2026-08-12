@@ -7,7 +7,10 @@ import '../../journal/widgets/format_utils.dart';
 import '../admin_format_utils.dart';
 import '../controller/admin_auth_controller.dart';
 import '../controller/admin_dashboard_controller.dart';
+import 'admin_issue_report_list_screen.dart';
+import 'admin_user_detail_screen.dart';
 import 'admin_user_list_screen.dart';
+import 'audit_log_screen.dart';
 
 /// PB-02: View Admin Dashboard. Loads `AdminDashboardStats` on first build
 /// and renders it as a grid of tappable cards, organized into "Overview"
@@ -78,6 +81,22 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
             tooltip: 'Manage users',
             icon: const Icon(Icons.manage_accounts),
             onPressed: () => _openUserList(context, title: 'Manage Users'),
+          ),
+          IconButton(
+            key: const Key('admin-issue-reports'),
+            tooltip: 'Issue reports',
+            icon: const Icon(Icons.report_problem_outlined),
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const AdminIssueReportListScreen()),
+            ),
+          ),
+          IconButton(
+            key: const Key('admin-audit-log'),
+            tooltip: 'Audit log',
+            icon: const Icon(Icons.history),
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const AuditLogScreen()),
+            ),
           ),
           IconButton(
             key: const Key('admin-logout'),
@@ -239,7 +258,8 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
         const SizedBox(height: 4),
         Text(
           'Non-admin accounts that tried to sign in through the admin '
-          'portal. Recorded for review — no automatic action is taken.',
+          'portal. Tap an entry with a matching account to review it — no '
+          'automatic action is taken.',
           style: Theme.of(context).textTheme.bodySmall,
         ),
         const SizedBox(height: 12),
@@ -328,7 +348,20 @@ class _AccessAttemptTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // `attemptedUserId` is always the id Auth returned for the signed-in
+    // account (the sign-in itself succeeded — only the role check failed),
+    // but a `Profile` only exists for it when the rejection reason wasn't
+    // `noProfileFound`. Only make the tile tappable when there's actually
+    // something to navigate to — routing a `noProfileFound` attempt into
+    // `AdminUserDetailScreen` would always land on that screen's "unknown
+    // user" error state, a dead end known in advance rather than one that
+    // depends on data going stale later (contrast the audit log's tap-
+    // through, which *does* let the destination screen's error state
+    // handle a since-deleted target).
+    final canReview = attempt.reason != AdminAccessAttemptReason.noProfileFound;
+
     return ListTile(
+      key: Key('admin-access-attempt-${attempt.logId}'),
       leading: Icon(
         Icons.warning_amber,
         color: Theme.of(context).colorScheme.error,
@@ -337,6 +370,14 @@ class _AccessAttemptTile extends StatelessWidget {
       subtitle: Text(
         '${accessAttemptReasonLabel(attempt.reason)} · ${formatRelativeTime(attempt.createdAt)}',
       ),
+      trailing: canReview ? const Icon(Icons.chevron_right) : null,
+      onTap: canReview
+          ? () => Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => AdminUserDetailScreen(userId: attempt.attemptedUserId),
+                ),
+              )
+          : null,
     );
   }
 }
