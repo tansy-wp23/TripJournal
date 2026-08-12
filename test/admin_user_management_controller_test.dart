@@ -111,6 +111,62 @@ void main() {
       await future;
       expect(controller.loading, isFalse);
     });
+
+    group('filtering', () {
+      test('hasActiveFilter is false initially', () {
+        expect(controller.hasActiveFilter, isFalse);
+      });
+
+      test('setFilter with a status narrows results to that status',
+          () async {
+        await controller.setFilter(status: AccountStatus.suspended);
+
+        expect(controller.hasActiveFilter, isTrue);
+        expect(controller.statusFilter, AccountStatus.suspended);
+        expect(controller.results, hasLength(1));
+        expect(controller.results.single.displayName, 'Chong Mei Ling');
+      });
+
+      test('setFilter with a role narrows results to that role', () async {
+        await controller.setFilter(role: UserRole.admin);
+
+        expect(controller.results, hasLength(1));
+        expect(controller.results.single.role, UserRole.admin);
+      });
+
+      test('setFilter with newThisWeek narrows to recently created profiles',
+          () async {
+        await controller.setFilter(newThisWeek: true);
+
+        // Default seed: Alice Tan (2 days ago) and Farah Aziz (1 day ago)
+        // are within the last 7 days; everyone else is older.
+        expect(controller.results, hasLength(2));
+        expect(
+          controller.results.map((p) => p.displayName),
+          containsAll(['Alice Tan', 'Farah Aziz']),
+        );
+      });
+
+      test('clearFilter resets to the full unfiltered list', () async {
+        await controller.setFilter(status: AccountStatus.suspended);
+        expect(controller.results, hasLength(1));
+
+        await controller.clearFilter();
+
+        expect(controller.hasActiveFilter, isFalse);
+        expect(controller.statusFilter, isNull);
+        expect(controller.results, hasLength(6));
+      });
+
+      test('a filter composes with an active text query', () async {
+        controller.setQuery('a'); // matches several names/emails
+        await Future.delayed(_pastDebounce);
+
+        await controller.setFilter(status: AccountStatus.active);
+
+        expect(controller.results.every((p) => p.isActive), isTrue);
+      });
+    });
   });
 }
 

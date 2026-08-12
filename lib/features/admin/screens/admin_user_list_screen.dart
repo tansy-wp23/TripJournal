@@ -6,10 +6,24 @@ import '../controller/admin_user_management_controller.dart';
 import 'admin_user_detail_screen.dart';
 
 /// PB-03's search half: a debounced search field over
-/// `AdminUserDirectoryRepository.searchUsers()`, reached from
-/// `AdminDashboardScreen`'s "Manage users" action.
+/// `AdminUserDirectoryRepository.searchUsers()`, reached either
+/// unfiltered from `AdminDashboardScreen`'s "Manage users" action, or
+/// pre-filtered from one of its stat cards (e.g. tapping "Suspended"
+/// lands here showing only suspended users) — see
+/// `AdminUserManagementController`'s filter support.
 class AdminUserListScreen extends ConsumerStatefulWidget {
-  const AdminUserListScreen({super.key});
+  const AdminUserListScreen({
+    super.key,
+    this.title = 'Manage Users',
+    this.initialStatusFilter,
+    this.initialRoleFilter,
+    this.initialNewThisWeek = false,
+  });
+
+  final String title;
+  final AccountStatus? initialStatusFilter;
+  final UserRole? initialRoleFilter;
+  final bool initialNewThisWeek;
 
   @override
   ConsumerState<AdminUserListScreen> createState() => _AdminUserListScreenState();
@@ -29,7 +43,18 @@ class _AdminUserListScreenState extends ConsumerState<AdminUserListScreen> {
     if (_loadInProgress) return;
     _loadInProgress = true;
     try {
-      await ref.read(adminUserManagementControllerProvider.notifier).loadAll();
+      final controller = ref.read(adminUserManagementControllerProvider.notifier);
+      if (widget.initialStatusFilter != null ||
+          widget.initialRoleFilter != null ||
+          widget.initialNewThisWeek) {
+        await controller.setFilter(
+          status: widget.initialStatusFilter,
+          role: widget.initialRoleFilter,
+          newThisWeek: widget.initialNewThisWeek,
+        );
+      } else {
+        await controller.loadAll();
+      }
     } finally {
       _loadInProgress = false;
     }
@@ -46,7 +71,7 @@ class _AdminUserListScreenState extends ConsumerState<AdminUserListScreen> {
     final management = ref.watch(adminUserManagementControllerProvider);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Manage Users')),
+      appBar: AppBar(title: Text(widget.title)),
       body: SafeArea(
         child: Column(
           children: [
@@ -79,6 +104,20 @@ class _AdminUserListScreenState extends ConsumerState<AdminUserListScreen> {
                 },
               ),
             ),
+            if (management.hasActiveFilter)
+              Padding(
+                padding: const EdgeInsets.only(left: 16, right: 16, bottom: 8),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Chip(
+                    key: const Key('admin-user-filter-chip'),
+                    label: Text('Filtered: ${widget.title}'),
+                    deleteIcon: const Icon(Icons.close),
+                    onDeleted: () =>
+                        ref.read(adminUserManagementControllerProvider.notifier).clearFilter(),
+                  ),
+                ),
+              ),
             Expanded(child: _buildBody(context, management)),
           ],
         ),
@@ -115,13 +154,19 @@ class _AdminUserListScreenState extends ConsumerState<AdminUserListScreen> {
     }
 
     if (management.results.isEmpty) {
+      final String message;
+      if (management.query.isNotEmpty) {
+        message = 'No users match "${management.query}".';
+      } else if (management.hasActiveFilter) {
+        message = 'No users match this filter.';
+      } else {
+        message = 'No users found.';
+      }
       return Center(
         child: Padding(
           padding: const EdgeInsets.all(24),
           child: Text(
-            management.query.isEmpty
-                ? 'No users found.'
-                : 'No users match "${management.query}".',
+            message,
             key: const Key('admin-user-search-empty-state'),
             textAlign: TextAlign.center,
             style: Theme.of(context).textTheme.bodyMedium,

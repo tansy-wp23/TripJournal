@@ -58,7 +58,10 @@ class AdminUserDetailController extends ChangeNotifier {
       if (profile == null) {
         _error = 'No user found with id $userId.';
       } else {
-        _auditHistory = await _auditLogRepository.getHistoryForUser(userId);
+        _auditHistory = await _auditLogRepository.getHistoryForTarget(
+          targetType: AdminAuditTargetType.user,
+          targetId: userId,
+        );
         _accessAttempts = await _accessAttemptLogRepository.getAttemptsForUserId(userId);
       }
     } catch (e) {

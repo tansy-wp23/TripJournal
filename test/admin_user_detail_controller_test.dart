@@ -57,7 +57,8 @@ void main() {
       await auditLogRepository.recordAction(AdminAuditLog(
         logId: auditLogRepository.nextLogId(),
         adminUserId: 'admin-001',
-        targetUserId: 'user-101',
+        targetType: AdminAuditTargetType.user,
+        targetId: 'user-101',
         action: AdminAction.suspend,
         reason: 'Reported for spam',
         createdAt: DateTime.now(),
@@ -90,7 +91,8 @@ void main() {
       await auditLogRepository.recordAction(AdminAuditLog(
         logId: auditLogRepository.nextLogId(),
         adminUserId: 'admin-001',
-        targetUserId: 'user-102',
+        targetType: AdminAuditTargetType.user,
+        targetId: 'user-102',
         action: AdminAction.suspend,
         createdAt: DateTime.now(),
       ));

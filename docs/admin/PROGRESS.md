@@ -881,3 +881,160 @@ requires the privileged `auth.admin.signOut(userId)` call the plan
 already earmarks for `suspendUser`'s real implementation — Phase 7,
 service-role Edge Function only. Nothing client-side, mock or real, can
 do this; not attempted here.
+
+---
+
+# Sprint 2 — Issue Management & Audit Monitoring
+
+## Phase 8 — Recon & Contracts (complete)
+
+### Open Decisions 4–6 — confirmed 2026-08-12 (team decision)
+
+1. **Issue-report submission belongs to this module's scope** — not
+   deferred elsewhere. Without it, PB-07's list has nothing to show; see
+   `ADMIN_MODULE_IMPLEMENTATION_PLAN.md` Sprint 2 for the full reasoning
+   (this was the resolution to a bigger question raised first: Sprint 2's
+   original backlog table assumed peer-to-peer content moderation, which
+   doesn't fit TripJournal — no user can see another user's content to
+   report it. The team's revised Sprint 2/3 tables replaced that with issue
+   management, which does fit).
+2. **`AdminAuditLog` generalized** rather than given a second parallel
+   table: `targetUserId: String` → `targetType: AdminAuditTargetType {
+   user, issueReport }` + `targetId: String`; `AdminAction` gains
+   `issueMarkInProgress`, `issueMarkResolved`, `issueReopen`. Continues
+   Sprint 1's Architecture Decision 5 (one generic audit table) rather than
+   Sprint 1's own precedent for *not* forcing a bad fit
+   (`AdminAccessAttemptLog` stayed separate because it had no admin actor
+   at all) — the issue-status case is different: it *does* have an admin
+   actor acting on a target, it's just a different kind of target, which a
+   generalized `targetType` handles cleanly.
+3. **Administrator remarks on an issue report are optional**, unlike
+   Sprint 1's suspend reason (required). The reasoning for suspend's
+   required reason was specific to account-suspension accountability, not
+   a general "always require text" rule — resolving an issue doesn't carry
+   the same weight.
+
+### What was built
+
+- **`AdminAuditLog` migration** (`lib/models/admin_audit_log.dart`) — the
+  shape change above. This is a **refactor of Sprint 1's shipped code**,
+  not purely additive:
+  - `AdminAuditLogRepository`/`MockAdminAuditLogRepository`:
+    `getHistoryForUser(userId)` renamed `getHistoryForTarget({targetType,
+    targetId})`; new `getAllEntries({targetTypeFilter, actionFilter,
+    startDate, endDate})` added for Phase 13 (PB-10). Deliberately plain
+    `DateTime` bounds, not `package:flutter/material.dart`'s
+    `DateTimeRange` — `lib/data/` has no Flutter UI dependency anywhere
+    else and shouldn't gain one here.
+  - `MockAdminAccountActionsRepository`'s `suspendUser`/`reactivateUser`
+    updated to pass `targetType: AdminAuditTargetType.user`.
+  - `AdminUserDetailController.load` updated to call `getHistoryForTarget`.
+  - `AdminUserDetailScreen`'s `_AuditLogTile` switch on `AdminAction` made
+    exhaustive for the 3 new values (labels/icons added; unreachable from
+    that screen in practice, since it only ever loads `targetType: user`
+    history, but Dart requires exhaustiveness regardless).
+  - `AdminAccessAttemptLog`'s doc comment (explaining why it's a separate
+    table from `AdminAuditLog`) updated to describe the new shape instead
+    of the stale Sprint-1-only one.
+- **`IssueReport`** (`lib/models/issue_report.dart`) — `reportId,
+  submittedByUserId, page, description, screenshotUrl (String?), status
+  (IssueReportStatus: open, inProgress, resolved), adminRemarks (String?),
+  createdAt, updatedAt`.
+- **`IssueReportRepository`** (`lib/data/issue_report_repository.dart`, no
+  implementation yet) — `submitReport(...)` (not admin-gated — any
+  signed-in user can call it), `getAllReports({statusFilter})`,
+  `getReportById(reportId)`, `updateStatus({adminUserId, reportId, status,
+  remarks})` (composition: update report + write `AdminAuditLog`, mirroring
+  `AdminAccountActionsRepository`'s pattern).
+
+### Files touched (Phase 8)
+
+- `lib/models/admin_audit_log.dart` (modified — generalized)
+- `lib/data/admin_audit_log_repository.dart` (modified — renamed/added methods)
+- `lib/data/mock_admin_audit_log_repository.dart` (modified — implements the above)
+- `lib/data/mock_admin_account_actions_repository.dart` (modified — call sites)
+- `lib/features/admin/controller/admin_user_detail_controller.dart` (modified — call site)
+- `lib/features/admin/screens/admin_user_detail_screen.dart` (modified — exhaustive switch)
+- `lib/models/admin_access_attempt_log.dart` (modified — doc comment only)
+- `lib/models/issue_report.dart` (new)
+- `lib/data/issue_report_repository.dart` (new)
+- `test/mock_admin_audit_log_repository_test.dart` (rewritten for the
+  generalized API — 14 tests, including 5 new for `getAllEntries`)
+- `test/mock_admin_account_actions_repository_test.dart` (modified — call sites)
+- `test/admin_user_detail_controller_test.dart` (modified — call sites)
+- `test/admin_user_detail_screen_test.dart` (modified — call site)
+
+### Verification
+
+- `flutter analyze` — no issues found.
+- `flutter test` — full suite (626 tests) passes; the generalization
+  changed no observable behavior for any Sprint 1 test (renamed API, same
+  guarantees), and no other module's tests were affected.
+
+### Definition of Done
+
+- [x] `AdminAuditLog` generalized; all Sprint 1 call sites updated;
+      existing Sprint 1 tests still pass (renamed API, same guarantees)
+- [x] `IssueReport`, `IssueReportRepository` defined
+- [x] `AdminAuditLogRepository.getAllEntries` defined
+- [x] Code compiles, `flutter analyze` clean
+
+### Next phase (Phase 9) should start with
+
+`MockIssueReportRepository` — in-memory list seeded with 3–5 sample reports
+spanning all three statuses, mirroring `MockAdminUserStore`'s seeding
+approach. Wire into `admin_repository_locator.dart`. Sprint 1's mocks
+(`MockAdminAuditLogRepository` etc.) already updated in Phase 8, not
+Phase 9's job to revisit.
+
+---
+
+## Post-Phase-8 redesign — AdminDashboardScreen stat cards made interactive (complete)
+
+### What prompted this
+
+Team feedback (2026-08-12): the dashboard's 6 stat tiles looked like icons
+but did nothing when tapped — not "more organised" and not "user friendly".
+
+### What was built
+
+- **`AdminUserManagementController`** gained a status/role/"new this week"
+  filter (`setFilter`, `clearFilter`, `hasActiveFilter`), layered on top of
+  the existing text search client-side — `AdminUserDirectoryRepository.searchUsers`
+  wasn't touched, since it only ever needed a text query.
+- **`AdminUserListScreen`** now takes an optional `title` +
+  `initialStatusFilter`/`initialRoleFilter`/`initialNewThisWeek`, applies
+  it on load, and shows a dismissible filter chip
+  (`Key('admin-user-filter-chip')`) so the active filter is visible and
+  clearable, not a silent dead end. Empty state message is now
+  filter-aware ("No users match this filter." vs. the existing query/
+  no-users messages).
+- **`AdminDashboardScreen`** redesigned:
+  - The 6 stats are now `_DashboardStatCard`s (`Card` + `InkWell`,
+    mirroring `HomeScreen`'s trip-card pattern) instead of read-only
+    `StatTile`s — each tap opens `AdminUserListScreen` pre-filtered to
+    that subset (Total users → unfiltered; Active/Suspended/Deactivated →
+    status filter; Admins → role filter; New this week → recency filter).
+  - Content reorganized under explicit "Overview" and "Recent Activity"
+    headers instead of one undifferentiated list.
+  - The shared `StatTile` widget (`lib/features/trip/widgets/stat_tile.dart`)
+    is no longer used on this screen — it's read-only by design and was
+    never meant to carry tap affordance; bending it to a second purpose
+    would have made it worse for its original use (the trip wellness row).
+    A dedicated `_DashboardStatCard` was added instead.
+
+### Files touched
+
+- `lib/features/admin/controller/admin_user_management_controller.dart` (modified — filter support)
+- `lib/features/admin/screens/admin_user_list_screen.dart` (modified — title/initial filters/chip/empty state)
+- `lib/features/admin/screens/admin_dashboard_screen.dart` (modified — tappable cards, sections)
+- `test/admin_user_management_controller_test.dart` (modified — 6 new filter tests)
+- `test/admin_user_list_screen_test.dart` (modified — 5 new tests: initial status/role filter, no-chip-when-unfiltered, chip delete clears filter, filter-specific empty state)
+- `test/admin_dashboard_screen_test.dart` (modified — 4 new tests: tapping Suspended/Admins/New-this-week/Total-users cards navigates with the right filter applied)
+
+### Verification
+
+- `flutter analyze` — no issues found.
+- `flutter test` — full suite (641 tests) passes; all pre-existing
+  dashboard/user-list tests passed unmodified (widget keys preserved),
+  confirming the redesign didn't silently change unrelated behavior.

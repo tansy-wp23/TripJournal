@@ -1,8 +1,8 @@
 import '../models/admin_audit_log.dart';
 import 'admin_audit_log_repository.dart';
 
-/// In-memory fake of [AdminAuditLogRepository] so UI work in Phases 2–6
-/// never blocks on a backend.
+/// In-memory fake of [AdminAuditLogRepository] so UI work never blocks on a
+/// backend.
 class MockAdminAuditLogRepository implements AdminAuditLogRepository {
   final List<AdminAuditLog> _entries = [];
 
@@ -20,8 +20,31 @@ class MockAdminAuditLogRepository implements AdminAuditLogRepository {
   }
 
   @override
-  Future<List<AdminAuditLog>> getHistoryForUser(String userId) async {
-    final matches = _entries.where((e) => e.targetUserId == userId).toList()
+  Future<List<AdminAuditLog>> getHistoryForTarget({
+    required AdminAuditTargetType targetType,
+    required String targetId,
+  }) async {
+    final matches = _entries
+        .where((e) => e.targetType == targetType && e.targetId == targetId)
+        .toList()
+      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    return matches;
+  }
+
+  @override
+  Future<List<AdminAuditLog>> getAllEntries({
+    AdminAuditTargetType? targetTypeFilter,
+    AdminAction? actionFilter,
+    DateTime? startDate,
+    DateTime? endDate,
+  }) async {
+    final matches = _entries.where((e) {
+      if (targetTypeFilter != null && e.targetType != targetTypeFilter) return false;
+      if (actionFilter != null && e.action != actionFilter) return false;
+      if (startDate != null && e.createdAt.isBefore(startDate)) return false;
+      if (endDate != null && e.createdAt.isAfter(endDate)) return false;
+      return true;
+    }).toList()
       ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
     return matches;
   }

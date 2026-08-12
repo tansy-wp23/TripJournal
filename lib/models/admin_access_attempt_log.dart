@@ -3,11 +3,11 @@
 /// role check failed.
 ///
 /// Deliberately **not** folded into [AdminAuditLog]: that table's shape
-/// (`adminUserId`, `targetUserId`, `AdminAction { suspend, reactivate }`)
-/// assumes the actor already is an admin acting on a target account. A
-/// rejected sign-in has no admin actor at all — the attempter *is* the
-/// subject, and there's no "action taken on their account" yet, only an
-/// attempt. Added per team decision (2026-08-12, `docs/admin/PROGRESS.md`):
+/// (`adminUserId`, `targetType`/`targetId`, `AdminAction`) assumes the
+/// actor already is an admin acting on some target (a user account or,
+/// since Sprint 2, an issue report). A rejected sign-in has no admin actor
+/// at all — the attempter *is* the subject, and there's no "action taken"
+/// yet, only an attempt. Added per team decision (2026-08-12, `docs/admin/PROGRESS.md`):
 /// any non-admin sign-in attempt against the admin portal must be visible
 /// to admins so they can decide on a warning/penalty later — the recording
 /// half is built now, the warning/penalty mechanism itself is explicitly

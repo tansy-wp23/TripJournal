@@ -39,7 +39,8 @@ class MockAdminAccountActionsRepository implements AdminAccountActionsRepository
       AdminAuditLog(
         logId: auditLogRepository.nextLogId(),
         adminUserId: adminUserId,
-        targetUserId: targetUserId,
+        targetType: AdminAuditTargetType.user,
+        targetId: targetUserId,
         action: AdminAction.suspend,
         reason: reason,
         createdAt: now,
@@ -67,7 +68,8 @@ class MockAdminAccountActionsRepository implements AdminAccountActionsRepository
       AdminAuditLog(
         logId: auditLogRepository.nextLogId(),
         adminUserId: adminUserId,
-        targetUserId: targetUserId,
+        targetType: AdminAuditTargetType.user,
+        targetId: targetUserId,
         action: AdminAction.reactivate,
         createdAt: now,
       ),

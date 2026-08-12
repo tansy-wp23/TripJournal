@@ -355,15 +355,28 @@ class _AuditLogTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // This screen only ever loads targetType: user history (see
+    // AdminUserDetailController.load), so the issue-related cases below
+    // aren't reachable here in practice — but the switch must stay
+    // exhaustive now that AdminAction covers both target types (Sprint 2,
+    // Phase 8 — docs/admin/PROGRESS.md).
     final actionLabel = switch (entry.action) {
       AdminAction.suspend => 'Suspended',
       AdminAction.reactivate => 'Reactivated',
+      AdminAction.issueMarkInProgress => 'Marked In Progress',
+      AdminAction.issueMarkResolved => 'Marked Resolved',
+      AdminAction.issueReopen => 'Reopened',
+    };
+    final actionIcon = switch (entry.action) {
+      AdminAction.suspend => Icons.block,
+      AdminAction.reactivate => Icons.check_circle,
+      AdminAction.issueMarkInProgress => Icons.hourglass_top,
+      AdminAction.issueMarkResolved => Icons.check_circle,
+      AdminAction.issueReopen => Icons.replay,
     };
     return ListTile(
       contentPadding: EdgeInsets.zero,
-      leading: Icon(
-        entry.action == AdminAction.suspend ? Icons.block : Icons.check_circle,
-      ),
+      leading: Icon(actionIcon),
       title: Text(actionLabel),
       subtitle: Text(
         entry.reason == null

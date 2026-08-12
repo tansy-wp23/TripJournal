@@ -42,7 +42,10 @@ void main() {
         reason: 'Reported for spam',
       );
 
-      final history = await auditLogRepository.getHistoryForUser('user-101');
+      final history = await auditLogRepository.getHistoryForTarget(
+        targetType: AdminAuditTargetType.user,
+        targetId: 'user-101',
+      );
       expect(history, hasLength(1));
       expect(history.single.action, AdminAction.suspend);
       expect(history.single.adminUserId, 'admin-001');
@@ -73,7 +76,10 @@ void main() {
         targetUserId: 'user-103', // seeded as already suspended
       );
 
-      final history = await auditLogRepository.getHistoryForUser('user-103');
+      final history = await auditLogRepository.getHistoryForTarget(
+        targetType: AdminAuditTargetType.user,
+        targetId: 'user-103',
+      );
       expect(history, hasLength(1));
       expect(history.single.action, AdminAction.reactivate);
     });

@@ -6,6 +6,7 @@ import 'package:tripjournal/data/admin_repository_locator.dart';
 import 'package:tripjournal/features/admin/admin_gate.dart';
 import 'package:tripjournal/features/admin/screens/admin_dashboard_screen.dart';
 import 'package:tripjournal/features/admin/screens/admin_login_screen.dart';
+import 'package:tripjournal/features/admin/screens/admin_user_list_screen.dart';
 import 'package:tripjournal/models/admin_access_attempt_log.dart';
 
 void main() {
@@ -79,6 +80,70 @@ void main() {
 
       expect(find.text('alice.tan@example.com'), findsOneWidget);
       expect(find.textContaining('Not an administrator'), findsOneWidget);
+    });
+
+    testWidgets('tapping the Suspended card opens the user list filtered '
+        'to suspended users only', (tester) async {
+      await tester.pumpWidget(
+        const ProviderScope(child: MaterialApp(home: AdminDashboardScreen())),
+      );
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('admin-stat-suspended')));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(AdminUserListScreen), findsOneWidget);
+      expect(find.text('Suspended Users'), findsWidgets); // AppBar + chip
+      expect(find.text('Chong Mei Ling'), findsOneWidget);
+      expect(find.text('Alice Tan'), findsNothing);
+    });
+
+    testWidgets('tapping the Admins card opens the user list filtered to '
+        'administrators only', (tester) async {
+      await tester.pumpWidget(
+        const ProviderScope(child: MaterialApp(home: AdminDashboardScreen())),
+      );
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('admin-stat-admins')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Admin Account'), findsOneWidget);
+      expect(find.text('Alice Tan'), findsNothing);
+    });
+
+    testWidgets('tapping the New this week card opens the user list '
+        'filtered to recently created profiles', (tester) async {
+      await tester.pumpWidget(
+        const ProviderScope(child: MaterialApp(home: AdminDashboardScreen())),
+      );
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('admin-stat-new-this-week')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Alice Tan'), findsOneWidget);
+      expect(find.text('Farah Aziz'), findsOneWidget);
+      expect(find.text('Chong Mei Ling'), findsNothing);
+    });
+
+    testWidgets('tapping the Total users card opens the user list '
+        'unfiltered', (tester) async {
+      await tester.pumpWidget(
+        const ProviderScope(child: MaterialApp(home: AdminDashboardScreen())),
+      );
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('admin-stat-total-users')));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('admin-user-filter-chip')), findsNothing);
+      expect(find.text('Alice Tan'), findsOneWidget);
+      expect(find.text('Chong Mei Ling'), findsOneWidget);
     });
   });
 }

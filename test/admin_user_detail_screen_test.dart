@@ -86,7 +86,8 @@ void main() {
         AdminAuditLog(
           logId: 'test-audit-1',
           adminUserId: 'admin-001',
-          targetUserId: 'user-102',
+          targetType: AdminAuditTargetType.user,
+          targetId: 'user-102',
           action: AdminAction.suspend,
           reason: 'Reported for spam',
           createdAt: DateTime.now(),
