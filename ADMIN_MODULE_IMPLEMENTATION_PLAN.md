@@ -913,4 +913,4 @@ change later.
 | PB-12 *(Sprint 3)* | Phase 18 (mock) / Phase 21 (real) |
 | PB-13 *(Sprint 3)* | Phase 18 (mock) / Phase 21 (real) |
 | PB-14 *(Sprint 3)* | Phase 19 (mock) / Phase 21 (real) |
-| PB-15 *(Sprint 3)* | Phase 20 (mock) / Phase 21 (real) |
+| PB-15 *(Sprint 3)* | Phase 20 (mock) / Phase 21 (real)
