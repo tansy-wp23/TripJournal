@@ -68,6 +68,12 @@ class MockAccountLifecycleRepository implements AccountLifecycleRepository {
     if (profile == null) {
       throw StateError('No profile to reactivate.');
     }
+    // Admin Module Phase 5 guard: a suspended account can only be cleared
+    // by AdminAccountActionsRepository.reactivateUser, never by this
+    // self-service flow — see AccountSuspendedException's doc comment.
+    if (profile.isSuspended) {
+      throw const AccountSuspendedException();
+    }
     await profileRepository.updateProfile(
       profile.copyWith(
         status: AccountStatus.active,

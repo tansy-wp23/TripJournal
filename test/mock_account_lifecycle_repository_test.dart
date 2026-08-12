@@ -107,5 +107,32 @@ void main() {
       final profile = await profileRepository.getProfile('user-001');
       expect(profile!.status, AccountStatus.deactivated);
     });
+
+    // Admin Module Phase 5 (docs/admin/PROGRESS.md, Open Decision 2): a
+    // suspended account must not be reactivatable through this self-service
+    // flow, even with a perfectly valid code — only
+    // AdminAccountActionsRepository.reactivateUser may clear a suspension.
+    test('confirmReactivation with a valid code still rejects a suspended '
+        'profile', () async {
+      // Start active, then admin-suspend it directly on the mock (mirrors
+      // what AdminAccountActionsRepository.suspendUser does to Profile.status,
+      // without pulling in the whole admin mock stack for this cross-module
+      // test).
+      final suspended = (await profileRepository.getProfile('user-001'))!
+          .copyWith(status: AccountStatus.suspended, deactivatedAt: DateTime.now());
+      await profileRepository.updateProfile(suspended);
+
+      await lifecycleRepository.requestReactivation();
+
+      expect(
+        () => lifecycleRepository.confirmReactivation(
+          MockVerificationCodeRepository.mockCode,
+        ),
+        throwsA(isA<AccountSuspendedException>()),
+      );
+
+      final profile = await profileRepository.getProfile('user-001');
+      expect(profile!.status, AccountStatus.suspended);
+    });
   });
 }

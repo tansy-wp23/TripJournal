@@ -6,6 +6,7 @@ import 'package:tripjournal/data/mock_auth_repository.dart';
 import 'package:tripjournal/data/mock_profile_repository.dart';
 import 'package:tripjournal/data/mock_verification_code_repository.dart';
 import 'package:tripjournal/features/auth/controller/auth_controller.dart';
+import 'package:tripjournal/models/profile.dart';
 import 'package:tripjournal/models/verification_code.dart';
 
 void main() {
@@ -69,6 +70,39 @@ void main() {
 
       expect(controller.status, AuthStatus.deactivated);
       expect(controller.profile!.isDeactivated, isTrue);
+    });
+
+    // Admin Module fix (docs/admin/PROGRESS.md, 2026-08-12): `status` never
+    // checked `isSuspended` at all, so a suspended profile fell through to
+    // `authenticated`. `MockProfileRepository` has no `MockProfileState`
+    // for `suspended` (owned by the User Management module — a seed value
+    // was intentionally not added there just for this test); mutate an
+    // already-seeded active profile directly instead.
+    test('a suspended profile sets status to suspended, not authenticated',
+        () async {
+      await controller.signInWithGoogle();
+      expect(controller.status, AuthStatus.authenticated);
+
+      await profileRepository.updateProfile(
+        controller.profile!.copyWith(status: AccountStatus.suspended),
+      );
+      await controller.onReactivated(); // re-fetches the profile
+
+      expect(controller.status, AuthStatus.suspended);
+      expect(controller.profile!.isSuspended, isTrue);
+    });
+
+    test('signing in as an already-suspended profile does not '
+        'auto-request a reactivation code (unlike deactivated)', () async {
+      final existing = (await profileRepository.getProfile('user-001'))!;
+      await profileRepository.updateProfile(
+        existing.copyWith(status: AccountStatus.suspended),
+      );
+
+      await controller.signInWithGoogle();
+
+      expect(controller.status, AuthStatus.suspended);
+      expect(verificationCodeRepository.activeCode, isNull);
     });
 
     test('failed sign-in sets error and stays signedOut', () async {

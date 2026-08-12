@@ -44,11 +44,21 @@ class AuthController extends ChangeNotifier {
   String? get currentUserId => _session?.userId;
 
   /// The current auth status, derived from [session] and [profile].
+  ///
+  /// Checks [Profile.isSuspended] before [Profile.isDeactivated] — an
+  /// admin-imposed suspension (Admin Module) is a distinct status from a
+  /// self-service deactivation and must not fall through to
+  /// `AuthStatus.authenticated`. This was a real gap until now: nothing
+  /// here ever consulted `isSuspended`, so a suspended profile signing in
+  /// fresh (on any device, once a real shared backend exists — Phase 7)
+  /// would have been treated as fully authenticated. Found and fixed
+  /// 2026-08-12; see `docs/admin/PROGRESS.md`.
   AuthStatus get status {
     if (_loading) return AuthStatus.loading;
     if (_session == null || !_session!.isSignedIn) return AuthStatus.signedOut;
     final profile = _profile;
     if (profile == null) return AuthStatus.signedOut;
+    if (profile.isSuspended) return AuthStatus.suspended;
     if (profile.isDeactivated) return AuthStatus.deactivated;
     return AuthStatus.authenticated;
   }
@@ -171,8 +181,10 @@ class AuthController extends ChangeNotifier {
   }
 }
 
-/// The high-level auth status the UI routes on.
-enum AuthStatus { signedOut, loading, authenticated, deactivated }
+/// The high-level auth status the UI routes on. `suspended` (an
+/// admin-imposed suspension) is distinct from `deactivated` (self-service)
+/// — see [AuthController.status]'s doc comment.
+enum AuthStatus { signedOut, loading, authenticated, deactivated, suspended }
 
 /// The single place the app resolves its [AuthController] from — mirrors
 /// `tripControllerProvider` / `journalControllerProvider`.

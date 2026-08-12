@@ -181,6 +181,13 @@ class _CodeEntryScreenState extends ConsumerState<CodeEntryScreen> {
           Navigator.of(this.context).popUntil((route) => route.isFirst);
         }
       }
+    } on AccountSuspendedException {
+      // Admin Module Phase 5: confirmReactivation rejects a suspended
+      // profile — the code itself is valid, so this is a distinct message
+      // from the wrong/expired-code cases below, not folded into them.
+      setState(() {
+        _error = 'This account has been suspended by an administrator.';
+      });
     } on CodeValidationException catch (e) {
       setState(() {
         _error = e.result == CodeValidationResult.expired

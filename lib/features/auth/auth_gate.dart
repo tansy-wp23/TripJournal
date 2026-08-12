@@ -5,6 +5,7 @@ import '../home/home_screen.dart';
 import 'controller/auth_controller.dart';
 import 'screens/login_screen.dart';
 import 'screens/reactivation_screen.dart';
+import 'screens/suspended_screen.dart';
 
 class AuthGate extends ConsumerWidget {
   const AuthGate({super.key});
@@ -24,6 +25,8 @@ class AuthGate extends ConsumerWidget {
         return const HomeScreen();
       case AuthStatus.deactivated:
         return const ReactivationScreen();
+      case AuthStatus.suspended:
+        return const SuspendedScreen();
     }
   }
 }

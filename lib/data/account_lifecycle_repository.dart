@@ -33,7 +33,29 @@ abstract class AccountLifecycleRepository {
   /// sign-in needed (Architecture Decision 7).
   ///
   /// Throws [CodeValidationException] if the code is invalid or expired.
+  /// Throws [AccountSuspendedException] if the profile's status is
+  /// `AccountStatus.suspended` rather than `AccountStatus.deactivated` —
+  /// see that exception's doc comment.
   Future<void> confirmReactivation(String code);
+}
+
+/// Thrown by [AccountLifecycleRepository.confirmReactivation] when the
+/// profile's status is `AccountStatus.suspended` rather than
+/// `AccountStatus.deactivated`. An admin-imposed suspension
+/// (`AdminAccountActionsRepository.suspendUser`) must not be undoable by
+/// this self-service flow — only `AdminAccountActionsRepository.reactivateUser`
+/// may clear it. Added for the Admin module
+/// (`ADMIN_MODULE_IMPLEMENTATION_PLAN.md` Open Decision 2, wired in
+/// Phase 5 — see `docs/admin/PROGRESS.md`). **Cross-module change**: this
+/// file is owned by the User Management module — coordinate before
+/// merging, per that module's own note on `Profile.status` gaining
+/// `suspended` back in Phase 0.
+class AccountSuspendedException implements Exception {
+  const AccountSuspendedException();
+
+  @override
+  String toString() =>
+      'AccountSuspendedException: this account was suspended by an administrator.';
 }
 
 /// Thrown when a submitted verification code is wrong or expired.
