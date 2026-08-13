@@ -1,0 +1,14 @@
+# Flutter rewrites these platform plugin registrants with LF endings on every
+# `flutter pub get` / build. Git for Windows ships with core.autocrlf=true, which
+# then wants to convert them to CRLF — so they show up as "modified" after every
+# build even though not a single character of content changed.
+#
+# Pinning them to LF makes the working copy match exactly what Flutter writes,
+# so they stay clean. These files are generated, never hand-edited, so there is
+# no reason for them to differ per platform.
+#
+# Scoped deliberately to the generated files only: a repo-wide `* text=auto`
+# would renormalize the whole tree and hand every teammate a huge one-off diff.
+**/generated_plugin_registrant.*  text eol=lf
+**/generated_plugins.cmake        text eol=lf
+**/GeneratedPluginRegistrant.*    text eol=lf
