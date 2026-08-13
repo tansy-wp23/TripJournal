@@ -9,6 +9,8 @@ import '../../../models/journal_entry.dart';
 import '../../../models/meal.dart';
 import '../../../models/mood.dart';
 import '../../../models/trip.dart';
+import '../../../data/photo_storage.dart';
+import '../../../data/repository_locator.dart' as photo_locator;
 import '../../../validation/journal_entry_validation.dart';
 import '../../../validation/photo_validation.dart';
 import '../../health/health_data_source.dart';
@@ -29,6 +31,7 @@ class CreateEditEntryScreen extends ConsumerStatefulWidget {
     this.initialDate,
     this.trip,
     this.healthDataSource,
+    this.photoStorage,
   });
 
   final JournalEntry? existingEntry;
@@ -56,6 +59,10 @@ class CreateEditEntryScreen extends ConsumerStatefulWidget {
   /// production call sites never pass this, so they always get the real
   /// mock/platform swap from the locator.
   final HealthDataSource? healthDataSource;
+
+  /// Overrides the app-wide [photoStorage] instance — tests only; production
+  /// call sites never pass this.
+  final PhotoStorage? photoStorage;
 
   @override
   ConsumerState<CreateEditEntryScreen> createState() => _CreateEditEntryScreenState();
@@ -102,6 +109,7 @@ class _CreateEditEntryScreenState extends ConsumerState<CreateEditEntryScreen> {
   bool get _isEditing => _persistedEntry != null;
 
   late final HealthDataSource _healthDataSource;
+  late final PhotoStorage _photoStorage;
 
   @override
   void initState() {
@@ -117,6 +125,7 @@ class _CreateEditEntryScreenState extends ConsumerState<CreateEditEntryScreen> {
     _meals = List.of(entry?.healthLog?.meals ?? const []);
     _aiAdviceText = entry?.healthLog?.aiAdvice;
     _healthDataSource = widget.healthDataSource ?? locator.healthDataSource;
+    _photoStorage = widget.photoStorage ?? photo_locator.photoStorage;
 
     if (!_isEditing) {
       _prefillFromHealthData();
@@ -227,8 +236,14 @@ class _CreateEditEntryScreenState extends ConsumerState<CreateEditEntryScreen> {
         return;
       }
 
+      // Copy out of the OS cache before storing the path — the picker's own
+      // path can be evicted, which is what turns a photo into a broken-image
+      // placeholder days later.
+      final stored = await _photoStorage.savePhoto(picked);
+      if (!mounted) return;
+
       setState(() {
-        _photoPaths = [..._photoPaths, picked.path];
+        _photoPaths = [..._photoPaths, stored];
         _dirty = true;
         _justSaved = false;
       });
@@ -265,8 +280,9 @@ class _CreateEditEntryScreenState extends ConsumerState<CreateEditEntryScreen> {
           oversized = true;
           continue;
         }
-        accepted.add(file.path);
+        accepted.add(await _photoStorage.savePhoto(file));
       }
+      if (!mounted) return;
 
       if (accepted.isNotEmpty) {
         setState(() {
@@ -293,11 +309,23 @@ class _CreateEditEntryScreenState extends ConsumerState<CreateEditEntryScreen> {
   }
 
   void _removePhoto(int index) {
+    final removed = _photoPaths[index];
     setState(() {
       _photoPaths = List.of(_photoPaths)..removeAt(index);
       _dirty = true;
       _justSaved = false;
     });
+    // Only clean up a copy made during *this* editing session. A photo that is
+    // already part of the saved entry has to survive, because the user can
+    // still discard these edits and leave that entry pointing at it.
+    //
+    // Fire-and-forget beyond that: a leaked file is never worth blocking the
+    // UI for, and paths we never copied (gallery originals, older entries) are
+    // ignored by the storage anyway.
+    final persisted = _persistedEntry?.photoPaths ?? const <String>[];
+    if (!persisted.contains(removed)) {
+      unawaited(_photoStorage.deletePhoto(removed));
+    }
   }
 
   Future<void> _save() async {

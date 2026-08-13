@@ -163,6 +163,13 @@ class EntryDetailScreen extends ConsumerWidget {
                     for (final meal in healthLog.meals)
                       ListTile(
                         contentPadding: EdgeInsets.zero,
+                        leading: meal.photoPath == null
+                            ? null
+                            : PhotoThumbnail(
+                                key: Key('meal-photo-${meal.id}'),
+                                photoPath: meal.photoPath!,
+                                size: 40,
+                              ),
                         title: Text(meal.name),
                         subtitle: Text(
                           '${mealTypeLabel(meal.mealType)} · ${portionSizeLabel(meal.portion)} · '

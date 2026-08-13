@@ -56,12 +56,27 @@ void main() {
       expect(find.text('2 / 2'), findsOneWidget);
     });
 
-    testWidgets('shows a broken-image placeholder, not a crash, for the mock (non-real) file paths', (
-      tester,
-    ) async {
+    testWidgets('renders the seeded photos, which are bundled assets', (tester) async {
+      // These used to be dangling paths that always fell through to the
+      // placeholder; `assets/mock/` is real now, so the viewer shows the photo.
       await openEntryDetail(tester, 'entry-1');
 
       await tester.tap(find.byKey(const Key('photo-thumbnail-0')));
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+      expect(find.byIcon(Icons.broken_image_outlined), findsNothing);
+    });
+
+    testWidgets('shows a broken-image placeholder, not a crash, for a missing file', (
+      tester,
+    ) async {
+      await tester.pumpWidget(const MaterialApp(
+        home: PhotoViewerScreen(
+          photoPaths: ['/no/such/directory/gone.jpg'],
+          initialIndex: 0,
+        ),
+      ));
       await tester.pumpAndSettle();
 
       expect(tester.takeException(), isNull);

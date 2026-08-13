@@ -1,15 +1,21 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../../../data/photo_storage.dart';
+import '../../../data/repository_locator.dart' as photo_locator;
 import '../../../models/meal.dart';
 import '../../../models/meal_type.dart';
 import '../../../models/portion_size.dart';
 import '../../../validation/meal_validation.dart';
+import '../../../validation/photo_validation.dart';
 import '../../../validation/steps_validation.dart';
 import '../../health/health_data_source.dart';
 import '../../health/health_data_source_locator.dart' as locator;
 import '../ai/food_detection_locator.dart';
 import 'meal_display.dart';
+import 'photo_thumbnail.dart';
 
 class HealthLogFormData {
   const HealthLogFormData({required this.steps, required this.caloriesBurned, required this.meals});
@@ -36,6 +42,7 @@ class HealthLogForm extends StatefulWidget {
     this.initialCaloriesFromHealth = false,
     this.initialShowConnectHealthNote = false,
     this.healthDataSource,
+    this.photoStorage,
     required this.onChanged,
   });
 
@@ -63,6 +70,10 @@ class HealthLogForm extends StatefulWidget {
   /// mock/platform swap from the locator.
   final HealthDataSource? healthDataSource;
 
+  /// Overrides the app-wide [photoStorage] instance — tests only; production
+  /// call sites never pass this.
+  final PhotoStorage? photoStorage;
+
   final ValueChanged<HealthLogFormData> onChanged;
 
   @override
@@ -87,6 +98,7 @@ class _HealthLogFormState extends State<HealthLogForm> {
   late bool _showConnectNote;
   bool _syncing = false;
   late final HealthDataSource _healthDataSource;
+  late final PhotoStorage _photoStorage;
 
   @override
   void initState() {
@@ -99,6 +111,7 @@ class _HealthLogFormState extends State<HealthLogForm> {
     _caloriesFromHealth = widget.initialCaloriesFromHealth;
     _showConnectNote = widget.initialShowConnectHealthNote;
     _healthDataSource = widget.healthDataSource ?? locator.healthDataSource;
+    _photoStorage = widget.photoStorage ?? photo_locator.photoStorage;
   }
 
   @override
@@ -193,7 +206,7 @@ class _HealthLogFormState extends State<HealthLogForm> {
   Future<void> _addMeal() async {
     final meal = await showDialog<Meal>(
       context: context,
-      builder: (_) => const _MealDialog(),
+      builder: (_) => _MealDialog(photoStorage: _photoStorage),
     );
     if (meal == null) return;
     setState(() => _meals = [..._meals, meal]);
@@ -203,7 +216,10 @@ class _HealthLogFormState extends State<HealthLogForm> {
   Future<void> _editMeal(int index) async {
     final updated = await showDialog<Meal>(
       context: context,
-      builder: (_) => _MealDialog(initialMeal: _meals[index]),
+      builder: (_) => _MealDialog(
+        initialMeal: _meals[index],
+        photoStorage: _photoStorage,
+      ),
     );
     if (updated == null) return;
     setState(() => _meals = List.of(_meals)..[index] = updated);
@@ -344,6 +360,13 @@ class _HealthLogFormState extends State<HealthLogForm> {
                 ListTile(
                   key: Key('meal-row-$i'),
                   contentPadding: EdgeInsets.zero,
+                  leading: _meals[i].photoPath == null
+                      ? null
+                      : PhotoThumbnail(
+                          key: Key('meal-row-photo-$i'),
+                          photoPath: _meals[i].photoPath!,
+                          size: 40,
+                        ),
                   title: Text(_meals[i].name),
                   subtitle: Text(
                     '${mealTypeLabel(_meals[i].mealType)} · ${portionSizeLabel(_meals[i].portion)} · '
@@ -382,9 +405,10 @@ class _HealthLogFormState extends State<HealthLogForm> {
 /// fields are pre-filled and the result preserves the meal's original [id]
 /// so the caller can replace it in place rather than appending a new one.
 class _MealDialog extends StatefulWidget {
-  const _MealDialog({this.initialMeal});
+  const _MealDialog({this.initialMeal, required this.photoStorage});
 
   final Meal? initialMeal;
+  final PhotoStorage photoStorage;
 
   bool get isEditing => initialMeal != null;
 
@@ -411,10 +435,16 @@ class _MealDialogState extends State<_MealDialog> {
   // this state.
   bool _detecting = false;
 
+  // The photo this meal was logged from, already copied into app storage.
+  // Kept independently of the detection result: the photo belongs to the user
+  // whether or not the AI managed to recognise what was on the plate.
+  String? _photoPath;
+
   @override
   void initState() {
     super.initState();
     final initial = widget.initialMeal;
+    _photoPath = initial?.photoPath;
     _nameController = TextEditingController(text: initial?.name ?? '');
     _caloriesController = TextEditingController(text: initial?.calories.toString() ?? '');
     _mealType = initial?.mealType ?? MealType.breakfast;
@@ -477,11 +507,28 @@ class _MealDialogState extends State<_MealDialog> {
       final picked = await ImagePicker().pickImage(source: source);
       if (picked == null || !mounted) return; // user backed out of the OS picker
 
+      final sizeError = validatePhotoSize(await picked.length());
+      if (sizeError != null) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(sizeError)));
+        return;
+      }
+
       setState(() => _detecting = true);
-      final detected = await foodDetectionService.detectFromImage(picked.path);
+
+      // Copy first, then detect from the stored copy — the picker's own path
+      // lives in an evictable cache directory.
+      final stored = await widget.photoStorage.savePhoto(picked);
+      if (!mounted) return;
+      setState(() => _photoPath = stored);
+
+      final detected = await foodDetectionService.detectFromImage(stored);
       if (!mounted) return;
 
       if (detected == null) {
+        // The photo stays attached regardless. A failed guess is no reason to
+        // throw away the user's picture — this is also what makes the button
+        // usable as a plain "attach a food photo" upload.
         setState(() => _detecting = false);
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text("Couldn't detect food from that photo — enter it manually.")),
@@ -537,8 +584,21 @@ class _MealDialogState extends State<_MealDialog> {
         calories: calories,
         mealType: _mealType,
         portion: _portion,
+        photoPath: _photoPath,
       ),
     );
+  }
+
+  void _removePhoto() {
+    final removed = _photoPath;
+    setState(() => _photoPath = null);
+
+    // Only delete a copy made during *this* dialog session. The meal's already
+    // persisted photo has to survive, because the user can still cancel out of
+    // here and leave that meal exactly as it was.
+    if (removed != null && removed != widget.initialMeal?.photoPath) {
+      unawaited(widget.photoStorage.deletePhoto(removed));
+    }
   }
 
   @override
@@ -576,6 +636,20 @@ class _MealDialogState extends State<_MealDialog> {
               label: Text(_detecting ? 'Detecting…' : 'Detect from photo'),
             ),
           ),
+          if (_photoPath != null)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Padding(
+                padding: const EdgeInsets.only(top: 4, bottom: 4),
+                child: PhotoThumbnail(
+                  key: const Key('meal-photo-thumbnail'),
+                  photoPath: _photoPath!,
+                  size: 72,
+                  onRemove: _removePhoto,
+                  removeButtonKey: const Key('remove-meal-photo'),
+                ),
+              ),
+            ),
           TextField(
             key: const Key('meal-calories-field'),
             controller: _caloriesController,

@@ -14,16 +14,20 @@ import '../journal/screens/create_edit_entry_screen.dart';
 import '../journal/screens/entry_detail_screen.dart';
 import '../journal/widgets/format_utils.dart';
 import '../journal/widgets/mood_display.dart';
+import '../journal/widgets/photo_thumbnail.dart';
+import '../settings/settings_providers.dart';
 import 'controller/trip_controller.dart';
+import 'screens/trip_photo_slideshow_screen.dart';
 import 'screens/trip_wellness_screen.dart';
 import 'trip_day_groups.dart';
+import 'trip_photos.dart';
 import 'trip_form_screen.dart';
 import 'trip_notes_editor_screen.dart';
 import 'trip_summary_stats.dart';
 import 'widgets/delete_trip_confirmation_dialog.dart';
 import 'widgets/journal_search_bar.dart';
 import 'widgets/journal_filter_sheet.dart';
-import 'widgets/trip_cover_photo.dart';
+import 'widgets/trip_photo_carousel.dart';
 import 'widgets/wellness_stats_row.dart';
 import 'ai/trip_summary_locator.dart';
 
@@ -272,6 +276,14 @@ class _TripViewScreenState extends ConsumerState<TripViewScreen> {
     );
     final dayGroups = buildDayGroups(trip, journalController.entries);
 
+    // Deliberately built from the UNFILTERED entries, and built once here so
+    // the header and every day tile share one list. A day tile that derived
+    // its own photos from the filtered groups would produce indices that don't
+    // line up with the slideshow's, opening the wrong photo whenever a filter
+    // is active. It is also what makes "entering a day shows the whole trip"
+    // work: the day strip is a view onto this list, not a list of its own.
+    final tripPhotos = buildTripPhotos(trip, journalController.entries);
+
     final filter = journalController.filter;
     final displayDayGroups = filter.isActive
         ? buildDayGroups(
@@ -344,6 +356,7 @@ class _TripViewScreenState extends ConsumerState<TripViewScreen> {
                         trip,
                         stats,
                         journalController.entries,
+                        tripPhotos,
                       ),
                       _NoMatchingEntriesState(
                         onClearFilters: () => ref
@@ -361,11 +374,13 @@ class _TripViewScreenState extends ConsumerState<TripViewScreen> {
                           trip,
                           stats,
                           journalController.entries,
+                          tripPhotos,
                         );
                       }
                       return _DayGroupTile(
                         trip: trip,
                         group: displayDayGroups[index - 1],
+                        tripPhotos: tripPhotos,
                       );
                     },
                   ),
@@ -375,20 +390,49 @@ class _TripViewScreenState extends ConsumerState<TripViewScreen> {
     );
   }
 
+  /// Opens the slideshow on [photo], resolving its position in the full list
+  /// by identity rather than by the position it occupied in whatever subset
+  /// the caller was showing.
+  void _openSlideshow(BuildContext context, List<TripPhoto> photos, TripPhoto photo) {
+    final index = photos.indexWhere((candidate) => identical(candidate, photo));
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => TripPhotoSlideshowScreen(
+          photos: photos,
+          initialIndex: index == -1 ? 0 : index,
+        ),
+      ),
+    );
+  }
+
   Widget _buildHeader(
     BuildContext context,
     Trip trip,
     TripStats stats,
     List<JournalEntry> entries,
+    List<TripPhoto> tripPhotos,
   ) {
     final notes = trip.notes;
+
+    final showFoodPhotos =
+        ref.watch(settingsControllerProvider).preferences.showFoodPhotosInCarousel;
+    final hasFoodPhotos = tripPhotos.any((p) => p.kind == TripPhotoKind.meal);
+    // The carousel may show a subset; the slideshow is always opened over the
+    // full list, which is why the tap hands back the photo rather than a page
+    // number.
+    final carouselPhotos = showFoodPhotos
+        ? tripPhotos
+        : tripPhotos.where((p) => p.kind != TripPhotoKind.meal).toList();
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        TripCoverPhoto(
-          photoPath: trip.coverPhotoPath,
+        TripPhotoCarousel(
+          photos: carouselPhotos,
+          coverPhotoPath: trip.coverPhotoPath,
           height: 160,
-          width: double.infinity,
+          onPhotoTap: (photo) => _openSlideshow(context, tripPhotos, photo),
         ),
         Padding(
           padding: const EdgeInsets.all(16),
@@ -403,6 +447,22 @@ class _TripViewScreenState extends ConsumerState<TripViewScreen> {
               Text(
                 '${formatDate(trip.startDate)} - ${formatDate(trip.endDate)}',
               ),
+              // Hidden when there is nothing to toggle — a switch that can't
+              // change anything is just noise.
+              if (hasFoodPhotos) ...[
+                const SizedBox(height: 8),
+                FilterChip(
+                  key: const Key('trip-food-photos-toggle'),
+                  avatar: const Icon(Icons.restaurant, size: 18),
+                  label: Text(
+                    showFoodPhotos ? 'Food photos shown' : 'Food photos hidden',
+                  ),
+                  selected: showFoodPhotos,
+                  onSelected: (selected) => ref
+                      .read(settingsControllerProvider.notifier)
+                      .setShowFoodPhotosInCarousel(selected),
+                ),
+              ],
               const SizedBox(height: 12),
               InkWell(
                 key: const Key('trip-wellness-link'),
@@ -508,13 +568,37 @@ class _TripViewScreenState extends ConsumerState<TripViewScreen> {
 }
 
 class _DayGroupTile extends StatelessWidget {
-  const _DayGroupTile({required this.trip, required this.group});
+  const _DayGroupTile({
+    required this.trip,
+    required this.group,
+    required this.tripPhotos,
+  });
 
   final Trip trip;
   final DayGroup group;
 
+  /// Every photo in the trip, not just this day's. The strip below filters it
+  /// down for display, but the slideshow is opened over the whole list so the
+  /// user can keep swiping into the neighbouring days.
+  final List<TripPhoto> tripPhotos;
+
+  void _openSlideshow(BuildContext context, TripPhoto photo) {
+    final index = tripPhotos.indexWhere((candidate) => identical(candidate, photo));
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => TripPhotoSlideshowScreen(
+          photos: tripPhotos,
+          initialIndex: index == -1 ? 0 : index,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final dayPhotos =
+        tripPhotos.where((photo) => photo.dayNumber == group.dayNumber).toList();
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final isToday = group.date.isAtSameMomentAs(today);
@@ -541,6 +625,26 @@ class _DayGroupTile extends StatelessWidget {
               fontWeight: isToday ? FontWeight.bold : FontWeight.normal,
             ),
           ),
+          // Omitted entirely rather than reserved as empty space, so days
+          // without photos keep exactly the height they had before.
+          if (dayPhotos.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            SizedBox(
+              height: 64,
+              child: ListView.separated(
+                key: Key('day-photo-strip-${group.dayNumber}'),
+                scrollDirection: Axis.horizontal,
+                itemCount: dayPhotos.length,
+                separatorBuilder: (_, _) => const SizedBox(width: 8),
+                itemBuilder: (context, index) => PhotoThumbnail(
+                  key: Key('day-photo-${group.dayNumber}-$index'),
+                  photoPath: dayPhotos[index].path,
+                  size: 64,
+                  onTap: () => _openSlideshow(context, dayPhotos[index]),
+                ),
+              ),
+            ),
+          ],
           const SizedBox(height: 8),
           if (isFuture)
             Text(

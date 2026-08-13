@@ -75,7 +75,16 @@ class MockJournalRepository implements JournalRepository {
               mealType: MealType.breakfast,
               portion: PortionSize.small,
             ),
-            Meal(id: 'meal-1b', name: 'Ramen', calories: 650, mealType: MealType.lunch),
+            Meal(
+              id: 'meal-1b',
+              name: 'Ramen',
+              calories: 650,
+              mealType: MealType.lunch,
+              // Seeded so the food-photo path (meal thumbnails, the trip
+              // carousel's food pictures, and the toggle that hides them) is
+              // visible without picking from the device gallery.
+              photoPath: 'assets/mock/ramen_lunch.jpg',
+            ),
             Meal(
               id: 'meal-1c',
               name: 'Kaiseki dinner',

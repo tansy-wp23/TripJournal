@@ -38,6 +38,39 @@ void main() {
       expect(restored.portion, PortionSize.regular);
     });
 
+    test('photoPath defaults to null for a meal typed in by hand', () {
+      expect(meal.photoPath, isNull);
+    });
+
+    test('toJson/fromJson round-trip preserves photoPath', () {
+      const photographed = Meal(
+        id: 'meal-3',
+        name: 'Nasi lemak',
+        calories: 600,
+        mealType: MealType.breakfast,
+        photoPath: '/data/photos/abc.jpg',
+      );
+      final restored = Meal.fromJson(photographed.toJson());
+      expect(restored.photoPath, '/data/photos/abc.jpg');
+    });
+
+    test('fromJson tolerates a missing photoPath (meals saved before photos existed)', () {
+      final json = meal.toJson()..remove('photoPath');
+      expect(Meal.fromJson(json).photoPath, isNull);
+    });
+
+    test('copyWith keeps an existing photo unless clearPhotoPath is set', () {
+      const photographed = Meal(
+        id: 'meal-4',
+        name: 'Ramen',
+        calories: 650,
+        mealType: MealType.lunch,
+        photoPath: '/data/photos/ramen.jpg',
+      );
+      expect(photographed.copyWith(calories: 700).photoPath, '/data/photos/ramen.jpg');
+      expect(photographed.copyWith(clearPhotoPath: true).photoPath, isNull);
+    });
+
     test('copyWith overrides only given fields', () {
       final updated = meal.copyWith(calories: 700);
       expect(updated.id, meal.id);

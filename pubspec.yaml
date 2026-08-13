@@ -49,6 +49,7 @@ dependencies:
   printing: ^5.15.0
   uuid: ^4.6.0
   shared_preferences: ^2.5.5
+  path_provider: ^2.1.5
   package_info_plus: ^9.0.1
   flutter_local_notifications: ^22.3.0
   timezone: ^0.11.1
@@ -76,6 +77,9 @@ flutter:
   uses-material-design: true
   assets:
     - .env
+    # Placeholder photography behind the seeded `assets/mock/...` paths in the
+    # mock repositories. Regenerate with `dart run tool/generate_mock_photos.dart`.
+    - assets/mock/
   # To add assets to your application, add an assets section, like this:
   # assets:
   #   - images/a_dot_burr.jpeg

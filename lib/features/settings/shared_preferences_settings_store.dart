@@ -9,6 +9,7 @@ class SharedPreferencesSettingsStore implements SettingsStore {
   static const _reminderEnabledKey = 'settings.journalReminderEnabled';
   static const _reminderHourKey = 'settings.journalReminderHour';
   static const _reminderMinuteKey = 'settings.journalReminderMinute';
+  static const _showFoodPhotosKey = 'settings.showFoodPhotosInCarousel';
 
   @override
   Future<SettingsPreferences> load() async {
@@ -22,6 +23,9 @@ class SharedPreferencesSettingsStore implements SettingsStore {
       themeMode: theme,
       journalReminderEnabled: prefs.getBool(_reminderEnabledKey) ?? false,
       journalReminderTime: validTime ? TimeOfDay(hour: hour, minute: minute) : const TimeOfDay(hour: 20, minute: 0),
+      // Defaults to showing food photos, so an install that predates this
+      // setting doesn't silently hide half the carousel.
+      showFoodPhotosInCarousel: prefs.getBool(_showFoodPhotosKey) ?? true,
     );
   }
 
@@ -33,6 +37,7 @@ class SharedPreferencesSettingsStore implements SettingsStore {
       prefs.setBool(_reminderEnabledKey, preferences.journalReminderEnabled),
       prefs.setInt(_reminderHourKey, preferences.journalReminderTime.hour),
       prefs.setInt(_reminderMinuteKey, preferences.journalReminderTime.minute),
+      prefs.setBool(_showFoodPhotosKey, preferences.showFoodPhotosInCarousel),
     ]);
   }
 }

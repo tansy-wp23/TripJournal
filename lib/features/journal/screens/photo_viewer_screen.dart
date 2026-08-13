@@ -1,6 +1,6 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
+
+import '../../trip/widgets/trip_cover_local_image.dart';
 
 /// Full-screen photo viewer for a daily journal entry's photos — tapping a
 /// square (`BoxFit.cover`) thumbnail opens the whole, uncropped image here
@@ -56,20 +56,19 @@ class _PhotoViewerScreenState extends State<PhotoViewerScreen> {
         itemCount: widget.photoPaths.length,
         onPageChanged: (index) => setState(() => _currentIndex = index),
         itemBuilder: (context, index) {
-          final file = File(widget.photoPaths[index]);
+          final image = buildTripCoverLocalImage(
+            widget.photoPaths[index],
+            cacheWidth: (MediaQuery.sizeOf(context).width *
+                    MediaQuery.devicePixelRatioOf(context))
+                .round(),
+            fit: BoxFit.contain,
+            errorBuilder: (context, error, stackTrace) => _placeholder(),
+          );
           return GestureDetector(
             // Dismiss on tap — the required "tap-outside" affordance; the ×
             // and system back also work (default Scaffold/back behaviour).
             onTap: () => Navigator.pop(context),
-            child: Center(
-              child: file.existsSync()
-                  ? Image.file(
-                      file,
-                      fit: BoxFit.contain,
-                      errorBuilder: (context, error, stackTrace) => _placeholder(),
-                    )
-                  : _placeholder(),
-            ),
+            child: Center(child: image ?? _placeholder()),
           );
         },
       ),

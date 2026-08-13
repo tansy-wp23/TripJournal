@@ -41,6 +41,8 @@ class SettingsController extends ChangeNotifier {
       _update(_preferences.copyWith(journalReminderEnabled: enabled));
   Future<void> setReminderTime(TimeOfDay time) =>
       _update(_preferences.copyWith(journalReminderTime: time));
+  Future<void> setShowFoodPhotosInCarousel(bool show) =>
+      _update(_preferences.copyWith(showFoodPhotosInCarousel: show));
 
   Future<void> _update(SettingsPreferences preferences) async {
     _preferences = preferences;

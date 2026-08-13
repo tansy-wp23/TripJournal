@@ -43,7 +43,9 @@ void main() {
       await tester.pumpWidget(
         const MaterialApp(
           home: TripCoverPhoto(
-            photoPath: 'assets/mock/kyoto_arrival_1.jpg',
+            // A device-style path, not an `assets/` one — seeded asset paths
+            // now resolve to real bundled photos.
+            photoPath: '/no/such/directory/kyoto_arrival_1.jpg',
             height: 100,
           ),
         ),

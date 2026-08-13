@@ -13,12 +13,19 @@ class Meal {
   /// IMPLEMENTATION_PLAN_UX_AI.md §1.
   final PortionSize portion;
 
+  /// Local path to the photo this meal was logged from, when the user took
+  /// one. Kept whether or not AI detection actually recognised the food — the
+  /// photo is the user's, and a failed guess is no reason to throw it away.
+  /// Null for a meal typed in by hand.
+  final String? photoPath;
+
   const Meal({
     required this.id,
     required this.name,
     required this.calories,
     required this.mealType,
     this.portion = PortionSize.regular,
+    this.photoPath,
   });
 
   factory Meal.fromJson(Map<String, dynamic> json) {
@@ -30,6 +37,7 @@ class Meal {
       portion: json['portion'] == null
           ? PortionSize.regular
           : PortionSize.values.byName(json['portion'] as String),
+      photoPath: json['photoPath'] as String?,
     );
   }
 
@@ -40,15 +48,21 @@ class Meal {
       'calories': calories,
       'mealType': mealType.name,
       'portion': portion.name,
+      'photoPath': photoPath,
     };
   }
 
+  /// [clearPhotoPath] removes an existing photo — without it a null
+  /// [photoPath] means "leave unchanged", the same convention as
+  /// `HealthLog.clearCaloriesBurned` and `Profile.clearAvatarUrl`.
   Meal copyWith({
     String? id,
     String? name,
     int? calories,
     MealType? mealType,
     PortionSize? portion,
+    String? photoPath,
+    bool clearPhotoPath = false,
   }) {
     return Meal(
       id: id ?? this.id,
@@ -56,6 +70,7 @@ class Meal {
       calories: calories ?? this.calories,
       mealType: mealType ?? this.mealType,
       portion: portion ?? this.portion,
+      photoPath: clearPhotoPath ? null : (photoPath ?? this.photoPath),
     );
   }
 }

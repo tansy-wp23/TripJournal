@@ -1,6 +1,6 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
+
+import '../../trip/widgets/trip_cover_local_image.dart';
 
 /// Square photo thumbnail rendering the actual image content from a local
 /// file path (picked via image_picker) — replaces the old filename-only
@@ -31,7 +31,21 @@ class PhotoThumbnail extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final file = File(photoPath);
+    // Decode at thumbnail resolution, not sensor resolution. A 12 MP photo
+    // decodes to ~48 MB in ARGB, and validatePhotoSize allows 32 MB originals
+    // — a grid of those at full size is an OOM waiting to happen.
+    final decodeWidth = (size * MediaQuery.devicePixelRatioOf(context)).round();
+
+    // Shared shim: handles bundled assets (seed data), real device files, and
+    // returns null for anything missing — which also makes this widget safe on
+    // web, where it used to import dart:io unconditionally.
+    final image = buildTripCoverLocalImage(
+      photoPath,
+      width: size,
+      height: size,
+      cacheWidth: decodeWidth,
+      errorBuilder: (context, error, stackTrace) => _placeholderIcon(context),
+    );
 
     return SizedBox(
       width: size,
@@ -48,15 +62,7 @@ class PhotoThumbnail extends StatelessWidget {
                 height: size,
                 color: Theme.of(context).colorScheme.surfaceContainerHighest,
                 alignment: Alignment.center,
-                child: file.existsSync()
-                    ? Image.file(
-                        file,
-                        width: size,
-                        height: size,
-                        fit: BoxFit.cover,
-                        errorBuilder: (context, error, stackTrace) => _placeholderIcon(context),
-                      )
-                    : _placeholderIcon(context),
+                child: image ?? _placeholderIcon(context),
               ),
             ),
           ),
