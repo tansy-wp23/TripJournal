@@ -4,6 +4,7 @@ import 'admin_audit_log_repository.dart';
 import 'admin_dashboard_repository.dart';
 import 'admin_user_directory_repository.dart';
 import 'auth_repository.dart';
+import 'issue_report_repository.dart';
 import 'mock_admin_access_attempt_log_repository.dart';
 import 'mock_admin_account_actions_repository.dart';
 import 'mock_admin_audit_log_repository.dart';
@@ -11,6 +12,7 @@ import 'mock_admin_dashboard_repository.dart';
 import 'mock_admin_user_directory_repository.dart';
 import 'mock_admin_user_store.dart';
 import 'mock_auth_repository.dart';
+import 'mock_issue_report_repository.dart';
 
 /// The one place the app resolves its admin repositories from — mirrors
 /// `repository_locator.dart` / `user_management_repository_locator.dart` so
@@ -59,3 +61,11 @@ final AdminAccountActionsRepository adminAccountActionsRepository =
 /// see [AdminAccessAttemptLog]'s doc comment for why.
 final AdminAccessAttemptLogRepository adminAccessAttemptLogRepository =
     MockAdminAccessAttemptLogRepository();
+
+/// PB-06 (submit) through PB-09 (update status) — Sprint 2. Shares
+/// [adminAuditLogRepository] so an issue's status change is recorded in the
+/// same generalized audit table Phase 8 built, alongside suspend/reactivate
+/// entries (`docs/admin/PROGRESS.md` Phase 9).
+final IssueReportRepository issueReportRepository = MockIssueReportRepository(
+  auditLogRepository: adminAuditLogRepository as MockAdminAuditLogRepository,
+);

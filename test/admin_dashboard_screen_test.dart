@@ -5,8 +5,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:tripjournal/data/admin_repository_locator.dart';
 import 'package:tripjournal/features/admin/admin_gate.dart';
 import 'package:tripjournal/features/admin/screens/admin_dashboard_screen.dart';
+import 'package:tripjournal/features/admin/screens/admin_issue_report_list_screen.dart';
 import 'package:tripjournal/features/admin/screens/admin_login_screen.dart';
+import 'package:tripjournal/features/admin/screens/admin_user_detail_screen.dart';
 import 'package:tripjournal/features/admin/screens/admin_user_list_screen.dart';
+import 'package:tripjournal/features/admin/screens/audit_log_screen.dart';
 import 'package:tripjournal/models/admin_access_attempt_log.dart';
 
 void main() {
@@ -144,6 +147,90 @@ void main() {
       expect(find.byKey(const Key('admin-user-filter-chip')), findsNothing);
       expect(find.text('Alice Tan'), findsOneWidget);
       expect(find.text('Chong Mei Ling'), findsOneWidget);
+    });
+
+    testWidgets('tapping the Issue reports action opens the issue report '
+        'list', (tester) async {
+      await tester.pumpWidget(
+        const ProviderScope(child: MaterialApp(home: AdminDashboardScreen())),
+      );
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('admin-issue-reports')));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(AdminIssueReportListScreen), findsOneWidget);
+    });
+
+    testWidgets('tapping the Audit log action opens the audit log screen',
+        (tester) async {
+      await tester.pumpWidget(
+        const ProviderScope(child: MaterialApp(home: AdminDashboardScreen())),
+      );
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('admin-audit-log')));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(AuditLogScreen), findsOneWidget);
+    });
+
+    testWidgets('tapping an access attempt with a matching profile opens '
+        'that user\'s detail screen', (tester) async {
+      tester.view.physicalSize = const Size(1200, 2000);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      await adminAccessAttemptLogRepository.recordAttempt(AdminAccessAttemptLog(
+        logId: 'access-attempt-test-reviewable',
+        attemptedUserId: 'user-101', // seeded as Alice Tan
+        attemptedEmail: 'alice.tan@example.com',
+        reason: AdminAccessAttemptReason.notAnAdmin,
+        createdAt: DateTime.now(),
+      ));
+
+      await tester.pumpWidget(
+        const ProviderScope(child: MaterialApp(home: AdminDashboardScreen())),
+      );
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('admin-access-attempt-access-attempt-test-reviewable')));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(AdminUserDetailScreen), findsOneWidget);
+      expect(find.text('Alice Tan'), findsOneWidget);
+    });
+
+    testWidgets('an access attempt with no matching profile is not '
+        'tappable', (tester) async {
+      tester.view.physicalSize = const Size(1200, 2000);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      await adminAccessAttemptLogRepository.recordAttempt(AdminAccessAttemptLog(
+        logId: 'access-attempt-test-unreviewable',
+        attemptedUserId: 'no-such-user-id',
+        attemptedEmail: 'ghost@example.com',
+        reason: AdminAccessAttemptReason.noProfileFound,
+        createdAt: DateTime.now(),
+      ));
+
+      await tester.pumpWidget(
+        const ProviderScope(child: MaterialApp(home: AdminDashboardScreen())),
+      );
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      final tile = tester.widget<ListTile>(
+        find.byKey(const Key('admin-access-attempt-access-attempt-test-unreviewable')),
+      );
+      expect(tile.onTap, isNull);
+      expect(tile.trailing, isNull);
     });
   });
 }

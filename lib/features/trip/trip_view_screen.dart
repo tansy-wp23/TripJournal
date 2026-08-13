@@ -6,6 +6,7 @@ import '../../data/current_user_id_provider.dart';
 import '../../data/trip_repository_locator.dart';
 import '../../models/journal_entry.dart';
 import '../../models/trip.dart';
+import '../admin/widgets/report_issue_button.dart';
 import '../journal/controller/journal_controller.dart';
 import '../journal/journal_filter.dart';
 import '../journal/pdf/journal_pdf_export.dart';
@@ -283,6 +284,7 @@ class _TripViewScreenState extends ConsumerState<TripViewScreen> {
       appBar: AppBar(
         title: Text(trip.title),
         actions: [
+          ReportIssueButton(page: 'TripViewScreen', userIdProvider: widget.userIdProvider),
           IconButton(
             key: const Key('trip-view-export-pdf-button'),
             icon: const Icon(Icons.picture_as_pdf_outlined),
