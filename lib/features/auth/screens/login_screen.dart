@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../widgets/app_logo.dart';
 import '../../../widgets/centered_form_body.dart';
 import '../../admin/admin_gate.dart';
 import '../controller/auth_controller.dart';
@@ -74,7 +75,11 @@ class _LoginScreenState extends State<LoginScreen> {
                     GestureDetector(
                       key: const Key('login-logo-tap-target'),
                       onTap: _onLogoTap,
-                      child: const Icon(Icons.card_travel, size: 72),
+                      // The Column stretches this to full width, so the hidden
+                      // admin tap target stays as generous as it was with the
+                      // placeholder icon; AppLogo keeps the artwork square and
+                      // centred inside it.
+                      child: const AppLogo(size: 96),
                     ),
                     const SizedBox(height: 24),
                     Text(

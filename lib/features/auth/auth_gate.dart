@@ -1,6 +1,7 @@
 ﻿import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../widgets/app_splash.dart';
 import '../home/home_screen.dart';
 import 'controller/auth_controller.dart';
 import 'screens/login_screen.dart';
@@ -18,9 +19,9 @@ class AuthGate extends ConsumerWidget {
       case AuthStatus.signedOut:
         return const LoginScreen();
       case AuthStatus.loading:
-        return const Scaffold(
-          body: Center(child: CircularProgressIndicator()),
-        );
+        // Carries the native launch screen's artwork through until the session
+        // resolves, so there is no blank frame between the two.
+        return const AppSplash();
       case AuthStatus.authenticated:
         return const HomeScreen();
       case AuthStatus.deactivated:

@@ -80,6 +80,10 @@ flutter:
     # Placeholder photography behind the seeded `assets/mock/...` paths in the
     # mock repositories. Regenerate with `dart run tool/generate_mock_photos.dart`.
     - assets/mock/
+    # Master app artwork. Every launcher icon and native splash raster is
+    # derived from `app_icon.png` by `dart run tool/generate_app_icons.dart`;
+    # it is bundled because the in-app splash draws it directly too.
+    - assets/branding/
   # To add assets to your application, add an assets section, like this:
   # assets:
   #   - images/a_dot_burr.jpeg

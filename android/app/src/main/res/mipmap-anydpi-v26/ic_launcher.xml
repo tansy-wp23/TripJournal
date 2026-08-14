@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Adaptive launcher icon. minSdk is 26, so this is what every supported
+     device actually renders; the mipmap-*/ic_launcher.png rasters are only a
+     fallback for tooling that reads the PNG directly.
+
+     Regenerate the layers with: dart run tool/generate_app_icons.dart -->
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@color/ic_launcher_background" />
+    <foreground android:drawable="@mipmap/ic_launcher_foreground" />
+    <!-- Android 13+ themed icons: line art the system tints to the wallpaper
+         palette. Ignored on older releases. -->
+    <monochrome android:drawable="@mipmap/ic_launcher_monochrome" />
+</adaptive-icon>

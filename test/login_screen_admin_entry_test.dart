@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:tripjournal/features/admin/screens/admin_login_screen.dart';
 import 'package:tripjournal/features/auth/screens/login_screen.dart';
+import 'package:tripjournal/widgets/app_logo.dart';
 
 void main() {
   // `tester.pump(duration)` doesn't advance real wall-clock time, so tests
@@ -12,6 +13,25 @@ void main() {
   // them (default tests below rely on the real clock, which always
   // produces small real gaps well within the 3s window).
   tearDown(() => loginScreenDebugClock = DateTime.now);
+
+  testWidgets('the sign-in screen shows the app artwork, not a placeholder icon',
+      (tester) async {
+    await tester.pumpWidget(
+      const ProviderScope(child: MaterialApp(home: LoginScreen())),
+    );
+    await tester.pumpAndSettle();
+
+    // The logo doubles as the hidden admin tap target, so it has to stay
+    // *inside* that GestureDetector rather than become a sibling of it.
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('login-logo-tap-target')),
+        matching: find.byType(AppLogo),
+      ),
+      findsOneWidget,
+    );
+    expect(find.byIcon(Icons.card_travel), findsNothing);
+  });
 
   group('LoginScreen hidden admin entry', () {
     testWidgets('no visible "Admin Portal" text is shown to travelers',

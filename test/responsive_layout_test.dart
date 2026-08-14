@@ -31,6 +31,7 @@ import 'package:tripjournal/models/meal.dart';
 import 'package:tripjournal/models/meal_type.dart';
 import 'package:tripjournal/models/mood.dart';
 import 'package:tripjournal/models/trip.dart';
+import 'package:tripjournal/widgets/app_splash.dart';
 
 /// Sizes chosen to bracket what the app actually has to survive: a small
 /// budget phone, the same phone rotated (the tightest vertical case by far),
@@ -66,15 +67,23 @@ Widget _app(Widget home, {double textScale = 1.0}) => ProviderScope(
 /// RenderFlex/RenderBox overflow raises a FlutterError during paint, which the
 /// test binding records — so takeException is a real assertion here, not a
 /// formality.
+/// Set [settle] to false for a screen holding an indefinite animation — a
+/// permanent [CircularProgressIndicator] never stops scheduling frames, so
+/// pumpAndSettle would time out rather than report a layout problem.
 Future<void> _expectNoOverflow(
   WidgetTester tester,
   Widget Function() build, {
   Future<void> Function(WidgetTester tester)? after,
+  bool settle = true,
 }) async {
   for (final entry in _sizes.entries) {
     _setSize(tester, entry.value);
     await tester.pumpWidget(build());
-    await tester.pumpAndSettle();
+    if (settle) {
+      await tester.pumpAndSettle();
+    } else {
+      await tester.pump();
+    }
     if (after != null) await after(tester);
 
     expect(
@@ -90,12 +99,17 @@ Future<void> _expectNoOverflow(
 /// window does not.
 Future<void> _expectNoOverflowAtLargeText(
   WidgetTester tester,
-  Widget Function({double textScale}) build,
-) async {
+  Widget Function({double textScale}) build, {
+  bool settle = true,
+}) async {
   for (final entry in _sizes.entries) {
     _setSize(tester, entry.value);
     await tester.pumpWidget(build(textScale: 1.3));
-    await tester.pumpAndSettle();
+    if (settle) {
+      await tester.pumpAndSettle();
+    } else {
+      await tester.pump();
+    }
 
     expect(
       tester.takeException(),
@@ -260,6 +274,10 @@ void main() {
     await _expectNoOverflow(tester, () => _app(const LoginScreen()));
   });
 
+  testWidgets('the splash survives every screen size and orientation', (tester) async {
+    await _expectNoOverflow(tester, () => _app(const AppSplash()), settle: false);
+  });
+
   testWidgets('the trip form survives every screen size and orientation', (tester) async {
     await _expectNoOverflow(tester, () => _app(const TripFormScreen()));
   });
@@ -352,6 +370,14 @@ void main() {
       await _expectNoOverflowAtLargeText(
         tester,
         ({double textScale = 1.0}) => _app(const LoginScreen(), textScale: textScale),
+      );
+    });
+
+    testWidgets('the splash survives 1.3x text at every size', (tester) async {
+      await _expectNoOverflowAtLargeText(
+        tester,
+        ({double textScale = 1.0}) => _app(const AppSplash(), textScale: textScale),
+        settle: false,
       );
     });
 
