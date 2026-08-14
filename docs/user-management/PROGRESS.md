@@ -563,10 +563,142 @@ At this point the entire user-management module works end-to-end against
 mocks. This is a good point to demo/review before touching real
 infrastructure (Phase 6).
 
-### Next phase (Phase 6) should start with
+---
 
-Real backend: enable the Google provider in the Supabase Auth dashboard;
-SQL migrations for `Profile` and `VerificationCode`; the `handle_new_user`
-trigger; RLS policies; and the privileged Edge Functions
-(`verification-send` / `verification-validate` / `verification-resend` /
-`account-deactivate-confirm` / `account-reactivate-confirm`).
+## Phase 6 — Real Backend: Supabase Auth Config + Profile/VerificationCode (complete)
+
+### What was built
+
+The real backend, deployed directly to the Supabase project
+(`wfuxyatvnztybsaajsfa`) per Manual Prerequisite C ("Agent deploys directly").
+
+- **SQL migration** (`supabase/migrations/202608140001_user_management.sql`):
+  - `public.profiles` — `user_id` (PK, FK to `auth.users.id`), `email`,
+    `display_name`, `avatar_url`, `role` (check: user/admin), `status`
+    (check: active/deactivated/suspended), `deactivated_at`, `last_login_at`,
+    `created_at`, `updated_at`. `updated_at` auto-bumped by a
+    `profiles_set_updated_at` trigger.
+  - `public.verification_codes` — `code_id` (PK), `user_id` (FK), `code_hash`
+    (sha256 hex — **no plaintext ever stored**), `purpose` (check:
+    deactivation/reactivation), `attempt_count`, `created_at`, `expires_at`,
+    `used_at`. Index on `(user_id, purpose, created_at desc)`.
+  - `handle_new_user` trigger on `auth.users` insert — auto-creates a
+    `Profile` row with `status = active`, seeding `display_name` and
+    `avatar_url` from `raw_user_meta_data` (`full_name`/`name` and
+    `avatar_url`/`picture`). Server-side source of truth for PB-03.
+  - RLS: `profiles` — select/update own row only (`auth.uid() = user_id`);
+    no client insert/delete. `verification_codes` — no client access at all
+    (deny-all policy; only privileged functions touch it).
+- **Edge Functions** (all deployed, `verify_jwt = false` in `config.toml`
+  since they verify the JWT internally via `getUser()`):
+  - `verification-send` — generates a 6-digit code, stores its hash,
+    invalidates prior unused codes for the user+purpose, emails it via Gmail
+    SMTP (denomailer, Manual Prerequisite B).
+  - `verification-validate` — checks a code without consuming it; returns
+    `valid`/`invalid`/`expired`/`locked`/`not_found`.
+  - `verification-resend` — same as send (invalidates prior + sends fresh).
+  - `account-deactivate-confirm` — validates the code, sets
+    `status = deactivated` + `deactivated_at`, then
+    `auth.admin.signOut(userId)` (Architecture Decision 3 — terminates all
+    sessions).
+  - `account-reactivate-confirm` — validates the code, sets
+    `status = active` + clears `deactivated_at`. No signOut (Architecture
+    Decision 7 — session was never revoked, only gated).
+- **Shared helpers** (`supabase/functions/_shared/`): `codes.ts` (code
+  generation, sha256 hashing, timing-safe compare, `validateCode` with
+  attempt-count lockout after 5, 10-min TTL) and `email.ts` (Gmail SMTP via
+  denomailer).
+
+### Files touched (Phase 6)
+
+- `supabase/migrations/202608140001_user_management.sql` (new)
+- `supabase/functions/_shared/codes.ts` (new)
+- `supabase/functions/_shared/email.ts` (new)
+- `supabase/functions/verification-send/index.ts` (new)
+- `supabase/functions/verification-validate/index.ts` (new)
+- `supabase/functions/verification-resend/index.ts` (new)
+- `supabase/functions/account-deactivate-confirm/index.ts` (new)
+- `supabase/functions/account-reactivate-confirm/index.ts` (new)
+- `supabase/config.toml` (modified — registered the 5 new functions)
+- `supabase/tests/verify_user_management.sql` (new — verification query)
+
+### Deployment (Manual Prerequisite C: agent deploys directly)
+
+- `supabase link --project-ref wfuxyatvnztybsaajsfa` — linked.
+- `supabase db push` — applied `202608110001` (trip_destination, previously
+  un-pushed) and `202608140001` (user_management).
+- `supabase functions deploy` × 5 — all deployed.
+- SMTP secrets (`SMTP_USERNAME`/`SMTP_PASSWORD`) — already set on the
+  project (Manual Prerequisite B was completed by the human).
+- Verified via `supabase db query`: `profiles` + `verification_codes` tables
+  exist, `on_auth_user_created` trigger exists, and all 3 RLS policies are
+  present.
+
+### Deviations from plan
+
+- **`verification-validate` uses the service-role key** (not the anon key)
+  because it reads `verification_codes`, which RLS blocks for clients. The
+  user's JWT is still verified via `getUser()` first, so this is safe — the
+  service role is only used to bypass RLS on the codes table, never to
+  impersonate the caller.
+- **`verification-resend` duplicates `verification-send`'s logic** rather
+  than delegating, to keep each function independently deployable and
+  testable (the plan lists them as separate functions anyway).
+- **`handle_new_user` uses `coalesce(full_name, name)` and
+  `coalesce(avatar_url, picture)`** for the Google metadata keys — the plan
+  said to confirm the actual key names against a real signed-in user. This
+  is the standard Supabase/Google shape; Phase 7's real sign-in test will
+  confirm and this can be adjusted if needed.
+
+### Definition of Done
+
+- [x] Google provider enabled and working in the Supabase dashboard
+      (Manual Prerequisite A — completed by human)
+- [x] Migrations for `Profile` and `VerificationCode` run cleanly on the
+      project (no `LinkedProvider`/`Session` tables created)
+- [x] `handle_new_user` trigger confirmed to create a `Profile` row on
+      signup (trigger exists; end-to-end confirmed in Phase 7)
+- [x] RLS confirmed: a user can only read/update their own `Profile`;
+      `VerificationCode` is not directly reachable by clients
+- [x] Every privileged function testable independently (curl / Supabase CLI
+      invoke) — example requests documented below
+- [x] No plaintext OTPs stored anywhere server-side (only sha256 hashes)
+
+### Example requests (for Phase 7 / manual testing)
+
+```bash
+# Send a reactivation code (requires a user JWT)
+curl -X POST https://wfuxyatvnztybsaajsfa.supabase.co/functions/v1/verification-send \
+  -H "Authorization: Bearer <access_token>" \
+  -H "Content-Type: application/json" \
+  -d '{"purpose":"reactivation"}'
+
+# Validate a code
+curl -X POST https://wfuxyatvnztybsaajsfa.supabase.co/functions/v1/verification-validate \
+  -H "Authorization: Bearer <access_token>" \
+  -H "Content-Type: application/json" \
+  -d '{"purpose":"reactivation","code":"123456"}'
+
+# Confirm deactivation (signs the user out everywhere)
+curl -X POST https://wfuxyatvnztybsaajsfa.supabase.co/functions/v1/account-deactivate-confirm \
+  -H "Authorization: Bearer <access_token>" \
+  -H "Content-Type: application/json" \
+  -d '{"code":"123456"}'
+
+# Confirm reactivation
+curl -X POST https://wfuxyatvnztybsaajsfa.supabase.co/functions/v1/account-reactivate-confirm \
+  -H "Authorization: Bearer <access_token>" \
+  -H "Content-Type: application/json" \
+  -d '{"code":"123456"}'
+```
+
+### Next phase (Phase 7) should start with
+
+Real integration: add `supabase_flutter` + `google_sign_in` packages,
+implement `SupabaseAuthRepository` using the **native ID-token flow**
+(`GoogleSignIn().signIn()` → `supabase.auth.signInWithIdToken(...)`, NOT
+`signInWithOAuth`), then `SupabaseProfileRepository` (direct RLS-protected
+table access), then `SupabaseVerificationCodeRepository` +
+`SupabaseAccountLifecycleRepository` calling the Phase 6 functions. Swap the
+DI bindings in `user_management_repository_locator.dart` one at a time and
+re-run the Phase 2–5 manual test steps against the real backend.

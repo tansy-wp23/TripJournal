@@ -45,3 +45,6 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 .env
+
+# Supabase CLI local metadata (created by supabase link; contains no secrets)
+supabase/.temp/
