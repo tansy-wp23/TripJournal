@@ -605,6 +605,10 @@ class _MealDialogState extends State<_MealDialog> {
   Widget build(BuildContext context) {
     final errorColor = Theme.of(context).colorScheme.error;
     return AlertDialog(
+      // This form is tall — name, photo, calories, portion, meal type — and a
+      // phone in landscape leaves a dialog barely 200 logical pixels high.
+      // Without this it overflows the bottom and the Add button is unreachable.
+      scrollable: true,
       title: Text(widget.isEditing ? 'Edit meal' : 'Add meal'),
       content: Column(
         mainAxisSize: MainAxisSize.min,

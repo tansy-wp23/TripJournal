@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../data/account_lifecycle_repository.dart';
 import '../../../data/verification_code_repository.dart';
 import '../../../models/verification_code.dart';
+import '../../../widgets/centered_form_body.dart';
 import '../controller/auth_controller.dart';
 import '../widgets/otp_code_input.dart';
 
@@ -81,14 +82,11 @@ class _CodeEntryScreenState extends ConsumerState<CodeEntryScreen> {
         title: Text(title),
         automaticallyImplyLeading: !_isReactivation,
       ),
-      body: SafeArea(
-        child: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(32),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
+      body: CenteredFormBody(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
                 Icon(
                   _isReactivation ? Icons.lock_reset : Icons.person_off,
                   size: 64,
@@ -147,11 +145,9 @@ class _CodeEntryScreenState extends ConsumerState<CodeEntryScreen> {
                 TextButton(
                   key: const Key('code-entry-cancel'),
                   onPressed: _submitting ? null : () => _cancel(context),
-                  child: Text(_isReactivation ? 'Cancel' : 'Back'),
-                ),
-              ],
+              child: Text(_isReactivation ? 'Cancel' : 'Back'),
             ),
-          ),
+          ],
         ),
       ),
     );

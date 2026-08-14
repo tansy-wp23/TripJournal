@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -153,13 +155,29 @@ class _OtpCodeInputState extends State<OtpCodeInput> {
         ? BorderSide(color: colorScheme.error, width: 2)
         : BorderSide(color: colorScheme.primary, width: 2);
 
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: List.generate(widget.length, (i) {
-        return Container(
-          width: 48,
-          height: 56,
-          margin: EdgeInsets.only(right: i < widget.length - 1 ? 8 : 0),
+    // Six 48pt boxes plus their gaps need 328pt, but a 320pt-wide phone minus
+    // the form's padding leaves ~256pt. Shrink the boxes to fit rather than
+    // overflowing, keeping the 48:56 aspect so they stay square-ish instead of
+    // becoming distorted slots.
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        const gap = 8.0;
+        const maxBoxWidth = 48.0;
+        const aspect = 56 / 48;
+
+        final totalGap = gap * (widget.length - 1);
+        final available = constraints.maxWidth;
+        final boxWidth = available.isFinite
+            ? math.max(24.0, math.min(maxBoxWidth, (available - totalGap) / widget.length))
+            : maxBoxWidth;
+
+        return Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: List.generate(widget.length, (i) {
+            return Container(
+              width: boxWidth,
+              height: boxWidth * aspect,
+              margin: EdgeInsets.only(right: i < widget.length - 1 ? gap : 0),
           child: Focus(
             focusNode: _boxFocusNodes[i],
             onKeyEvent: (node, event) => _onKey(i, event),
@@ -189,12 +207,14 @@ class _OtpCodeInputState extends State<OtpCodeInput> {
                 ),
                 contentPadding: EdgeInsets.zero,
               ),
-              style: Theme.of(context).textTheme.headlineSmall,
-              onChanged: (v) => _onChanged(i, v),
-            ),
-          ),
+                  style: Theme.of(context).textTheme.headlineSmall,
+                  onChanged: (v) => _onChanged(i, v),
+                ),
+              ),
+            );
+          }),
         );
-      }),
+      },
     );
   }
 }

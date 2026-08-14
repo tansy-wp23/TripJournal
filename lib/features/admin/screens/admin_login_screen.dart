@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../widgets/centered_form_body.dart';
 import '../controller/admin_auth_controller.dart';
 
 /// The admin sign-in screen (PB-01). A distinct screen/route from the
@@ -17,14 +18,11 @@ class AdminLoginScreen extends ConsumerWidget {
     final admin = ref.watch(adminAuthControllerProvider);
 
     return Scaffold(
-      body: SafeArea(
-        child: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(32),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
+      body: CenteredFormBody(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
                 const Icon(Icons.admin_panel_settings, size: 72),
                 const SizedBox(height: 24),
                 Text(
@@ -53,11 +51,9 @@ class AdminLoginScreen extends ConsumerWidget {
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
                       : const Icon(Icons.login),
-                  label: Text(admin.loading ? 'Signing in' : 'Sign in with Google'),
-                ),
-              ],
+              label: Text(admin.loading ? 'Signing in' : 'Sign in with Google'),
             ),
-          ),
+          ],
         ),
       ),
     );
