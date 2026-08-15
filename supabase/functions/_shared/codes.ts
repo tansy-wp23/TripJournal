@@ -7,6 +7,11 @@
 export const CODE_TTL_MINUTES = 10;
 export const MAX_ATTEMPTS = 5;
 
+// Rate-limit window for code generation (send/resend). One code per
+// user+purpose per window — prevents OTP/email spam. Complements the
+// attempt_count lockout on validateCode(), which guards *guessing*, not *sending*.
+export const RATE_LIMIT_WINDOW_SECONDS = 60;
+
 /** Generate a random 6-digit code (000000–999999). */
 export function generateCode(): string {
   const n = crypto.getRandomValues(new Uint32Array(1))[0] % 1_000_000;
@@ -123,6 +128,47 @@ export async function consumeCode(
     .eq("code_id", codeId);
 }
 
+/**
+ * Rate-limit guard for code generation. Returns true if a code was sent for
+ * this user+purpose within the last RATE_LIMIT_WINDOW_SECONDS, to prevent
+ * OTP/email spam / abuse. This is a send-side cap that complements the
+ * attempt_count lockout on validateCode() (which guards *guessing*, not
+ * *sending*).
+ *
+ * Counts every row for the user+purpose in the window — including ones already
+ * invalidated via used_at — because a "send" still happened regardless of
+ * whether the code was later used.
+ *
+ * Fail-open on a read error: a failed rate-limit check should never block a
+ * legitimate user from receiving the code they're waiting for.
+ *
+ * `db` must be a service-role client (RLS blocks direct client access to
+ * verification_codes).
+ */
+export async function isRateLimited(
+  db: SupabaseClientLike,
+  userId: string,
+  purpose: string,
+): Promise<boolean> {
+  const since = new Date(
+    Date.now() - RATE_LIMIT_WINDOW_SECONDS * 1000,
+  ).toISOString();
+
+  const { data, error } = await db
+    .from("verification_codes")
+    .select("code_id")
+    .eq("user_id", userId)
+    .eq("purpose", purpose)
+    .gt("created_at", since)
+    .limit(1);
+
+  if (error != null) {
+    console.warn("isRateLimited read error (fail-open):", error.message);
+    return false;
+  }
+  return data != null && data.length > 0;
+}
+
 /** Minimal structural type for the supabase-js client methods we use. */
 export interface SupabaseClientLike {
   from(table: string): {
@@ -142,6 +188,7 @@ export interface SupabaseClientLike {
 export interface QueryBuilderLike {
   eq(column: string, value: string): QueryBuilderLike;
   is(column: string, value: null): QueryBuilderLike;
+  gt(column: string, value: string): QueryBuilderLike;
   order(column: string, options: { ascending: boolean }): QueryBuilderLike;
   limit(count: number): Promise<{
     data: Array<Record<string, unknown>> | null;

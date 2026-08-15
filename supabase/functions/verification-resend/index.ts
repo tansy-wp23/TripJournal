@@ -9,7 +9,12 @@
 // distinct "resend" semantic and the plan's function list is satisfied.
 
 import { createClient } from "npm:@supabase/supabase-js@2.112.0";
-import { CODE_TTL_MINUTES, generateCode, hashCode } from "../_shared/codes.ts";
+import {
+  CODE_TTL_MINUTES,
+  generateCode,
+  hashCode,
+  isRateLimited,
+} from "../_shared/codes.ts";
 import { sendCodeEmail } from "../_shared/email.ts";
 
 const corsHeaders = {
@@ -59,6 +64,19 @@ Deno.serve(async (req: Request) => {
     const { purpose } = await req.json();
     if (purpose !== "deactivation" && purpose !== "reactivation") {
       return json({ error: "purpose must be 'deactivation' or 'reactivation'" }, 400);
+    }
+
+    // Rate-limit: one code per user+purpose per window, to prevent
+    // OTP/email spam (Phase 8 security pass). Fail-open inside isRateLimited()
+    // — a read error never blocks a legitimate send.
+    if (await isRateLimited(supabaseAdmin, user.id, purpose)) {
+      return json(
+        {
+          error: "A code was sent too recently. Please wait before requesting another.",
+          rate_limited: true,
+        },
+        429,
+      );
     }
 
     const { data: profile, error: profileError } = await supabase
