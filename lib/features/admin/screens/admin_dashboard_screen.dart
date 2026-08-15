@@ -177,14 +177,24 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
           style: Theme.of(context).textTheme.bodySmall,
         ),
         const SizedBox(height: 12),
-        GridView.count(
+        GridView(
           key: const Key('admin-dashboard-stats-grid'),
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
-          crossAxisCount: 2,
-          childAspectRatio: 2.2,
-          crossAxisSpacing: 12,
-          mainAxisSpacing: 12,
+          // Was a fixed 2 columns at a 2.2 aspect ratio, which tied each
+          // card's HEIGHT to the window width: on a 320pt phone the cells came
+          // out ~61pt tall while the value + label need ~66, so every card
+          // overflowed. Driving the column count off a maximum card width
+          // instead keeps the row height constant and fills a tablet with more
+          // columns rather than two enormous cards.
+          gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
+            maxCrossAxisExtent: 260,
+            // Scaled with the user's text size so a large accessibility font
+            // doesn't reintroduce the same clipping.
+            mainAxisExtent: MediaQuery.textScalerOf(context).scale(76).clamp(76.0, 160.0),
+            crossAxisSpacing: 12,
+            mainAxisSpacing: 12,
+          ),
           children: [
             _DashboardStatCard(
               key: const Key('admin-stat-total-users'),

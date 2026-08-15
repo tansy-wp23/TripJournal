@@ -21,6 +21,7 @@ import '../trip/trip_form_screen.dart';
 import '../trip/trip_list_sort.dart';
 import '../trip/trip_view_screen.dart';
 import '../trip/widgets/trip_cover_photo.dart';
+import '../trip/widgets/trip_photo_carousel.dart';
 import '../trip/widgets/trip_list_controls.dart';
 import '../trip/widgets/wellness_stats_row.dart';
 import '../../models/journal_entry.dart';
@@ -345,7 +346,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            TripCoverPhoto(photoPath: trip.coverPhotoPath, height: 140),
+            TripCoverPhoto(
+              photoPath: trip.coverPhotoPath,
+              // Capped against the viewport so the hero image doesn't swallow
+              // a landscape phone's ~320pt of height.
+              height: TripPhotoCarousel.resolveHeight(context, max: 140),
+              // Without an explicit width the image sized itself to its own
+              // aspect ratio and sat pillarboxed between grey bands, which got
+              // very obvious in landscape where the card is wide and short.
+              width: double.infinity,
+            ),
             Padding(
               padding: const EdgeInsets.all(16),
               child: Column(

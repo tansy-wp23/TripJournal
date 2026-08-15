@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Plate behind the adaptive icon's foreground layer. Must be opaque, or
+         the launcher shows the wallpaper through the notebook artwork. -->
+    <color name="ic_launcher_background">#FFFFFFFF</color>
+    <!-- Launch screen background. Overridden in values-night. -->
+    <color name="splash_background">#FFFFFFFF</color>
+</resources>

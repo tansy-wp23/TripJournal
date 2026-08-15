@@ -15,6 +15,7 @@ import 'controller/trip_trash_controller.dart';
 import 'trip_view_screen.dart';
 import 'widgets/delete_trip_confirmation_dialog.dart';
 import 'widgets/trip_cover_photo.dart';
+import 'widgets/trip_photo_carousel.dart';
 
 /// Create/Edit Trip form (IMPLEMENTATION_PLAN_HOMEPAGE.md Phase 6).
 class TripFormScreen extends ConsumerStatefulWidget {
@@ -364,9 +365,14 @@ class _TripFormScreenState extends ConsumerState<TripFormScreen> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(
-                  'Cover photo',
-                  style: Theme.of(context).textTheme.titleSmall,
+                // Flexible so the label yields to the button on a narrow
+                // phone instead of the pair overflowing the row.
+                Flexible(
+                  child: Text(
+                    'Cover photo',
+                    style: Theme.of(context).textTheme.titleSmall,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
                 if (!_isRestoring)
                   TextButton.icon(
@@ -386,7 +392,7 @@ class _TripFormScreenState extends ConsumerState<TripFormScreen> {
                   TripCoverPhoto(
                     photoPath: _coverPhotoPath,
                     coverDraft: _coverPhotoDraft,
-                    height: 160,
+                    height: TripPhotoCarousel.resolveHeight(context),
                     width: double.infinity,
                   ),
                   const SizedBox(height: 8),

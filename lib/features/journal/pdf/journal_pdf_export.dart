@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:flutter/services.dart' show rootBundle;
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
@@ -18,6 +19,13 @@ import '../widgets/mood_display.dart' show moodLabel;
 /// unreadable photo file; it's simply omitted from the page.
 Future<pw.MemoryImage?> _loadPhoto(String path) async {
   try {
+    // Seed data points at bundled assets while anything the user picks is a
+    // real file. Without the asset branch the seeded photos loaded as "missing"
+    // and were silently dropped from the export.
+    if (path.startsWith('assets/')) {
+      final data = await rootBundle.load(path);
+      return pw.MemoryImage(data.buffer.asUint8List());
+    }
     final file = File(path);
     if (!await file.exists()) return null;
     final bytes = await file.readAsBytes();
@@ -25,6 +33,26 @@ Future<pw.MemoryImage?> _loadPhoto(String path) async {
   } catch (_) {
     return null;
   }
+}
+
+/// Meal photos for [entry], keyed by the meal's **index** in the health log.
+///
+/// Index rather than `Meal.id` deliberately: ids are minted from
+/// `microsecondsSinceEpoch`, so two meals added in the same microsecond can
+/// collide, and a collision here would print one meal's photo beside another's
+/// name. Position is unambiguous.
+Future<Map<int, pw.MemoryImage>> _loadMealPhotos(JournalEntry entry) async {
+  final meals = entry.healthLog?.meals ?? const <Meal>[];
+  final images = <int, pw.MemoryImage>{};
+
+  for (var i = 0; i < meals.length; i++) {
+    final path = meals[i].photoPath;
+    if (path == null) continue;
+    final image = await _loadPhoto(path);
+    if (image != null) images[i] = image;
+  }
+
+  return images;
 }
 
 pw.Widget _entryHeader(JournalEntry entry) {
@@ -79,7 +107,10 @@ Future<pw.Widget> _entryPhotos(JournalEntry entry) async {
   );
 }
 
-pw.Widget _healthSection(JournalEntry entry) {
+pw.Widget _healthSection(
+  JournalEntry entry,
+  Map<int, pw.MemoryImage> mealPhotos,
+) {
   final healthLog = entry.healthLog;
   if (healthLog == null) return pw.SizedBox();
 
@@ -105,7 +136,8 @@ pw.Widget _healthSection(JournalEntry entry) {
         if (healthLog.meals.isNotEmpty) ...[
           pw.SizedBox(height: 6),
           pw.Text('Meals', style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
-          for (final meal in healthLog.meals) pw.Text('- ${_mealLine(meal)}'),
+          for (var i = 0; i < healthLog.meals.length; i++)
+            _mealRow(healthLog.meals[i], mealPhotos[i]),
         ],
         if (healthLog.aiAdvice != null) ...[
           pw.SizedBox(height: 6),
@@ -123,10 +155,44 @@ pw.Widget _healthSection(JournalEntry entry) {
 String _mealLine(Meal meal) =>
     '${meal.name} (${mealTypeLabel(meal.mealType)}, ~${meal.calories} kcal)';
 
+/// One meal line, with its photo alongside when the user logged the meal from
+/// one. Meals typed in by hand keep the plain bullet they always had, so an
+/// entry with no food photos exports byte-for-byte as before.
+pw.Widget _mealRow(Meal meal, pw.MemoryImage? photo) {
+  if (photo == null) return pw.Text('- ${_mealLine(meal)}');
+
+  return pw.Padding(
+    padding: const pw.EdgeInsets.only(top: 4, bottom: 4),
+    child: pw.Row(
+      crossAxisAlignment: pw.CrossAxisAlignment.start,
+      children: [
+        pw.ClipRRect(
+          horizontalRadius: 4,
+          verticalRadius: 4,
+          child: pw.Container(
+            width: 40,
+            height: 40,
+            child: pw.Image(photo, fit: pw.BoxFit.cover),
+          ),
+        ),
+        pw.SizedBox(width: 6),
+        // Expanded so a long meal name wraps inside the health box rather than
+        // running past its border.
+        pw.Expanded(
+          child: pw.Text(_mealLine(meal)),
+        ),
+      ],
+    ),
+  );
+}
+
 /// A single entry, as one formatted page.
 Future<Uint8List> buildEntryPdf(JournalEntry entry) async {
   final doc = pw.Document();
+  // Both loaded up front: pw.Page.build is synchronous, so every image has to
+  // be in memory before the page is composed.
   final photos = await _entryPhotos(entry);
+  final mealPhotos = await _loadMealPhotos(entry);
 
   doc.addPage(
     pw.Page(
@@ -140,7 +206,7 @@ Future<Uint8List> buildEntryPdf(JournalEntry entry) async {
           pw.SizedBox(height: 12),
           photos,
           if (entry.photoPaths.isNotEmpty) pw.SizedBox(height: 12),
-          _healthSection(entry),
+          _healthSection(entry, mealPhotos),
         ],
       ),
     ),
@@ -195,6 +261,7 @@ Future<Uint8List> buildTripPdf(Trip trip, List<JournalEntry> entries) async {
   for (final group in dayGroups) {
     for (final entry in group.entries) {
       final photos = await _entryPhotos(entry);
+      final mealPhotos = await _loadMealPhotos(entry);
       doc.addPage(
         pw.Page(
           pageFormat: PdfPageFormat.a4,
@@ -212,7 +279,7 @@ Future<Uint8List> buildTripPdf(Trip trip, List<JournalEntry> entries) async {
               pw.SizedBox(height: 12),
               photos,
               if (entry.photoPaths.isNotEmpty) pw.SizedBox(height: 12),
-              _healthSection(entry),
+              _healthSection(entry, mealPhotos),
             ],
           ),
         ),

@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../trip_photos.dart';
@@ -31,9 +33,22 @@ class TripPhotoCarousel extends StatefulWidget {
 
   final String? coverPhotoPath;
 
-  /// Matches the height the cover photo occupied, so swapping this in doesn't
-  /// move anything below it.
+  /// Upper bound rather than a fixed height — see [resolveHeight]. Matches the
+  /// height the cover photo occupied, so on a normal portrait phone nothing
+  /// below it moves.
   final double height;
+
+  /// The height to actually use in [context].
+  ///
+  /// A flat 160 is right in portrait but takes half the viewport on a phone in
+  /// landscape, where there are only ~320 logical pixels to work with — the
+  /// photo strip would crowd out the trip itself. Capping it at a share of the
+  /// viewport keeps the proportions sane without changing anything on a tall
+  /// screen.
+  static double resolveHeight(BuildContext context, {double max = 160}) {
+    final viewportHeight = MediaQuery.sizeOf(context).height;
+    return math.min(max, viewportHeight * 0.32);
+  }
 
   @override
   State<TripPhotoCarousel> createState() => _TripPhotoCarouselState();
@@ -66,16 +81,18 @@ class _TripPhotoCarouselState extends State<TripPhotoCarousel> {
 
   @override
   Widget build(BuildContext context) {
+    final height = TripPhotoCarousel.resolveHeight(context, max: widget.height);
+
     if (widget.photos.isEmpty) {
       return TripCoverPhoto(
         photoPath: widget.coverPhotoPath,
-        height: widget.height,
+        height: height,
         width: double.infinity,
       );
     }
 
     return SizedBox(
-      height: widget.height,
+      height: height,
       width: double.infinity,
       child: Stack(
         children: [
@@ -97,7 +114,7 @@ class _TripPhotoCarouselState extends State<TripPhotoCarousel> {
                   // photo's bitmap in another's slot.
                   key: ValueKey(photo.path),
                   path: photo.path,
-                  height: widget.height,
+                  height: height,
                 ),
               );
             },

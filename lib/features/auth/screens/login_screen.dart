@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../widgets/app_logo.dart';
+import '../../../widgets/centered_form_body.dart';
 import '../../admin/admin_gate.dart';
 import '../controller/auth_controller.dart';
 
@@ -65,18 +67,19 @@ class _LoginScreenState extends State<LoginScreen> {
         final auth = ref.watch(authControllerProvider);
 
         return Scaffold(
-          body: SafeArea(
-            child: Center(
-              child: Padding(
-                padding: const EdgeInsets.all(32),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
+          body: CenteredFormBody(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
                     GestureDetector(
                       key: const Key('login-logo-tap-target'),
                       onTap: _onLogoTap,
-                      child: const Icon(Icons.card_travel, size: 72),
+                      // The Column stretches this to full width, so the hidden
+                      // admin tap target stays as generous as it was with the
+                      // placeholder icon; AppLogo keeps the artwork square and
+                      // centred inside it.
+                      child: const AppLogo(size: 96),
                     ),
                     const SizedBox(height: 24),
                     Text(
@@ -105,11 +108,9 @@ class _LoginScreenState extends State<LoginScreen> {
                               child: CircularProgressIndicator(strokeWidth: 2),
                             )
                           : const Icon(Icons.login),
-                      label: Text(auth.loading ? 'Signing in' : 'Sign in with Google'),
-                    ),
-                  ],
+                  label: Text(auth.loading ? 'Signing in' : 'Sign in with Google'),
                 ),
-              ),
+              ],
             ),
           ),
         );

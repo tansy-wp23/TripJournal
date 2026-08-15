@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Dark-mode launch screen. The artwork keeps its own dark outline, so the
+         notebook still reads against this. `ic_launcher_background` is
+         deliberately NOT overridden here: launcher icons don't follow the
+         system dark-mode setting. -->
+    <color name="splash_background">#FF121212</color>
+</resources>

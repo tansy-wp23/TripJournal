@@ -1,12 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Modify this file to customize your launch splash screen -->
-<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
-    <item android:drawable="?android:colorBackground" />
+<!-- Launch splash shown from process start until Flutter draws its first
+     frame. `splash_logo` is generated per density at a fixed 120dp height, so
+     `gravity="center"` places it at the same physical size on every screen.
 
-    <!-- You can insert your own image assets here -->
-    <!-- <item>
+     On Android 12+ the system splash screen takes over instead; see
+     values-v31/styles.xml. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@color/splash_background" />
+
+    <item>
         <bitmap
             android:gravity="center"
-            android:src="@mipmap/launch_image" />
-    </item> -->
+            android:src="@drawable/splash_logo" />
+    </item>
 </layer-list>

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 12 replaced the windowBackground launch screen with a system-drawn
+     splash, which ignores @drawable/launch_background entirely. Without this
+     file the app would fall back to the launcher icon on a default background.
+
+     `android12_splash_logo` is a 240dp canvas whose artwork is sized to fit the
+     inner 160dp circle the system keeps visible.
+
+     Only LaunchTheme is redefined; NormalTheme resolves from values/styles.xml. -->
+<resources>
+    <style name="LaunchTheme" parent="@android:style/Theme.Light.NoTitleBar">
+        <item name="android:windowBackground">@drawable/launch_background</item>
+        <item name="android:windowSplashScreenBackground">@color/splash_background</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/android12_splash_logo</item>
+    </style>
+</resources>
