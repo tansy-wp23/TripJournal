@@ -913,17 +913,91 @@ Modified:
 - [x] Deactivating, then reactivating via a second real Google sign-in + real
       emailed code, works end-to-end
 
-### Next phase (Phase 8) should start with
 
-Phase 8 (Hardening & Handoff) — see `USER_MANAGEMENT_IMPLEMENTATION_PLAN.md`.
-Concretely: (1) implement the shared `is_active_user()` Postgres RLS helper and
-switch this module's `profiles` RLS to use it; (2) **communicate it to the
-Trip/Journal/Trip-Recap/Admin module owners** so their policies also exclude
-deactivated users (this module can't enforce it for them); (3) hardening pass
-(OTP entropy, timing-safe hash compare — already in `codes.ts`, rate-limit
-`verification-send`/`resend`, not just `attempt_count` on validate); (4)
-evaluate a Supabase Auth Hook to reject token issuance for deactivated accounts
-server-side; (5) error-handling audit so every network/Supabase failure
-degrades to a user-facing message rather than a crash; (6) add
-`lib/features/auth/README.md` capturing the "why no LinkedProvider/Session
-table" decision.
+## Phase 8 — Hardening & Handoff (complete)
+
+### What was built
+- **`is_active_user()` Postgres function** (`supabase/migrations/202608160001_is_active_user.sql`,
+  new) — `SECURITY DEFINER` + `stable`; other modules add `... and is_active_user()` to
+  their RLS to block deactivated/suspended users who still hold a valid session
+  (Architecture Decision 7).
+- **`profiles` UPDATE policy hardened** with `is_active_user()` (defense in depth;
+  reactivation is server-side, so the client flow is unaffected).
+- **Rate limiting** (`codes.ts` + `verification-send` + `verification-resend`) —
+  `isRateLimited()` blocks a send per user+purpose within `RATE_LIMIT_WINDOW_SECONDS`
+  (60s) -> HTTP 429. Complements the `attempt_count` lockout on `validateCode()`
+  (which guards *guessing*, not *sending*). Fail-open on a read error.
+- **Module README** (`lib/features/auth/README.md`, new).
+- **`verify_user_management.sql`** now also asserts `is_active_user` exists.
+
+### Files touched (Phase 8)
+New:
+- `supabase/migrations/202608160001_is_active_user.sql`
+- `lib/features/auth/README.md`
+
+Modified:
+- `supabase/tests/verify_user_management.sql` (assert is_active_user)
+- `supabase/functions/_shared/codes.ts` (`RATE_LIMIT_WINDOW_SECONDS`, `isRateLimited()`,
+  `gt` on `QueryBuilderLike`)
+- `supabase/functions/verification-send/index.ts` (rate-limit -> 429)
+- `supabase/functions/verification-resend/index.ts` (rate-limit -> 429)
+- `docs/user-management/PROGRESS.md` (this entry)
+
+> These are SQL / TypeScript / Markdown only — **no Dart changed**, so
+> `flutter analyze` + `dart test` are unchanged from Phase 7's clean run. The SQL
+> needs `supabase db push`; the TS needs `supabase functions deploy`
+> (verify/send/resend) + a Deno typecheck to take effect.
+
+### Deviations from plan
+- **`is_active_user()` is NOT applied to the `profiles` SELECT policy.** The plan said
+  "use it in this module's own RLS policies," but gating SELECT would make
+  `AuthController` unable to read a `deactivated`/`suspended` user's own profile right
+  after sign-in, collapsing both cases onto `AuthStatus.signedOut` and breaking the
+  PB-06 gate. SELECT stays `auth.uid() = user_id`; only UPDATE is gated. Documented in
+  the migration header and `lib/features/auth/README.md`.
+- **Error handling (task 5) — already satisfied; no Dart change.** Every user-facing
+  call is wrapped in try/catch at the controller/screen layer (`AuthController.signInWithGoogle`,
+  `CodeEntryScreen._confirm` / `_resend` / `_sendInitialCode`,
+  `ProfileController.loadProfile` / `updateDisplayName` / `updateAvatar` / `removeAvatar`).
+  No unguarded Supabase/network call can crash the UI. The confirm path's
+  `_mapConfirmError` also deliberately rethrows non-400 errors as-is so they aren't
+  misreported as "invalid code." The cosmetic gap (raw `PostgrestException.toString()`)
+  was deferred to avoid widening scope.
+- **FuncReq audit (task 4)** — blocked: `USER_MANAGEMENT_IMPLEMENTATION_PLAN.md`
+  references a `FuncReq.md` with checklist 1.1.1–1.3.4, but **no such file exists in the
+  repo**. Flagged as a known gap in `lib/features/auth/README.md` -> "Open issues".
+- **Auth Hook (task 3, stretch)** — evaluated and **deferred**: a Supabase Auth Hook
+  ("Customize Access Token") would reject token issuance for `deactivated`/`suspended`
+  users server-side — stronger than the client-side + RLS approach — but adds a Postgres
+  function in the token-minting path; deferred for a free-tier agent.
+
+### Verification
+- `flutter analyze` / `dart test` — not re-run (no Dart source changed this phase);
+  status unchanged from Phase 7 (clean).
+- `is_active_user()` — canonical pattern (`security definer` + `stable` + pinned
+  `search_path`); the UPDATE gate was checked against the client-side SELECT gate and is
+  safe (reactivation is server-side).
+- Rate limit — 1-row existence check on `created_at > now() - window`, fail-open; HTTP 429
+  with `rate_limited: true`.
+- `verify_user_management.sql` now asserts `is_active_user` exists.
+
+### Definition of Done
+- [x] `is_active_user()` implemented; applied to this module's own RLS (UPDATE); SELECT
+      intentionally left ungated — documented
+- [x] Documented + flagged to other module owners in `lib/features/auth/README.md`
+      (they adopt `... and is_active_user()` on their own data tables)
+- [x] Security pass: timing-safe hash compare (already in `codes.ts`), `attempt_count`
+      lockout on validate, and rate-limiting on `verification-send`/`resend`
+- [x] Auth Hook evaluated + deferred with rationale
+- [x] Error handling audited (no crashes; controller-layer try/catch everywhere)
+- [x] `lib/features/auth/README.md` module doc written (incl. "why no
+      `LinkedProvider`/`Session` table")
+- [x] Final end-to-end `PROGRESS.md` summary + open issues captured
+
+### Open items carried forward
+- `FuncReq.md` does not exist — the 1.1.1–1.3.4 requirements traceability can't be
+  completed until that doc is added.
+- OTP entropy (6 digits ≈ 20 bits) is a known limitation; consider 8 digits / TOTP.
+- Auth Hook (server-side token rejection for deactivated users) is deferred.
+- `202608160001` migration + the `verification-*` function edits require
+  `supabase db push` / `supabase functions deploy` to reach the live project.
