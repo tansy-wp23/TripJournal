@@ -1,6 +1,6 @@
 // Gmail SMTP email sending for verification codes.
 // Manual Prerequisite B: SMTP_USERNAME / SMTP_PASSWORD Supabase secrets.
-import { SmtpClient } from "https://deno.land/x/denomailer/mod.ts";
+import { SMTPClient } from "https://deno.land/x/denomailer/mod.ts";
 
 export interface SendCodeEmailInput {
   to: string;
@@ -27,14 +27,16 @@ export async function sendCodeEmail({
     `Your TripJournal verification code is: ${code}\n\n` +
     `This code expires in 10 minutes. If you didn't request this, you can safely ignore this email.`;
 
-  const client = new SmtpClient();
-  try {
-    await client.connect({
+  const client = new SMTPClient({
+    connection: {
       hostname: "smtp.gmail.com",
       port: 465,
       tls: true,
       auth: { username, password },
-    });
+    },
+  });
+
+  try {
     await client.send({
       from: `TripJournal <${username}>`,
       to,

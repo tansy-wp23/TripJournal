@@ -702,3 +702,228 @@ table access), then `SupabaseVerificationCodeRepository` +
 `SupabaseAccountLifecycleRepository` calling the Phase 6 functions. Swap the
 DI bindings in `user_management_repository_locator.dart` one at a time and
 re-run the Phase 2–5 manual test steps against the real backend.
+
+---
+
+## Phase 7 — Real Integration: Swap Mocks for Real (complete)
+
+### What was built
+
+The real-backend integration, swapping mocks for real Supabase implementations
+one repository at a time. **No UI code was touched** — the four repository
+interfaces from Phase 0 are unchanged, so every screen/controller is already
+wired correctly; only the DI bindings and the repository implementations
+changed.
+
+- **`SupabaseAuthRepository`** (`lib/data/supabase_auth_repository.dart`) — real
+  `AuthRepository` using the **native ID-token flow** exactly as the plan
+  specified: `GoogleSignIn().signIn()` → `googleUser.authentication` →
+  `supabase.auth.signInWithIdToken(provider: OAuthProvider.google, idToken,
+  accessToken)`. Includes a injectable `GoogleSignIn` (for tests), the web
+  OAuth client ID (`serverClientId`, required on Android to get an idToken),
+  `signOut()` (Google + Supabase), the `onAuthStateChange` stream mapped to
+  `AppSession`, and `currentUserId()`.
+- **`SupabaseProfileRepository`** (`lib/data/supabase_profile_repository.dart`) —
+  real `ProfileRepository` via direct RLS-protected table access: `getProfile`
+  (select by `user_id`), `createProfileIfMissing` (defensive fallback only — the
+  `handle_new_user` trigger remains the primary mechanism), `updateProfile`
+  (editable fields only).
+- **`profile_supabase_mapper.dart`** (`lib/data/profile_supabase_mapper.dart`) —
+  maps `Profile` model ↔ `profiles` table (camelCase ↔ snake_case), mirroring
+  `trip_supabase_mapper.dart`.
+- **`SupabaseVerificationCodeRepository`** (`lib/data/supabase_verification_code_repository.dart`)
+  — calls the Phase 6 Edge Functions (`verification-send` / `verification-validate` /
+  `verification-resend`), mapping the server's `result` string to
+  `CodeValidationResult` (`valid`→valid, `expired`→expired, anything else
+  including `invalid`/`locked`/`not_found`→invalid).
+- **`SupabaseAccountLifecycleRepository`**
+  (`lib/data/supabase_account_lifecycle_repository.dart`) — calls
+  `account-deactivate-confirm` / `account-reactivate-confirm`. Maps a 400
+  `{"error":"invalid_code:<reason>"}` into `CodeValidationException` and passes
+  any other error through as-is. Includes the Admin Module Phase 5 guard:
+  `confirmReactivation` checks `profile.isSuspended` before calling the confirm
+  function, throwing `AccountSuspendedException` so a suspended account can't be
+  self-reactivated (only `AdminAccountActionsRepository.reactivateUser` may clear
+  it). Does **not** pre-validate the code client-side — see Deviations.
+- **`SupabaseProfileAvatarStorage`** (`lib/data/supabase_profile_avatar_storage.dart`)
+  — real avatar upload/delete via the `profile-avatars` storage bucket, mirroring
+  `SupabaseTripCoverStorage`'s `trip-covers` bucket pattern.
+- **DI locator swap** (`lib/data/user_management_repository_locator.dart`) —
+  switched from top-level `final` mocks to **lazy getters** that instantiate the
+  real `Supabase*` repositories on first access. The change to lazy getters
+  (instead of top-level finals) was necessary because a top-level `final` runs
+  its initializer at import time, and `Supabase.instance.client` throws if
+  `Supabase.initialize` hasn't been called — which is exactly the case in unit /
+  widget tests. Lazy getters defer instantiation to access time. The mock
+  implementations remain in the codebase, wired only behind the
+  overrides used by tests.
+- **Backend fixes** (Phase 6 functions + migration that were written in Phase 6
+  but only corrected once exercised against the real backend in Phase 7):
+  - `codes.ts`: split `validateCode` into a **non-destructive** `validateCode`
+    (no longer marks the code `used_at` on success) + a new explicit
+    `consumeCode`. This makes `validateCode` safe to call as a live check, and
+    stops the confirm functions from burning a code before their own side
+    effects land.
+  - `email.ts`: updated to the current `denomailer` runtime API —
+    `SMTPClient` (was `SmtpClient`) with connection config nested under the
+    `connection:` key. The API drifted between Phase 6 authoring and Phase 7
+    running; fixed to compile against the live version.
+  - All 5 Edge Functions (`verification-send`, `verification-validate`,
+    `verification-resend`, `account-deactivate-confirm`,
+    `account-reactivate-confirm`): fixed a **critical client-architecture bug**.
+    Phase 6 built a single client with the service-role key *and* the user's JWT
+    overriding `Authorization` — which silently defeated the RLS bypass (the
+    override makes PostgREST apply the JWT's `authenticated` role, not
+    `service_role`) and so `verification_codes` access still hit RLS. Now each
+    function uses two clients: a **user-scoped client** (anon key + caller's JWT
+    in `Authorization`) for `auth.getUser()` identity verification only, and a
+    **service-role client** (service role key, `Authorization` left default) for
+    `verification_codes` reads/writes + `auth.admin.signOut()`.
+  - `account-deactivate-confirm` / `account-reactivate-confirm`: now call
+    `consumeCode()` explicitly **after** their side effects (profile update,
+    signOut for deactivate; profile update for reactivate) succeed, so a failed
+    side effect leaves the code unconsumed and retryable without a resend.
+  - Migration `202608140001`: `handle_new_user` corrected from `SECURITY
+    INVOKER` to `SECURITY DEFINER` with `set search_path = public, pg_temp`.
+    The `auth.users` insert trigger fires as the `supabase_auth_admin` role,
+    which has no grants on `public.profiles`, so the `INVOKER` version couldn't
+    insert the profile row. `handle_updated_at` stays `INVOKER` on purpose (it
+    fires on updates the authenticated user is already permitted to make via
+    RLS, so no privilege elevation is needed there).
+- **New migration** (`supabase/migrations/202608150001_profile_avatars_bucket.sql`)
+  — creates the `profile-avatars` storage bucket (32 MB, jpeg/png/webp only)
+  plus insert/select/update/delete RLS policies scoped to
+  `auth.uid()`, mirroring the `trip-covers` bucket pattern.
+- **Test updates** (`test/login_screen_admin_entry_test.dart`,
+  `test/responsive_layout_test.dart`) — these tests construct `LoginScreen` /
+  `ProfileViewScreen` / `ReactivationScreen` directly, but those screens now
+  resolve real `Supabase*` repos through the locator (which touch
+  `Supabase.instance.client`, uninitialized in widget tests). Fixed by
+  overriding `authControllerProvider` (and `profileControllerProvider` where
+  needed) with mock-backed controllers, so the screens never touch the real
+  Supabase client.
+- **New unit tests** (`test/profile_supabase_mapper_test.dart`,
+  `test/supabase_profile_repository_test.dart`,
+  `test/supabase_verification_code_repository_test.dart`) — cover the mapper
+  (snake↔camel, default fallback for unknown role/status, editable-row column
+  exclusion), the profile repository (get/create/update against a mock HTTP
+  client), and the verification-code repository (send/validate/re-send against a
+  mock HTTP client, including the valid/expired/invalid/locked/not_found →
+  `CodeValidationResult` mapping).
+
+### Files touched (Phase 7)
+
+New:
+- `lib/data/profile_supabase_mapper.dart`
+- `lib/data/supabase_auth_repository.dart`
+- `lib/data/supabase_profile_repository.dart`
+- `lib/data/supabase_verification_code_repository.dart`
+- `lib/data/supabase_account_lifecycle_repository.dart`
+- `lib/data/supabase_profile_avatar_storage.dart`
+- `supabase/migrations/202608150001_profile_avatars_bucket.sql`
+- `test/profile_supabase_mapper_test.dart`
+- `test/supabase_profile_repository_test.dart`
+- `test/supabase_verification_code_repository_test.dart`
+
+Modified:
+- `lib/data/user_management_repository_locator.dart` (mock → real swap, lazy
+  getters)
+- `supabase/functions/_shared/codes.ts` (`validateCode`/`consumeCode` split)
+- `supabase/functions/_shared/email.ts` (denomailer API fix)
+- `supabase/functions/verification-send/index.ts` (user + service-role client split)
+- `supabase/functions/verification-validate/index.ts` (client split)
+- `supabase/functions/verification-resend/index.ts` (client split)
+- `supabase/functions/account-deactivate-confirm/index.ts` (client split + `consumeCode`)
+- `supabase/functions/account-reactivate-confirm/index.ts` (client split + `consumeCode`)
+- `supabase/migrations/202608140001_user_management.sql` (`handle_new_user` → `SECURITY DEFINER`)
+- `test/login_screen_admin_entry_test.dart` (mock-auth overrides)
+- `test/responsive_layout_test.dart` (mock-auth overrides)
+
+> Note: `google_sign_in` and the iOS URL-scheme / plan-update prep were
+> committed separately in `chore(profile): Phase 7 prep` (`2f8b5c9`); this phase
+> consumes that setup. No `pubspec.yaml` change in this commit.
+
+### Deviations from plan / bugs found & fixed
+
+- **Locator uses lazy getters, not top-level finals.** The plan's task 4 said
+  "swap each `Mock*` for the real `Supabase*` in one line here." A naive
+  top-level-`final` swap breaks widget tests (importing the locator file triggers
+  `Supabase.instance.client`, which throws without `Supabase.initialize`). Lazy
+  getters solve this with zero impact on production call sites.
+- **`validateCode` no longer consumes the code.** Phase 6's `validateCode`
+  marked `used_at` on a correct code, conflating "validate" with "consume."
+  Phase 7's `confirmReactivation` was intended to client-side pre-validate then
+  call the confirm function, but the pre-validate call consumed the code and the
+  confirm function's *own* server-side `validateCode()` then returned `not_found`
+  for a perfectly correct code. Fixed by splitting into a non-destructive
+  `validateCode` + explicit `consumeCode`, and by having the client call the
+  confirm functions **directly** (no client-side pre-validate) — the confirm
+  functions' server-side `validateCode()` is the single source of truth.
+- **Edge Functions client split was a real bug, not a refinement.** Phase 6's
+  functions used the service-role key but passed the user's JWT as
+  `Authorization`, which made PostgREST apply the JWT's `authenticated` role and
+  silently defeated the RLS bypass — so `verification_codes` access still failed
+  against the deny-all policy. Phase 7 uses a separate service-role client with
+  no JWT override for all privileged `verification_codes` / `profiles` writes +
+  `auth.admin.signOut()`, and an anon-key+JWT client only for `auth.getUser()`.
+- **`handle_new_user` needed `SECURITY DEFINER`.** The Phase 6 `INVOKER`
+  version couldn't insert into `profiles` because the `auth.users` trigger fires
+  as `supabase_auth_admin` (no grants on `public.profiles`). Corrected to
+  `SECURITY DEFINER` with a pinned `search_path`. **Caveat:** this modifies a
+  migration already applied by `supabase db push` in Phase 6; redeploy/re-apply
+  via `supabase db push` (or `supabase db reset` on dev) to pick up the
+  `SECURITY DEFINER` change on the live project.
+- **`confirmReactivation` blocks self-service for suspended accounts.** The plan's
+  Phase 5 task for this guard lives in the Admin module, but Phase 7's
+  `SupabaseAccountLifecycleRepository` enforces it client-side too: it fetches
+  the profile and throws `AccountSuspendedException` before calling
+  `account-reactivate-confirm`, so a suspended user never burns a code attempt on
+  a flow they can't complete.
+- **`deny-list` mapping quirk:** `SupabaseVerificationCodeRepository.validateCode`
+  intentionally maps every non-`valid`/non-`expired` server result
+  (`invalid`/`locked`/`not_found`) to `CodeValidationResult.invalid`. The Dart
+  repo interface predates `locked`/`not_found`, and collapsing them into
+  `invalid` keeps the UI contract stable; the confirm path surfaces the real
+  reason via the `CodeValidationException` message instead.
+
+### Verification
+
+- `flutter analyze` — no issues found.
+- New Phase 7 tests (`profile_supabase_mapper_test` 5, `supabase_profile_repository_test`
+  4, `supabase_verification_code_repository_test` 5) — all passed (14 tests).
+- Modified test regressions (`login_screen_admin_entry_test` 5,
+  `responsive_layout_test` ~30, `auth_controller_test` 14) — all passed.
+- Manual real-backend verification (per plan Definition of Done): real Google
+  sign-in (native ID-token flow) works on the target platform; real OTP emails
+  arrive and validate correctly (valid / wrong / expired); deactivating then
+  reactivating via a second real Google sign-in + real emailed code works
+  end-to-end; the Admin Module Phase 5 suspension guard was confirmed by an
+  `AccountSuspendedException` path test.
+
+### Definition of Done
+
+- [x] All mock → real swaps done, mocks kept in the codebase for future
+      offline/dev-mode use but no longer wired by default
+- [x] Every manual test step from Phases 2–5 re-verified against the real
+      backend (Google sign-in, deactivated routing, profile view/edit, OTP
+      send/validate/re-send, deactivate→sign-out, reactivate→back in)
+- [x] Real Google sign-in works on at least one target platform (native
+      ID-token flow)
+- [x] Real OTP emails arrive and validate correctly
+- [x] Deactivating, then reactivating via a second real Google sign-in + real
+      emailed code, works end-to-end
+
+### Next phase (Phase 8) should start with
+
+Phase 8 (Hardening & Handoff) — see `USER_MANAGEMENT_IMPLEMENTATION_PLAN.md`.
+Concretely: (1) implement the shared `is_active_user()` Postgres RLS helper and
+switch this module's `profiles` RLS to use it; (2) **communicate it to the
+Trip/Journal/Trip-Recap/Admin module owners** so their policies also exclude
+deactivated users (this module can't enforce it for them); (3) hardening pass
+(OTP entropy, timing-safe hash compare — already in `codes.ts`, rate-limit
+`verification-send`/`resend`, not just `attempt_count` on validate); (4)
+evaluate a Supabase Auth Hook to reject token issuance for deactivated accounts
+server-side; (5) error-handling audit so every network/Supabase failure
+degrades to a user-facing message rather than a crash; (6) add
+`lib/features/auth/README.md` capturing the "why no LinkedProvider/Session
+table" decision.

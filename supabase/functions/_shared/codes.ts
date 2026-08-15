@@ -47,7 +47,13 @@ export interface CodeValidationOutcome {
 /**
  * Validate a submitted code against the latest active (unused, unexpired)
  * code for a user + purpose. Increments attempt_count on a wrong code and
- * locks out after MAX_ATTEMPTS. Marks the code used on success.
+ * locks out after MAX_ATTEMPTS.
+ *
+ * Does NOT mark the code used on success — callers that intend to actually
+ * complete the action (account-*-confirm) must call consumeCode()
+ * themselves, after applying their side effects. This makes validateCode()
+ * safe to call more than once for the same code (e.g. a non-destructive
+ * live check plus a later confirm) without burning it prematurely.
  *
  * `db` must be a service-role client (RLS blocks direct client access to
  * verification_codes).
@@ -94,12 +100,27 @@ export async function validateCode(
     return { result: "invalid", codeId };
   }
 
+  return { result: "valid", codeId };
+}
+
+/**
+ * Marks a code as used. Call this explicitly — and only — from the
+ * account-*-confirm functions, after their side effects (profile update,
+ * signOut) have succeeded. If a side effect fails, leave the code
+ * unconsumed so the user can safely retry with the same code rather than
+ * needing a resend.
+ *
+ * `db` must be a service-role client (RLS blocks direct client access to
+ * verification_codes).
+ */
+export async function consumeCode(
+  db: SupabaseClientLike,
+  codeId: string,
+): Promise<void> {
   await db
     .from("verification_codes")
     .update({ used_at: new Date().toISOString() })
     .eq("code_id", codeId);
-
-  return { result: "valid", codeId };
 }
 
 /** Minimal structural type for the supabase-js client methods we use. */

@@ -2,7 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:tripjournal/data/mock_account_lifecycle_repository.dart';
+import 'package:tripjournal/data/mock_auth_repository.dart';
+import 'package:tripjournal/data/mock_profile_repository.dart';
+import 'package:tripjournal/data/mock_verification_code_repository.dart';
 import 'package:tripjournal/features/admin/screens/admin_login_screen.dart';
+import 'package:tripjournal/features/auth/controller/auth_controller.dart';
 import 'package:tripjournal/features/auth/screens/login_screen.dart';
 import 'package:tripjournal/widgets/app_logo.dart';
 
@@ -14,11 +19,31 @@ void main() {
   // produces small real gaps well within the 3s window).
   tearDown(() => loginScreenDebugClock = DateTime.now);
 
+  Widget buildLoginScreen() {
+    final profileRepository = MockProfileRepository(
+      state: MockProfileState.active,
+    );
+    final verificationCodeRepository = MockVerificationCodeRepository();
+    final authController = AuthController(
+      MockAuthRepository(),
+      profileRepository,
+      MockAccountLifecycleRepository(
+        profileRepository: profileRepository,
+        verificationCodeRepository: verificationCodeRepository,
+      ),
+    );
+
+    return ProviderScope(
+      overrides: [
+        authControllerProvider.overrideWith((ref) => authController),
+      ],
+      child: const MaterialApp(home: LoginScreen()),
+    );
+  }
+
   testWidgets('the sign-in screen shows the app artwork, not a placeholder icon',
       (tester) async {
-    await tester.pumpWidget(
-      const ProviderScope(child: MaterialApp(home: LoginScreen())),
-    );
+    await tester.pumpWidget(buildLoginScreen());
     await tester.pumpAndSettle();
 
     // The logo doubles as the hidden admin tap target, so it has to stay
@@ -36,7 +61,7 @@ void main() {
   group('LoginScreen hidden admin entry', () {
     testWidgets('no visible "Admin Portal" text is shown to travelers',
         (tester) async {
-      await tester.pumpWidget(const ProviderScope(child: MaterialApp(home: LoginScreen())));
+      await tester.pumpWidget(buildLoginScreen());
       await tester.pumpAndSettle();
 
       expect(find.text('Admin Portal'), findsNothing);
@@ -44,7 +69,7 @@ void main() {
 
     testWidgets('tapping the logo 3 times within the window opens AdminGate',
         (tester) async {
-      await tester.pumpWidget(const ProviderScope(child: MaterialApp(home: LoginScreen())));
+      await tester.pumpWidget(buildLoginScreen());
       await tester.pumpAndSettle();
 
       final logo = find.byKey(const Key('login-logo-tap-target'));
@@ -59,7 +84,7 @@ void main() {
     });
 
     testWidgets('2 taps does not open the admin portal', (tester) async {
-      await tester.pumpWidget(const ProviderScope(child: MaterialApp(home: LoginScreen())));
+      await tester.pumpWidget(buildLoginScreen());
       await tester.pumpAndSettle();
 
       final logo = find.byKey(const Key('login-logo-tap-target'));
@@ -73,7 +98,7 @@ void main() {
 
     testWidgets('taps spread outside the window do not accumulate',
         (tester) async {
-      await tester.pumpWidget(const ProviderScope(child: MaterialApp(home: LoginScreen())));
+      await tester.pumpWidget(buildLoginScreen());
       await tester.pumpAndSettle();
 
       var fakeNow = DateTime(2026, 1, 1);

@@ -36,6 +36,7 @@ Deno.serve(async (req: Request) => {
       return json({ error: "Missing bearer token" }, 401);
     }
 
+    // User-scoped client: identity verification + profile lookup only.
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_ANON_KEY")!,
@@ -46,6 +47,14 @@ Deno.serve(async (req: Request) => {
       error: userError,
     } = await supabase.auth.getUser();
     if (userError || !user) return json({ error: "Unauthorized" }, 401);
+
+    // Service-role client: bypasses RLS. Only used for verification_codes
+    // writes below, always scoped to the verified user.id from above.
+    const supabaseAdmin = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+      { auth: { autoRefreshToken: false, persistSession: false } },
+    );
 
     const { purpose } = await req.json();
     if (purpose !== "deactivation" && purpose !== "reactivation") {
@@ -62,7 +71,7 @@ Deno.serve(async (req: Request) => {
     }
 
     // Invalidate any prior unused codes for this user+purpose.
-    await supabase
+    await supabaseAdmin
       .from("verification_codes")
       .update({ used_at: new Date().toISOString() })
       .eq("user_id", user.id)
@@ -73,7 +82,7 @@ Deno.serve(async (req: Request) => {
     const codeHash = await hashCode(code);
     const expiresAt = new Date(Date.now() + CODE_TTL_MINUTES * 60 * 1000);
 
-    const { error: insertError } = await supabase.from("verification_codes").insert({
+    const { error: insertError } = await supabaseAdmin.from("verification_codes").insert({
       user_id: user.id,
       code_hash: codeHash,
       purpose,

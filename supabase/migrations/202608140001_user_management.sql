@@ -83,10 +83,17 @@ create index if not exists verification_codes_user_purpose_idx
 -- up via Supabase Auth, auto-create their Profile row with status = active.
 -- The client-side createProfileIfMissing() in the Flutter app is a defensive
 -- fallback, not the primary mechanism.
+-- SECURITY DEFINER is required here: this trigger fires on auth.users insert
+-- as the supabase_auth_admin role, which has no table-level grants on
+-- public.profiles. Running as the function owner (postgres) instead lets the
+-- insert succeed. search_path is pinned to prevent search-path hijacking of
+-- a SECURITY DEFINER function. (handle_updated_at above stays INVOKER on
+-- purpose — it fires on updates the authenticated user is already permitted
+-- to make via RLS, so no privilege elevation is needed there.)
 create or replace function public.handle_new_user()
 returns trigger
 language plpgsql
-security invoker
+security definer
 set search_path = public, pg_temp
 as $$
 begin

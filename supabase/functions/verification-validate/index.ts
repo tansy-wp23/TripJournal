@@ -34,9 +34,12 @@ Deno.serve(async (req: Request) => {
       return json({ error: "Missing bearer token" }, 401);
     }
 
+    // User-scoped client: identity verification ONLY. Built with the anon
+    // key and the caller's own JWT as Authorization — this is what makes
+    // auth.getUser() correctly identify who's calling.
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+      Deno.env.get("SUPABASE_ANON_KEY")!,
       { global: { headers: { Authorization: authHeader } } },
     );
     const {
@@ -44,6 +47,21 @@ Deno.serve(async (req: Request) => {
       error: userError,
     } = await supabase.auth.getUser();
     if (userError || !user) return json({ error: "Unauthorized" }, 401);
+
+    // Service-role client: bypasses RLS for the verification_codes read.
+    // IMPORTANT: do NOT override Authorization here. Postgres/PostgREST
+    // determines the RLS role from the JWT actually sent in the
+    // Authorization header, not from which key was passed to createClient()
+    // — overriding it with the user's JWT (as the previous version did)
+    // silently defeats the service-role bypass and still hits RLS as
+    // 'authenticated'. Leaving Authorization unset here lets the client
+    // default to the service role key itself, which carries role:
+    // service_role and correctly bypasses RLS.
+    const supabaseAdmin = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+      { auth: { autoRefreshToken: false, persistSession: false } },
+    );
 
     const { purpose, code } = await req.json();
     if (purpose !== "deactivation" && purpose !== "reactivation") {
@@ -53,7 +71,7 @@ Deno.serve(async (req: Request) => {
       return json({ error: "code must be a 6-digit string" }, 400);
     }
 
-    const outcome = await validateCode(supabase, user.id, purpose, code);
+    const outcome = await validateCode(supabaseAdmin, user.id, purpose, code);
     return json({ result: outcome.result });
   } catch (err) {
     console.error("verification-validate error:", err);

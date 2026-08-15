@@ -10,7 +10,7 @@
 // client-side until the code was confirmed.
 
 import { createClient } from "npm:@supabase/supabase-js@2.112.0";
-import { validateCode } from "../_shared/codes.ts";
+import { consumeCode, validateCode } from "../_shared/codes.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -36,9 +36,10 @@ Deno.serve(async (req: Request) => {
       return json({ error: "Missing bearer token" }, 401);
     }
 
+    // User-scoped client: identity verification ONLY.
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+      Deno.env.get("SUPABASE_ANON_KEY")!,
       { global: { headers: { Authorization: authHeader } } },
     );
     const {
@@ -47,22 +48,38 @@ Deno.serve(async (req: Request) => {
     } = await supabase.auth.getUser();
     if (userError || !user) return json({ error: "Unauthorized" }, 401);
 
+    // Service-role client: bypasses RLS. Authorization intentionally left
+    // as the default service-role key — do not override with the user's
+    // JWT, or the RLS bypass is silently defeated.
+    const supabaseAdmin = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+      { auth: { autoRefreshToken: false, persistSession: false } },
+    );
+
     const { code } = await req.json();
     if (typeof code !== "string" || !/^\d{6}$/.test(code)) {
       return json({ error: "code must be a 6-digit string" }, 400);
     }
 
-    const outcome = await validateCode(supabase, user.id, "reactivation", code);
+    const outcome = await validateCode(supabaseAdmin, user.id, "reactivation", code);
     if (outcome.result !== "valid") {
       return json({ error: `invalid_code:${outcome.result}` }, 400);
     }
 
     // Set the profile back to active and clear deactivated_at.
-    const { error: updateError } = await supabase
+    const { error: updateError } = await supabaseAdmin
       .from("profiles")
       .update({ status: "active", deactivated_at: null })
       .eq("user_id", user.id);
     if (updateError) throw updateError;
+
+    // Only mark the code used once the profile update above has succeeded —
+    // if it failed, an earlier `throw` already exited, leaving the code
+    // valid for the user to retry with, no resend needed.
+    if (outcome.codeId) {
+      await consumeCode(supabaseAdmin, outcome.codeId);
+    }
 
     return json({ ok: true });
   } catch (err) {

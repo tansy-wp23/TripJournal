@@ -34,6 +34,9 @@ Deno.serve(async (req: Request) => {
       return json({ error: "Missing bearer token" }, 401);
     }
 
+    // User-scoped client: identity verification only. RLS-limited to
+    // whatever the caller's own JWT is allowed to touch (their own
+    // profile row), so this alone can't be used to write verification_codes.
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_ANON_KEY")!,
@@ -45,12 +48,23 @@ Deno.serve(async (req: Request) => {
     } = await supabase.auth.getUser();
     if (userError || !user) return json({ error: "Unauthorized" }, 401);
 
+    // Service-role client: bypasses RLS. Only used below for the two
+    // verification_codes operations, and only ever with user.id verified
+    // above — never with a user id taken from the request body.
+    const supabaseAdmin = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+      { auth: { autoRefreshToken: false, persistSession: false } },
+    );
+
     const { purpose } = await req.json();
     if (purpose !== "deactivation" && purpose !== "reactivation") {
       return json({ error: "purpose must be 'deactivation' or 'reactivation'" }, 400);
     }
 
-    // Fetch the user's email from their profile.
+    // Fetch the user's email from their profile. Stays on the user-scoped
+    // client — the profiles_select_own RLS policy already permits this,
+    // no need for elevated privileges here.
     const { data: profile, error: profileError } = await supabase
       .from("profiles")
       .select("email")
@@ -61,7 +75,9 @@ Deno.serve(async (req: Request) => {
     }
 
     // Invalidate any prior unused codes for this user+purpose.
-    await supabase
+    // verification_codes has no client-facing RLS grants at all, so this
+    // must go through the admin client.
+    await supabaseAdmin
       .from("verification_codes")
       .update({ used_at: new Date().toISOString() })
       .eq("user_id", user.id)
@@ -72,7 +88,7 @@ Deno.serve(async (req: Request) => {
     const codeHash = await hashCode(code);
     const expiresAt = new Date(Date.now() + CODE_TTL_MINUTES * 60 * 1000);
 
-    const { error: insertError } = await supabase.from("verification_codes").insert({
+    const { error: insertError } = await supabaseAdmin.from("verification_codes").insert({
       user_id: user.id,
       code_hash: codeHash,
       purpose,
