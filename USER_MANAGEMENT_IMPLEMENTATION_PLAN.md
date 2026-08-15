@@ -102,6 +102,101 @@ those tables here.
 
 ---
 
+## Manual Prerequisites (human-only, not agent tasks)
+
+These require accounts, credentials, or physical devices the agent doesn't
+have access to. Do these yourself, outside of any agent session, at the
+points noted. The agent should not attempt any of these — if a task in a
+later phase seems to require one of these and it hasn't been done yet, the
+agent should stop and note it in `PROGRESS.md` rather than trying to work
+around it.
+
+### A. Google Cloud OAuth setup (before Phase 6)
+
+1. Create a Google Cloud project.
+2. Set up the OAuth consent screen (Google Auth Platform → Branding), choosing
+   **External** as the user type (cannot be changed later without a new
+   project).
+3. Add test users (your own account + all teammates) under the Audience tab
+   — required while the app isn't published, or teammates will hit an
+   access-blocked error.
+4. Add scopes: `openid`, `.../auth/userinfo.email`,
+   `.../auth/userinfo.profile` (all non-sensitive, no verification needed).
+5. Create a **Web application** OAuth Client ID (Clients tab). Add
+   Supabase's callback URL (`https://<project-ref>.supabase.co/auth/v1/callback`)
+   under Authorized redirect URIs. Save the Client ID + Secret into
+   Supabase's dashboard under Authentication → Providers → Google.
+6. Create a separate **Android** OAuth Client ID: package name (the
+   `applicationId` from `android/app/build.gradle`'s `defaultConfig`, not
+   `namespace`) + SHA-1 fingerprint (`keytool -list -v -keystore
+   ~/.android/debug.keystore -alias androiddebugkey -storepass android
+   -keypass android` for debug; a second one from your release keystore is
+   needed before publishing, and a third from Play Console if using Play
+   App Signing).
+7. Create a separate **iOS** OAuth Client ID: Bundle ID (from Xcode →
+   Runner target → General → Bundle Identifier). Add the resulting
+   "reversed client ID" as a URL scheme in `ios/Runner/Info.plist` under
+   `CFBundleURLTypes` (or via Xcode → Runner target → Info → URL Types).
+8. In Supabase's Google provider settings, add the Android and iOS client
+   IDs to the "Authorized Client IDs" field (comma-separated, Web client ID
+   listed first). If supporting iOS, also enable "Skip nonce checks" —
+   Google's iOS SDK doesn't reliably support the nonce flow Supabase
+   normally expects.
+
+Note: since this project uses the native `signInWithIdToken` flow (see
+Phase 7), Supabase's **Site URL / Redirect URLs** configuration is *not*
+required for Google sign-in to work — that setting only matters for
+browser-redirect flows (`signInWithOAuth`) or Supabase auth emails
+(magic link, password reset), neither of which this module uses. Skip it
+unless one of those gets added later.
+
+### B. Gmail SMTP setup for verification code emails (before Phase 6)
+
+Resend (a common pairing with Supabase Edge Functions) was considered and
+rejected for this project — without owning a domain, Resend only allows
+sending to your own account email, not to teammates. Gmail SMTP was chosen
+instead: free, no domain required, and can send to any recipient.
+
+1. Enable 2-Step Verification on the Gmail account that will send the
+   codes (required before Google allows app passwords).
+2. Generate an app password at `myaccount.google.com/apppasswords`.
+3. Store both as Supabase secrets (not in code, not committed):
+   `supabase secrets set SMTP_USERNAME=youraddress@gmail.com
+   SMTP_PASSWORD=your16charapppassword`
+4. The Phase 6 `verification-send` function uses the `denomailer` Deno
+   library (`https://deno.land/x/denomailer/mod.ts`) with
+   `hostname: smtp.gmail.com`, `port: 465`, `tls: true`, confirmed to work
+   from Supabase Edge Functions.
+
+Known limitation: this is tied to one person's personal Gmail account and
+~500 emails/day. Fine for a class project; would need a real transactional
+email provider + verified domain before any real-world launch.
+
+### C. Deciding how migrations/functions get deployed (before Phase 6)
+
+Two options — pick one as a team, don't let it vary by teammate:
+
+- **Agent deploys directly** — generate a personal access token
+  (`supabase.com/dashboard/account/tokens`), find the project ref (Project
+  Settings → General → Reference ID) and DB password (Project Settings →
+  Database), and store all three as environment variables
+  (`SUPABASE_ACCESS_TOKEN`, `SUPABASE_PROJECT_ID`, `SUPABASE_DB_PASSWORD`)
+  in a gitignored `.env` file. The agent can then run
+  `supabase link --project-ref $SUPABASE_PROJECT_ID`, `supabase db push`,
+  and `supabase functions deploy <name>` non-interactively. **Caveat:** a
+  personal access token isn't scoped to one project — it can act on every
+  project in that Supabase account. Fine for a solo account used only for
+  this project; worth a second thought if the account has other projects
+  on it.
+- **Human deploys** — the agent writes migration/function files and stops;
+  a person runs the same CLI commands manually each time. Slower, but no
+  token ever leaves your hands.
+
+Whichever is chosen, note it in `docs/user-management/PROGRESS.md` during
+Phase 0 so later phases (and teammates) don't assume the other one.
+
+---
+
 ## Phase 0 — Recon & Contracts (no feature code)
 
 **Goal:** Know what already exists, and lock the interfaces every later
@@ -334,20 +429,31 @@ infrastructure.
 **Goal:** Stand up the real backend, independent of the Flutter app.
 
 **Tasks:**
-1. Enable the Google provider in the Supabase Auth dashboard; configure
-   OAuth client ID/secret and redirect URIs for each target platform.
+1. Confirm Manual Prerequisite A (Google Cloud OAuth setup — Web, Android,
+   and iOS client IDs, plus the "Authorized Client IDs" and "Skip nonce
+   checks" fields in Supabase's Google provider settings) has been
+   completed. This is a human task, not something to do from this phase —
+   see the Manual Prerequisites section above. Do **not** configure Site
+   URL / Redirect URLs — this project's native sign-in flow (Phase 7)
+   doesn't use them; only add that later if a browser-redirect flow or
+   Supabase auth email gets added.
 2. SQL migration for `Profile` only: `userID uuid` (FK to
-   `auth.users.id`, PK), `email`, `display_name`, `role`, `status`,
-   `deactivated_at`, `last_login_at`, `created_at`, `updated_at`.
+   `auth.users.id`, PK), `email`, `display_name`, `avatar_url`, `role`,
+   `status`, `deactivated_at`, `last_login_at`, `created_at`, `updated_at`.
 3. SQL migration for `VerificationCode` only: `codeID`, `code_hash`,
    `purpose`, `attempt_count`, `created_at`, `expires_at`, `used_at`,
    `userID` (FK to `auth.users.id`).
 4. A Postgres trigger on `auth.users` insert (`handle_new_user`,
    Supabase's standard pattern) that auto-creates a matching `Profile`
-   row with `status = active`. This is the server-side source of truth
-   for account creation (PB-03); the client-side
-   `createProfileIfMissing()` call from Phase 2 becomes a defensive
-   fallback, not the primary mechanism.
+   row with `status = active`, seeding `display_name` and `avatar_url`
+   from the Google profile data Supabase stores in
+   `auth.users.raw_user_meta_data` (typically `full_name`/`name` and
+   `avatar_url`/`picture`, depending on how Google's response is shaped —
+   confirm the actual key names against a real signed-in user's metadata
+   before writing this). This is the server-side source of truth for
+   account creation (PB-03); the client-side `createProfileIfMissing()`
+   call from Phase 2 becomes a defensive fallback, not the primary
+   mechanism.
 5. RLS policies: `Profile` — a user can `select`/`update` only their own
    row (`userID = auth.uid()`); no direct `insert`/`delete` from clients.
    `VerificationCode` — no direct client access at all; only accessible
@@ -355,9 +461,8 @@ infrastructure.
 6. Edge Functions or Postgres RPC functions (only where privileged logic
    or hashing is needed):
    - `verification-send` / `verification-validate` / `verification-resend`
-     — OTP generation (6-digit), hashing (never store plaintext),
-     `attempt_count` lockout after a defined threshold, `expires_at`
-     check, email sending.
+     — OTP generation, hashing (never store plaintext), `attempt_count`
+     lockout after a defined threshold, `expires_at` check, email sending.
    - `account-deactivate-confirm` — validates the code, sets
      `Profile.status = deactivated`, calls
      `auth.admin.signOut(userId)` (requires service role — this is why it
@@ -388,13 +493,24 @@ infrastructure.
 touching UI code.
 
 **Tasks:**
-1. Add `supabase_flutter` + Google sign-in platform config (Android/iOS
-   client IDs, redirect URIs) per Supabase's Flutter OAuth setup.
-2. Implement `SupabaseAuthRepository` wrapping `signInWithOAuth`/native
-   Google sign-in, `signOut`, and the SDK's `onAuthStateChange` stream.
-   Swap the DI binding from Phase 1. Re-run Phase 2's manual test steps
-   against the real backend, including the deactivated-account routing
-   branch.
+0. Confirm Manual Prerequisite C (deployment credentials decision) has
+   been made and, if the agent is deploying directly, that
+   `SUPABASE_ACCESS_TOKEN`/`SUPABASE_PROJECT_ID`/`SUPABASE_DB_PASSWORD` are
+   available as environment variables before running any `supabase`
+   CLI commands in this phase.
+1. Add `supabase_flutter` and the `google_sign_in` package. Confirm Manual
+   Prerequisite A (Android/iOS OAuth client IDs, Info.plist URL scheme,
+   Supabase's "Authorized Client IDs" field) is already done — this phase
+   consumes that setup, it doesn't perform it.
+2. Implement `SupabaseAuthRepository` using the **native ID-token flow**,
+   not the browser-redirect flow: call `GoogleSignIn().signIn()` to get an
+   idToken/accessToken directly from Google, then pass those to
+   `supabase.auth.signInWithIdToken(provider: OAuthProvider.google, ...)`.
+   This avoids deep linking/redirect handling entirely — do **not** use
+   `signInWithOAuth()` for this app. Wire `signOut()` and the SDK's
+   `onAuthStateChange` stream the same way. Swap the DI binding from
+   Phase 1. Re-run Phase 2's manual test steps against the real backend,
+   including the deactivated-account routing branch.
 3. Implement `SupabaseProfileRepository` using direct RLS-protected table
    access. Swap in, re-run Phase 3's tests.
 4. Implement `SupabaseVerificationCodeRepository` +

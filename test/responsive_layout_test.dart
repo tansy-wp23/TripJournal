@@ -3,7 +3,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:tripjournal/data/journal_repository.dart';
+import 'package:tripjournal/data/mock_account_lifecycle_repository.dart';
+import 'package:tripjournal/data/mock_auth_repository.dart';
+import 'package:tripjournal/data/mock_profile_repository.dart';
+import 'package:tripjournal/data/mock_verification_code_repository.dart';
 import 'package:tripjournal/data/repository_locator.dart';
+import 'package:tripjournal/features/auth/controller/auth_controller.dart';
+import 'package:tripjournal/features/profile/controller/profile_controller.dart';
+import 'package:tripjournal/data/mock_profile_avatar_storage.dart';
 import 'package:tripjournal/features/admin/screens/admin_dashboard_screen.dart';
 import 'package:tripjournal/features/admin/screens/admin_login_screen.dart';
 import 'package:tripjournal/features/admin/screens/admin_user_list_screen.dart';
@@ -62,6 +69,44 @@ Widget _app(Widget home, {double textScale = 1.0}) => ProviderScope(
         home: home,
       ),
     );
+
+/// Same as [_app] but overrides [authControllerProvider] with a mock-backed
+/// controller so screens that watch auth state don't touch
+/// `Supabase.instance` (which isn't initialized in widget tests).
+Widget _appWithMockAuth(Widget home, {double textScale = 1.0}) {
+  final profileRepository = MockProfileRepository(
+    state: MockProfileState.active,
+  );
+  final verificationCodeRepository = MockVerificationCodeRepository();
+  final authController = AuthController(
+    MockAuthRepository(),
+    profileRepository,
+    MockAccountLifecycleRepository(
+      profileRepository: profileRepository,
+      verificationCodeRepository: verificationCodeRepository,
+    ),
+  );
+  final profileController = ProfileController(
+    profileRepository,
+    authController,
+    MockProfileAvatarStorage(),
+  );
+
+  return ProviderScope(
+    overrides: [
+      authControllerProvider.overrideWith((ref) => authController),
+      profileControllerProvider.overrideWith((ref) => profileController),
+    ],
+    child: MaterialApp(
+      builder: (context, child) => MediaQuery.withClampedTextScaling(
+        minScaleFactor: textScale,
+        maxScaleFactor: textScale,
+        child: child!,
+      ),
+      home: home,
+    ),
+  );
+}
 
 /// Renders [build] at every size and fails on any layout overflow. A
 /// RenderFlex/RenderBox overflow raises a FlutterError during paint, which the
@@ -271,7 +316,10 @@ void main() {
   });
 
   testWidgets('Login survives every screen size and orientation', (tester) async {
-    await _expectNoOverflow(tester, () => _app(const LoginScreen()));
+    await _expectNoOverflow(
+      tester,
+      () => _appWithMockAuth(const LoginScreen()),
+    );
   });
 
   testWidgets('the splash survives every screen size and orientation', (tester) async {
@@ -308,11 +356,17 @@ void main() {
   });
 
   testWidgets('the profile screen survives every screen size and orientation', (tester) async {
-    await _expectNoOverflow(tester, () => _app(const ProfileViewScreen()));
+    await _expectNoOverflow(
+      tester,
+      () => _appWithMockAuth(const ProfileViewScreen()),
+    );
   });
 
   testWidgets('reactivation survives every screen size and orientation', (tester) async {
-    await _expectNoOverflow(tester, () => _app(const ReactivationScreen()));
+    await _expectNoOverflow(
+      tester,
+      () => _appWithMockAuth(const ReactivationScreen()),
+    );
   });
 
   group('admin', () {
@@ -369,7 +423,8 @@ void main() {
     testWidgets('Login survives 1.3x text at every size', (tester) async {
       await _expectNoOverflowAtLargeText(
         tester,
-        ({double textScale = 1.0}) => _app(const LoginScreen(), textScale: textScale),
+        ({double textScale = 1.0}) =>
+            _appWithMockAuth(const LoginScreen(), textScale: textScale),
       );
     });
 
