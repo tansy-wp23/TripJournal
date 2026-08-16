@@ -126,6 +126,22 @@ void main() {
     },
   );
 
+  test('converts UTC timestamps before deriving their local calendar day', () {
+    final localEntryTime = DateTime(2026, 8, 16, 0, 15);
+    final model = buildTripMapModel(
+      entries: [
+        journalEntry(
+          id: 'utc-day-2',
+          createdAt: localEntryTime.toUtc(),
+          location: const GeoTag(latitude: 3, longitude: 4),
+        ),
+      ],
+      tripStartDate: tripStart,
+    );
+
+    expect(model.groups.single.dayNumber, 2);
+  });
+
   test(
     'sorts marker groups chronologically with deterministic tie ordering',
     () {

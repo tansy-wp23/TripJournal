@@ -141,8 +141,10 @@ int _dayNumber(DateTime entryDate, DateTime tripStartDate) {
   return entryOrdinal.difference(startOrdinal).inDays + 1;
 }
 
-DateTime _dateOnly(DateTime value) =>
-    DateTime(value.year, value.month, value.day);
+DateTime _dateOnly(DateTime value) {
+  final local = value.toLocal();
+  return DateTime(local.year, local.month, local.day);
+}
 
 int _compareEntries(JournalEntry a, JournalEntry b) {
   final byCreatedAt = a.createdAt.compareTo(b.createdAt);
