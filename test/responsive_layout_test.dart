@@ -50,6 +50,11 @@ const _sizes = <String, Size>{
   'tablet landscape': Size(1112, 834),
 };
 
+Future<void> pumpAuthFrame(WidgetTester tester) async {
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 100));
+}
+
 void _setSize(WidgetTester tester, Size size) {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1.0;
@@ -113,11 +118,14 @@ Future<void> _expectNoOverflow(
   Widget Function() build, {
   Future<void> Function(WidgetTester tester)? after,
   bool settle = true,
+  Future<void> Function(WidgetTester tester)? pumpFrame,
 }) async {
   for (final entry in _sizes.entries) {
     _setSize(tester, entry.value);
     await tester.pumpWidget(build());
-    if (settle) {
+    if (pumpFrame != null) {
+      await pumpFrame(tester);
+    } else if (settle) {
       await tester.pumpAndSettle();
     } else {
       await tester.pump();
@@ -139,11 +147,14 @@ Future<void> _expectNoOverflowAtLargeText(
   WidgetTester tester,
   Widget Function({double textScale}) build, {
   bool settle = true,
+  Future<void> Function(WidgetTester tester)? pumpFrame,
 }) async {
   for (final entry in _sizes.entries) {
     _setSize(tester, entry.value);
     await tester.pumpWidget(build(textScale: 1.3));
-    if (settle) {
+    if (pumpFrame != null) {
+      await pumpFrame(tester);
+    } else if (settle) {
       await tester.pumpAndSettle();
     } else {
       await tester.pump();
@@ -342,6 +353,7 @@ void main() {
     await _expectNoOverflow(
       tester,
       () => _appWithMockAuth(harness, const LoginScreen()),
+      pumpFrame: pumpAuthFrame,
     );
   });
 
@@ -502,6 +514,7 @@ void main() {
           const LoginScreen(),
           textScale: textScale,
         ),
+        pumpFrame: pumpAuthFrame,
       );
     });
 

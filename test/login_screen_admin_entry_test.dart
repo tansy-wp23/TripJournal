@@ -7,6 +7,11 @@ import 'package:tripjournal/widgets/app_logo.dart';
 
 import 'support/auth_test_harness.dart';
 
+Future<void> pumpAuthFrame(WidgetTester tester) async {
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 100));
+}
+
 void main() {
   // `tester.pump(duration)` doesn't advance real wall-clock time, so tests
   // simulating an elapsed gap fake `loginScreenDebugClock` instead of
@@ -31,7 +36,7 @@ void main() {
     'the sign-in screen shows the app artwork, not a placeholder icon',
     (tester) async {
       await tester.pumpWidget(buildLoginScreen());
-      await tester.pumpAndSettle();
+      await pumpAuthFrame(tester);
 
       // The logo doubles as the hidden admin tap target, so it has to stay
       // *inside* that GestureDetector rather than become a sibling of it.
@@ -51,7 +56,7 @@ void main() {
       tester,
     ) async {
       await tester.pumpWidget(buildLoginScreen());
-      await tester.pumpAndSettle();
+      await pumpAuthFrame(tester);
 
       expect(find.text('Admin Portal'), findsNothing);
     });
@@ -60,14 +65,15 @@ void main() {
       tester,
     ) async {
       await tester.pumpWidget(buildLoginScreen());
-      await tester.pumpAndSettle();
+      await pumpAuthFrame(tester);
 
       final logo = find.byKey(const Key('login-logo-tap-target'));
       await tester.tap(logo);
-      await tester.pump(const Duration(milliseconds: 100));
+      await pumpAuthFrame(tester);
       await tester.tap(logo);
-      await tester.pump(const Duration(milliseconds: 100));
+      await pumpAuthFrame(tester);
       await tester.tap(logo);
+      await pumpAuthFrame(tester);
       await tester.pumpAndSettle();
 
       expect(find.byType(AdminLoginScreen), findsOneWidget);
@@ -75,13 +81,13 @@ void main() {
 
     testWidgets('2 taps does not open the admin portal', (tester) async {
       await tester.pumpWidget(buildLoginScreen());
-      await tester.pumpAndSettle();
+      await pumpAuthFrame(tester);
 
       final logo = find.byKey(const Key('login-logo-tap-target'));
       await tester.tap(logo);
-      await tester.pump(const Duration(milliseconds: 100));
+      await pumpAuthFrame(tester);
       await tester.tap(logo);
-      await tester.pumpAndSettle();
+      await pumpAuthFrame(tester);
 
       expect(find.byType(AdminLoginScreen), findsNothing);
     });
@@ -90,20 +96,22 @@ void main() {
       tester,
     ) async {
       await tester.pumpWidget(buildLoginScreen());
-      await tester.pumpAndSettle();
+      await pumpAuthFrame(tester);
 
       var fakeNow = DateTime(2026, 1, 1);
       loginScreenDebugClock = () => fakeNow;
 
       final logo = find.byKey(const Key('login-logo-tap-target'));
       await tester.tap(logo); // tap 1 at fakeNow
+      await pumpAuthFrame(tester);
       fakeNow = fakeNow.add(
         const Duration(seconds: 4),
       ); // exceeds the 3s window
       await tester.tap(logo); // window resets; this becomes tap 1 again
+      await pumpAuthFrame(tester);
       fakeNow = fakeNow.add(const Duration(milliseconds: 100));
       await tester.tap(logo); // tap 2 within the (reset) window
-      await tester.pumpAndSettle();
+      await pumpAuthFrame(tester);
 
       expect(find.byType(AdminLoginScreen), findsNothing);
     });
