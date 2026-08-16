@@ -52,7 +52,8 @@ class AuthController extends ChangeNotifier {
   bool _loading = true;
   String? _error;
   int _authOperationVersion = 0;
-  bool _signedOutIsTerminal = false;
+  Future<void>? _activeInteractiveSignIn;
+  int _signOutsInProgress = 0;
 
   AppSession? get session => _session;
   Profile? get profile => _profile;
@@ -85,9 +86,19 @@ class AuthController extends ChangeNotifier {
   /// 2. Create profile if missing (PB-03, first-time account creation).
   /// 3. Branch on profile status (PB-04 active / PB-06 deactivated).
   ///    If deactivated, automatically send a reactivation code (PB-06).
-  Future<void> signInWithGoogle() async {
+  Future<void> signInWithGoogle() {
+    late final Future<void> operation;
+    operation = _performSignInWithGoogle().whenComplete(() {
+      if (identical(_activeInteractiveSignIn, operation)) {
+        _activeInteractiveSignIn = null;
+      }
+    });
+    _activeInteractiveSignIn = operation;
+    return operation;
+  }
+
+  Future<void> _performSignInWithGoogle() async {
     final operationVersion = ++_authOperationVersion;
-    _signedOutIsTerminal = false;
     _loading = true;
     _error = null;
     notifyListeners();
@@ -133,18 +144,30 @@ class AuthController extends ChangeNotifier {
   /// screen's cancel action (Architecture Decision 7 — don't leave a gated
   /// session hanging) and by the logout button (Phase 3).
   Future<void> signOut() async {
+    final interactiveSignIn = _activeInteractiveSignIn;
     // Invalidate any profile restore already awaiting the repository. This
     // is deliberately silent: publishing a loading state here would make
     // AuthGate replace the current screen with the launch splash on logout.
     _authOperationVersion++;
-    _signedOutIsTerminal = true;
+    _signOutsInProgress++;
     _error = null;
     try {
+      // If Google sign-in has already started, let its repository operation
+      // settle before signing the resulting remote session out. Its controller
+      // writes are already invalidated by the version/count changes above.
+      if (interactiveSignIn != null) {
+        try {
+          await interactiveSignIn;
+        } catch (_) {
+          // Sign-out must still reach the repository after a sign-in failure.
+        }
+      }
       await _authRepository.signOut();
     } finally {
       _session = null;
       _profile = null;
       _loading = false;
+      _signOutsInProgress--;
       notifyListeners();
     }
   }
@@ -204,7 +227,6 @@ class AuthController extends ChangeNotifier {
   Future<void> _onAuthStateChanged(AppSession session) async {
     if (!session.isSignedIn) {
       _authOperationVersion++;
-      _signedOutIsTerminal = true;
       _session = null;
       _profile = null;
       _loading = false;
@@ -212,10 +234,13 @@ class AuthController extends ChangeNotifier {
       return;
     }
 
-    // A signed-in event emitted before a later signOut can be delivered after
-    // signOut has already completed. Callback start time does not make that
-    // older event authoritative, so terminal signed-out state rejects it.
-    if (_signedOutIsTerminal) return;
+    // Callback start time does not establish causality. Reject events while a
+    // later sign-out owns the transition, and reject delayed events whose
+    // session no longer matches the repository's current auth state.
+    if (_signOutsInProgress > 0 ||
+        _authRepository.currentUserId() != session.userId) {
+      return;
+    }
     final operationVersion = _authOperationVersion;
 
     if (_session?.userId == session.userId && _profile != null) {
@@ -263,7 +288,7 @@ class AuthController extends ChangeNotifier {
 
   bool _ownsAuthOperation(int operationVersion) {
     return operationVersion == _authOperationVersion &&
-        !_signedOutIsTerminal;
+        _signOutsInProgress == 0;
   }
 
   String _deriveDisplayName(String email) {

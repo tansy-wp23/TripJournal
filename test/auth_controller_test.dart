@@ -420,6 +420,21 @@ void main() {
     });
 
     test(
+      'a legitimate signed-in stream event after signOut restores the session',
+      () async {
+        await controller.signOut();
+        expect(controller.status, AuthStatus.signedOut);
+
+        authRepository.emitSignedInSession();
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+
+        expect(controller.status, AuthStatus.authenticated);
+        expect(controller.session?.userId, authRepository.mockUserId);
+        expect(controller.profile, isNotNull);
+      },
+    );
+
+    test(
       'interactive signIn completion cannot override a later signOut',
       () async {
         controller.dispose();
@@ -436,11 +451,11 @@ void main() {
 
         final signIn = controller.signInWithGoogle();
         await deferredAuthRepository.signInStarted;
-        await controller.signOut();
-        expect(controller.status, AuthStatus.signedOut);
+        final signOut = controller.signOut();
 
         deferredAuthRepository.releaseSignIn();
         await signIn;
+        await signOut;
         await Future<void>.delayed(const Duration(milliseconds: 10));
 
         expect(controller.status, AuthStatus.signedOut);
@@ -642,8 +657,15 @@ final class _DeferredSignInAuthRepository extends MockAuthRepository {
 
 final class _QueuedSignedInAuthRepository extends MockAuthRepository {
   final Completer<void> _releaseSignedInEvent = Completer<void>();
+  String? _currentUserId;
 
   void releaseSignedInEvent() => _releaseSignedInEvent.complete();
+
+  @override
+  void emitSignedInSession({String? userId, String? email}) {
+    _currentUserId = userId ?? mockUserId;
+    super.emitSignedInSession(userId: userId, email: email);
+  }
 
   @override
   Stream<AppSession> authStateChanges() {
@@ -654,5 +676,10 @@ final class _QueuedSignedInAuthRepository extends MockAuthRepository {
   }
 
   @override
-  Future<void> signOut() async {}
+  Future<void> signOut() async {
+    _currentUserId = null;
+  }
+
+  @override
+  String? currentUserId() => _currentUserId;
 }
