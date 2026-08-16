@@ -3,10 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:tripjournal/data/journal_repository.dart';
-import 'package:tripjournal/data/mock_account_lifecycle_repository.dart';
-import 'package:tripjournal/data/mock_auth_repository.dart';
-import 'package:tripjournal/data/mock_profile_repository.dart';
-import 'package:tripjournal/data/mock_verification_code_repository.dart';
 import 'package:tripjournal/data/repository_locator.dart';
 import 'package:tripjournal/features/auth/controller/auth_controller.dart';
 import 'package:tripjournal/features/profile/controller/profile_controller.dart';
@@ -40,6 +36,8 @@ import 'package:tripjournal/models/mood.dart';
 import 'package:tripjournal/models/trip.dart';
 import 'package:tripjournal/widgets/app_splash.dart';
 
+import 'support/auth_test_harness.dart';
+
 /// Sizes chosen to bracket what the app actually has to survive: a small
 /// budget phone, the same phone rotated (the tightest vertical case by far),
 /// a large phone, and a tablet in both orientations.
@@ -60,41 +58,36 @@ void _setSize(WidgetTester tester, Size size) {
 }
 
 Widget _app(Widget home, {double textScale = 1.0}) => ProviderScope(
-      child: MaterialApp(
-        builder: (context, child) => MediaQuery.withClampedTextScaling(
-          minScaleFactor: textScale,
-          maxScaleFactor: textScale,
-          child: child!,
-        ),
-        home: home,
-      ),
-    );
+  child: MaterialApp(
+    builder: (context, child) => MediaQuery.withClampedTextScaling(
+      minScaleFactor: textScale,
+      maxScaleFactor: textScale,
+      child: child!,
+    ),
+    home: home,
+  ),
+);
 
 /// Same as [_app] but overrides [authControllerProvider] with a mock-backed
 /// controller so screens that watch auth state don't touch
 /// `Supabase.instance` (which isn't initialized in widget tests).
-Widget _appWithMockAuth(Widget home, {double textScale = 1.0}) {
-  final profileRepository = MockProfileRepository(
-    state: MockProfileState.active,
-  );
-  final verificationCodeRepository = MockVerificationCodeRepository();
-  final authController = AuthController(
-    MockAuthRepository(),
-    profileRepository,
-    MockAccountLifecycleRepository(
-      profileRepository: profileRepository,
-      verificationCodeRepository: verificationCodeRepository,
-    ),
-  );
+Widget _appWithMockAuth(
+  AuthTestHarness harness,
+  Widget home, {
+  double textScale = 1.0,
+}) {
   final profileController = ProfileController(
-    profileRepository,
-    authController,
+    harness.profileRepository,
+    harness.controller,
     MockProfileAvatarStorage(),
   );
 
   return ProviderScope(
     overrides: [
-      authControllerProvider.overrideWith((ref) => authController),
+      authControllerProvider.overrideWith(
+        (ref) => harness.controller,
+        disposeNotifier: false,
+      ),
       profileControllerProvider.overrideWith((ref) => profileController),
     ],
     child: MaterialApp(
@@ -159,7 +152,8 @@ Future<void> _expectNoOverflowAtLargeText(
     expect(
       tester.takeException(),
       isNull,
-      reason: 'layout overflowed at ${entry.key} (${entry.value}) with 1.3x text',
+      reason:
+          'layout overflowed at ${entry.key} (${entry.value}) with 1.3x text',
     );
   }
 }
@@ -169,9 +163,11 @@ class _LongTextJournalRepository implements JournalRepository {
     JournalEntry(
       id: 'entry-long',
       tripId: 'trip-001',
-      title: 'A day so eventful that describing it properly takes considerably '
+      title:
+          'A day so eventful that describing it properly takes considerably '
           'more room than any sensible layout would ever reserve for a title',
-      body: 'Body text that also runs on well past the point where a narrow '
+      body:
+          'Body text that also runs on well past the point where a narrow '
           'phone in portrait would like it to stop.',
       mood: Mood.excited,
       photoPaths: const ['assets/mock/kyoto_arrival_1.jpg'],
@@ -186,7 +182,8 @@ class _LongTextJournalRepository implements JournalRepository {
         meals: [
           Meal(
             id: 'meal-long',
-            name: 'An extravagantly long meal name that nobody would type but '
+            name:
+                'An extravagantly long meal name that nobody would type but '
                 'somebody eventually will',
             calories: 1234,
             mealType: MealType.dinner,
@@ -215,122 +212,158 @@ class _LongTextJournalRepository implements JournalRepository {
 }
 
 TripPhoto _photo(int day) => TripPhoto(
-      path: 'assets/mock/gion_evening.jpg',
-      kind: TripPhotoKind.entry,
-      entryId: 'entry-1',
-      date: DateTime(2026, 4, 9 + day),
-      dayNumber: day,
-      caption: 'A fairly long caption that has to wrap or ellipsize cleanly',
-    );
+  path: 'assets/mock/gion_evening.jpg',
+  kind: TripPhotoKind.entry,
+  entryId: 'entry-1',
+  date: DateTime(2026, 4, 9 + day),
+  dayNumber: day,
+  caption: 'A fairly long caption that has to wrap or ellipsize cleanly',
+);
 
 void main() {
-  testWidgets('Trip View survives every screen size and orientation', (tester) async {
+  testWidgets('Trip View survives every screen size and orientation', (
+    tester,
+  ) async {
     await _expectNoOverflow(
       tester,
       () => _app(const TripViewScreen(tripId: 'trip-001')),
     );
   });
 
-  testWidgets('the trip photo slideshow survives every screen size and orientation', (
+  testWidgets(
+    'the trip photo slideshow survives every screen size and orientation',
+    (tester) async {
+      await _expectNoOverflow(
+        tester,
+        () => _app(
+          TripPhotoSlideshowScreen(
+            photos: [_photo(1), _photo(2), _photo(3)],
+            initialIndex: 1,
+          ),
+        ),
+      );
+    },
+  );
+
+  testWidgets('the entry editor survives every screen size and orientation', (
     tester,
   ) async {
     await _expectNoOverflow(
       tester,
-      () => _app(TripPhotoSlideshowScreen(
-        photos: [_photo(1), _photo(2), _photo(3)],
-        initialIndex: 1,
-      )),
-    );
-  });
-
-  testWidgets('the entry editor survives every screen size and orientation', (tester) async {
-    await _expectNoOverflow(
-      tester,
       () => _app(const CreateEditEntryScreen(tripId: 'trip-001')),
     );
   });
 
-  testWidgets('the add-meal dialog survives every screen size and orientation', (tester) async {
-    // The tightest case in the app: a tall form inside a dialog, on a screen
-    // only ~320 logical pixels high in landscape.
-    await _expectNoOverflow(
-      tester,
-      () => _app(const CreateEditEntryScreen(tripId: 'trip-001')),
-      after: (tester) async {
-        await tester.scrollUntilVisible(
-          find.byKey(const Key('add-meal-button')),
-          200,
-          scrollable: find.byType(Scrollable).first,
-        );
-        await tester.tap(find.byKey(const Key('add-meal-button')));
-        await tester.pumpAndSettle();
-      },
-    );
-  });
+  testWidgets(
+    'the add-meal dialog survives every screen size and orientation',
+    (tester) async {
+      // The tightest case in the app: a tall form inside a dialog, on a screen
+      // only ~320 logical pixels high in landscape.
+      await _expectNoOverflow(
+        tester,
+        () => _app(const CreateEditEntryScreen(tripId: 'trip-001')),
+        after: (tester) async {
+          await tester.scrollUntilVisible(
+            find.byKey(const Key('add-meal-button')),
+            200,
+            scrollable: find.byType(Scrollable).first,
+          );
+          await tester.tap(find.byKey(const Key('add-meal-button')));
+          await tester.pumpAndSettle();
+        },
+      );
+    },
+  );
 
-  testWidgets('entry detail survives every screen size and orientation', (tester) async {
+  testWidgets('entry detail survives every screen size and orientation', (
+    tester,
+  ) async {
     await _expectNoOverflow(
       tester,
       () => _app(const EntryDetailScreen(entryId: 'entry-1')),
     );
   });
 
-  testWidgets('the full-screen photo viewer survives every screen size and orientation', (
+  testWidgets(
+    'the full-screen photo viewer survives every screen size and orientation',
+    (tester) async {
+      await _expectNoOverflow(
+        tester,
+        () => _app(
+          const PhotoViewerScreen(
+            photoPaths: [
+              'assets/mock/gion_evening.jpg',
+              'assets/mock/kyoto_arrival_1.jpg',
+            ],
+            initialIndex: 0,
+          ),
+        ),
+      );
+    },
+  );
+
+  testWidgets('Home survives every screen size and orientation', (
     tester,
   ) async {
-    await _expectNoOverflow(
-      tester,
-      () => _app(const PhotoViewerScreen(
-        photoPaths: ['assets/mock/gion_evening.jpg', 'assets/mock/kyoto_arrival_1.jpg'],
-        initialIndex: 0,
-      )),
-    );
-  });
-
-  testWidgets('Home survives every screen size and orientation', (tester) async {
     await _expectNoOverflow(tester, () => _app(const HomeScreen()));
   });
 
-  testWidgets("the active trip's cover fills the card's width rather than pillarboxing", (
+  testWidgets(
+    "the active trip's cover fills the card's width rather than pillarboxing",
+    (tester) async {
+      for (final size in [const Size(412, 915), const Size(915, 412)]) {
+        _setSize(tester, size);
+        await tester.pumpWidget(_app(const HomeScreen()));
+        await tester.pumpAndSettle();
+
+        final card = tester.getSize(find.byKey(const Key('active-trip-card')));
+        final cover = tester.getSize(
+          find.descendant(
+            of: find.byKey(const Key('active-trip-card')),
+            matching: find.byType(TripCoverPhoto),
+          ),
+        );
+
+        expect(
+          cover.width,
+          card.width,
+          reason: 'cover should span the card at $size, not sit in grey bands',
+        );
+      }
+    },
+  );
+
+  testWidgets('Login survives every screen size and orientation', (
     tester,
   ) async {
-    for (final size in [const Size(412, 915), const Size(915, 412)]) {
-      _setSize(tester, size);
-      await tester.pumpWidget(_app(const HomeScreen()));
-      await tester.pumpAndSettle();
-
-      final card = tester.getSize(find.byKey(const Key('active-trip-card')));
-      final cover = tester.getSize(
-        find.descendant(
-          of: find.byKey(const Key('active-trip-card')),
-          matching: find.byType(TripCoverPhoto),
-        ),
-      );
-
-      expect(
-        cover.width,
-        card.width,
-        reason: 'cover should span the card at $size, not sit in grey bands',
-      );
-    }
-  });
-
-  testWidgets('Login survives every screen size and orientation', (tester) async {
+    final harness = AuthTestHarness();
+    addTearDown(harness.dispose);
+    await harness.signOut();
     await _expectNoOverflow(
       tester,
-      () => _appWithMockAuth(const LoginScreen()),
+      () => _appWithMockAuth(harness, const LoginScreen()),
     );
   });
 
-  testWidgets('the splash survives every screen size and orientation', (tester) async {
-    await _expectNoOverflow(tester, () => _app(const AppSplash()), settle: false);
+  testWidgets('the splash survives every screen size and orientation', (
+    tester,
+  ) async {
+    await _expectNoOverflow(
+      tester,
+      () => _app(const AppSplash()),
+      settle: false,
+    );
   });
 
-  testWidgets('the trip form survives every screen size and orientation', (tester) async {
+  testWidgets('the trip form survives every screen size and orientation', (
+    tester,
+  ) async {
     await _expectNoOverflow(tester, () => _app(const TripFormScreen()));
   });
 
-  testWidgets('trip wellness survives every screen size and orientation', (tester) async {
+  testWidgets('trip wellness survives every screen size and orientation', (
+    tester,
+  ) async {
     final trip = Trip(
       id: 'trip-001',
       userId: 'u',
@@ -347,47 +380,79 @@ void main() {
     );
   });
 
-  testWidgets('trip trash survives every screen size and orientation', (tester) async {
+  testWidgets('trip trash survives every screen size and orientation', (
+    tester,
+  ) async {
     await _expectNoOverflow(tester, () => _app(const TripTrashScreen()));
   });
 
-  testWidgets('settings survives every screen size and orientation', (tester) async {
+  testWidgets('settings survives every screen size and orientation', (
+    tester,
+  ) async {
     await _expectNoOverflow(tester, () => _app(const SettingsScreen()));
   });
 
-  testWidgets('the profile screen survives every screen size and orientation', (tester) async {
+  testWidgets('the profile screen survives every screen size and orientation', (
+    tester,
+  ) async {
+    final harness = AuthTestHarness();
+    addTearDown(harness.dispose);
+    await harness.signOut();
     await _expectNoOverflow(
       tester,
-      () => _appWithMockAuth(const ProfileViewScreen()),
+      () => _appWithMockAuth(harness, const ProfileViewScreen()),
     );
   });
 
-  testWidgets('reactivation survives every screen size and orientation', (tester) async {
+  testWidgets('reactivation survives every screen size and orientation', (
+    tester,
+  ) async {
+    final harness = AuthTestHarness();
+    addTearDown(harness.dispose);
+    await harness.signOut();
     await _expectNoOverflow(
       tester,
-      () => _appWithMockAuth(const ReactivationScreen()),
+      () => _appWithMockAuth(harness, const ReactivationScreen()),
     );
   });
 
   group('admin', () {
-    testWidgets('admin login survives every screen size and orientation', (tester) async {
+    testWidgets('admin login survives every screen size and orientation', (
+      tester,
+    ) async {
       await _expectNoOverflow(tester, () => _app(const AdminLoginScreen()));
     });
 
-    testWidgets('the admin dashboard survives every screen size and orientation', (tester) async {
-      await _expectNoOverflow(tester, () => _app(const AdminDashboardScreen()));
-    });
+    testWidgets(
+      'the admin dashboard survives every screen size and orientation',
+      (tester) async {
+        await _expectNoOverflow(
+          tester,
+          () => _app(const AdminDashboardScreen()),
+        );
+      },
+    );
 
-    testWidgets('the admin user list survives every screen size and orientation', (tester) async {
-      await _expectNoOverflow(tester, () => _app(const AdminUserListScreen()));
-    });
+    testWidgets(
+      'the admin user list survives every screen size and orientation',
+      (tester) async {
+        await _expectNoOverflow(
+          tester,
+          () => _app(const AdminUserListScreen()),
+        );
+      },
+    );
 
-    testWidgets('the audit log survives every screen size and orientation', (tester) async {
+    testWidgets('the audit log survives every screen size and orientation', (
+      tester,
+    ) async {
       await _expectNoOverflow(tester, () => _app(const AuditLogScreen()));
     });
   });
 
-  testWidgets('long user-entered text does not blow out the trip timeline', (tester) async {
+  testWidgets('long user-entered text does not blow out the trip timeline', (
+    tester,
+  ) async {
     // Seeded titles are all short, so nothing else in the suite exercises what
     // happens when a traveler types a genuinely long one. The fixture also
     // carries six-figure step counts and a long meal name.
@@ -396,7 +461,10 @@ void main() {
       () => ProviderScope(
         overrides: [
           journalControllerProvider.overrideWith(
-            (ref) => JournalController(_LongTextJournalRepository(), dailyAdviceService),
+            (ref) => JournalController(
+              _LongTextJournalRepository(),
+              dailyAdviceService,
+            ),
           ),
         ],
         child: const MaterialApp(home: TripViewScreen(tripId: 'trip-001')),
@@ -408,46 +476,63 @@ void main() {
     testWidgets('Trip View survives 1.3x text at every size', (tester) async {
       await _expectNoOverflowAtLargeText(
         tester,
-        ({double textScale = 1.0}) =>
-            _app(const TripViewScreen(tripId: 'trip-001'), textScale: textScale),
+        ({double textScale = 1.0}) => _app(
+          const TripViewScreen(tripId: 'trip-001'),
+          textScale: textScale,
+        ),
       );
     });
 
     testWidgets('Home survives 1.3x text at every size', (tester) async {
       await _expectNoOverflowAtLargeText(
         tester,
-        ({double textScale = 1.0}) => _app(const HomeScreen(), textScale: textScale),
+        ({double textScale = 1.0}) =>
+            _app(const HomeScreen(), textScale: textScale),
       );
     });
 
     testWidgets('Login survives 1.3x text at every size', (tester) async {
+      final harness = AuthTestHarness();
+      addTearDown(harness.dispose);
+      await harness.signOut();
       await _expectNoOverflowAtLargeText(
         tester,
-        ({double textScale = 1.0}) =>
-            _appWithMockAuth(const LoginScreen(), textScale: textScale),
+        ({double textScale = 1.0}) => _appWithMockAuth(
+          harness,
+          const LoginScreen(),
+          textScale: textScale,
+        ),
       );
     });
 
     testWidgets('the splash survives 1.3x text at every size', (tester) async {
       await _expectNoOverflowAtLargeText(
         tester,
-        ({double textScale = 1.0}) => _app(const AppSplash(), textScale: textScale),
+        ({double textScale = 1.0}) =>
+            _app(const AppSplash(), textScale: textScale),
         settle: false,
       );
     });
 
-    testWidgets('the admin dashboard survives 1.3x text at every size', (tester) async {
-      await _expectNoOverflowAtLargeText(
-        tester,
-        ({double textScale = 1.0}) => _app(const AdminDashboardScreen(), textScale: textScale),
-      );
-    });
-
-    testWidgets('entry detail survives 1.3x text at every size', (tester) async {
+    testWidgets('the admin dashboard survives 1.3x text at every size', (
+      tester,
+    ) async {
       await _expectNoOverflowAtLargeText(
         tester,
         ({double textScale = 1.0}) =>
-            _app(const EntryDetailScreen(entryId: 'entry-1'), textScale: textScale),
+            _app(const AdminDashboardScreen(), textScale: textScale),
+      );
+    });
+
+    testWidgets('entry detail survives 1.3x text at every size', (
+      tester,
+    ) async {
+      await _expectNoOverflowAtLargeText(
+        tester,
+        ({double textScale = 1.0}) => _app(
+          const EntryDetailScreen(entryId: 'entry-1'),
+          textScale: textScale,
+        ),
       );
     });
   });

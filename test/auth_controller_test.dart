@@ -1,4 +1,4 @@
-﻿import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_test/flutter_test.dart';
 
 import 'package:tripjournal/data/account_lifecycle_repository.dart';
 import 'package:tripjournal/data/mock_account_lifecycle_repository.dart';
@@ -6,6 +6,7 @@ import 'package:tripjournal/data/mock_auth_repository.dart';
 import 'package:tripjournal/data/mock_profile_repository.dart';
 import 'package:tripjournal/data/mock_verification_code_repository.dart';
 import 'package:tripjournal/features/auth/controller/auth_controller.dart';
+import 'package:tripjournal/models/app_session.dart';
 import 'package:tripjournal/models/profile.dart';
 import 'package:tripjournal/models/verification_code.dart';
 
@@ -24,12 +25,32 @@ void main() {
       profileRepository: profileRepository,
       verificationCodeRepository: verificationCodeRepository,
     );
-    controller = AuthController(authRepository, profileRepository, lifecycleRepository);
+    controller = AuthController(
+      authRepository,
+      profileRepository,
+      lifecycleRepository,
+    );
   });
 
   tearDown(() => controller.dispose());
 
   group('AuthController', () {
+    test(
+      'disposed mock auth repository closes without late auth events',
+      () async {
+        final auth = MockAuthRepository();
+        final events = <AppSession>[];
+        final subscription = auth.authStateChanges().listen(events.add);
+        final completed = subscription.asFuture<void>();
+
+        await auth.signOut();
+        await auth.dispose();
+        await completed;
+
+        expect(events, [const AppSession.signedOut()]);
+      },
+    );
+
     test('initial status is loading (waiting for session restoration)', () {
       expect(controller.status, AuthStatus.loading);
     });
@@ -44,37 +65,43 @@ void main() {
       expect(controller.profile!.isActive, isTrue);
     });
 
-    test('passively restored session for a deactivated user routes to deactivated',
-        () async {
-      profileRepository = MockProfileRepository(state: MockProfileState.deactivated);
-      lifecycleRepository = MockAccountLifecycleRepository(
-        profileRepository: profileRepository,
-        verificationCodeRepository: verificationCodeRepository,
-      );
-      controller = AuthController(
-        authRepository,
-        profileRepository,
-        lifecycleRepository,
-      );
+    test(
+      'passively restored session for a deactivated user routes to deactivated',
+      () async {
+        profileRepository = MockProfileRepository(
+          state: MockProfileState.deactivated,
+        );
+        lifecycleRepository = MockAccountLifecycleRepository(
+          profileRepository: profileRepository,
+          verificationCodeRepository: verificationCodeRepository,
+        );
+        controller = AuthController(
+          authRepository,
+          profileRepository,
+          lifecycleRepository,
+        );
 
-      authRepository.emitSignedInSession();
-      await Future.delayed(const Duration(milliseconds: 10));
+        authRepository.emitSignedInSession();
+        await Future.delayed(const Duration(milliseconds: 10));
 
-      expect(controller.loading, isFalse);
-      expect(controller.status, AuthStatus.deactivated);
-      expect(controller.profile!.isDeactivated, isTrue);
-    });
+        expect(controller.loading, isFalse);
+        expect(controller.status, AuthStatus.deactivated);
+        expect(controller.profile!.isDeactivated, isTrue);
+      },
+    );
 
-    test('passively restored signed-out session (no persisted session) routes to signedOut',
-        () async {
-      authRepository.emitSignedOutSession();
-      await Future.delayed(const Duration(milliseconds: 10));
+    test(
+      'passively restored signed-out session (no persisted session) routes to signedOut',
+      () async {
+        authRepository.emitSignedOutSession();
+        await Future.delayed(const Duration(milliseconds: 10));
 
-      expect(controller.loading, isFalse);
-      expect(controller.status, AuthStatus.signedOut);
-      expect(controller.session, isNull);
-      expect(controller.profile, isNull);
-    });
+        expect(controller.loading, isFalse);
+        expect(controller.status, AuthStatus.signedOut);
+        expect(controller.session, isNull);
+        expect(controller.profile, isNull);
+      },
+    );
 
     test('successful sign-in sets status to authenticated', () async {
       await controller.signInWithGoogle();
@@ -86,12 +113,18 @@ void main() {
     });
 
     test('first-time user gets a profile created on sign-in', () async {
-      profileRepository = MockProfileRepository(state: MockProfileState.firstTime);
+      profileRepository = MockProfileRepository(
+        state: MockProfileState.firstTime,
+      );
       lifecycleRepository = MockAccountLifecycleRepository(
         profileRepository: profileRepository,
         verificationCodeRepository: verificationCodeRepository,
       );
-      controller = AuthController(authRepository, profileRepository, lifecycleRepository);
+      controller = AuthController(
+        authRepository,
+        profileRepository,
+        lifecycleRepository,
+      );
 
       await controller.signInWithGoogle();
 
@@ -101,12 +134,18 @@ void main() {
     });
 
     test('deactivated user sets status to deactivated', () async {
-      profileRepository = MockProfileRepository(state: MockProfileState.deactivated);
+      profileRepository = MockProfileRepository(
+        state: MockProfileState.deactivated,
+      );
       lifecycleRepository = MockAccountLifecycleRepository(
         profileRepository: profileRepository,
         verificationCodeRepository: verificationCodeRepository,
       );
-      controller = AuthController(authRepository, profileRepository, lifecycleRepository);
+      controller = AuthController(
+        authRepository,
+        profileRepository,
+        lifecycleRepository,
+      );
 
       await controller.signInWithGoogle();
 
@@ -120,19 +159,21 @@ void main() {
     // for `suspended` (owned by the User Management module — a seed value
     // was intentionally not added there just for this test); mutate an
     // already-seeded active profile directly instead.
-    test('a suspended profile sets status to suspended, not authenticated',
-        () async {
-      await controller.signInWithGoogle();
-      expect(controller.status, AuthStatus.authenticated);
+    test(
+      'a suspended profile sets status to suspended, not authenticated',
+      () async {
+        await controller.signInWithGoogle();
+        expect(controller.status, AuthStatus.authenticated);
 
-      await profileRepository.updateProfile(
-        controller.profile!.copyWith(status: AccountStatus.suspended),
-      );
-      await controller.onReactivated(); // re-fetches the profile
+        await profileRepository.updateProfile(
+          controller.profile!.copyWith(status: AccountStatus.suspended),
+        );
+        await controller.onReactivated(); // re-fetches the profile
 
-      expect(controller.status, AuthStatus.suspended);
-      expect(controller.profile!.isSuspended, isTrue);
-    });
+        expect(controller.status, AuthStatus.suspended);
+        expect(controller.profile!.isSuspended, isTrue);
+      },
+    );
 
     test('signing in as an already-suspended profile does not '
         'auto-request a reactivation code (unlike deactivated)', () async {
@@ -149,7 +190,11 @@ void main() {
 
     test('failed sign-in sets error and stays signedOut', () async {
       authRepository = MockAuthRepository(result: MockAuthResult.failure);
-      controller = AuthController(authRepository, profileRepository, lifecycleRepository);
+      controller = AuthController(
+        authRepository,
+        profileRepository,
+        lifecycleRepository,
+      );
 
       await controller.signInWithGoogle();
 
@@ -158,15 +203,22 @@ void main() {
       expect(controller.error!.contains('failed'), isTrue);
     });
 
-    test('cancelled sign-in sets a cancelled error and stays signedOut', () async {
-      authRepository = MockAuthRepository(result: MockAuthResult.cancelled);
-      controller = AuthController(authRepository, profileRepository, lifecycleRepository);
+    test(
+      'cancelled sign-in sets a cancelled error and stays signedOut',
+      () async {
+        authRepository = MockAuthRepository(result: MockAuthResult.cancelled);
+        controller = AuthController(
+          authRepository,
+          profileRepository,
+          lifecycleRepository,
+        );
 
-      await controller.signInWithGoogle();
+        await controller.signInWithGoogle();
 
-      expect(controller.status, AuthStatus.signedOut);
-      expect(controller.error, 'Sign-in cancelled.');
-    });
+        expect(controller.status, AuthStatus.signedOut);
+        expect(controller.error, 'Sign-in cancelled.');
+      },
+    );
 
     test('signOut clears session and profile', () async {
       await controller.signInWithGoogle();
@@ -186,79 +238,85 @@ void main() {
       expect(controller.loading, isFalse);
     });
 
-    test('deactivated sign-in automatically sends a reactivation code',
-        () async {
-      profileRepository = MockProfileRepository(
-        state: MockProfileState.deactivated,
-      );
-      lifecycleRepository = MockAccountLifecycleRepository(
-        profileRepository: profileRepository,
-        verificationCodeRepository: verificationCodeRepository,
-      );
-      controller = AuthController(
-        authRepository,
-        profileRepository,
-        lifecycleRepository,
-      );
+    test(
+      'deactivated sign-in automatically sends a reactivation code',
+      () async {
+        profileRepository = MockProfileRepository(
+          state: MockProfileState.deactivated,
+        );
+        lifecycleRepository = MockAccountLifecycleRepository(
+          profileRepository: profileRepository,
+          verificationCodeRepository: verificationCodeRepository,
+        );
+        controller = AuthController(
+          authRepository,
+          profileRepository,
+          lifecycleRepository,
+        );
 
-      await controller.signInWithGoogle();
+        await controller.signInWithGoogle();
 
-      expect(controller.status, AuthStatus.deactivated);
-      expect(
-        verificationCodeRepository.activeCode?.purpose,
-        VerificationPurpose.reactivation,
-      );
-    });
+        expect(controller.status, AuthStatus.deactivated);
+        expect(
+          verificationCodeRepository.activeCode?.purpose,
+          VerificationPurpose.reactivation,
+        );
+      },
+    );
 
-    test('confirmReactivation with valid code sets status to authenticated',
-        () async {
-      profileRepository = MockProfileRepository(
-        state: MockProfileState.deactivated,
-      );
-      lifecycleRepository = MockAccountLifecycleRepository(
-        profileRepository: profileRepository,
-        verificationCodeRepository: verificationCodeRepository,
-      );
-      controller = AuthController(
-        authRepository,
-        profileRepository,
-        lifecycleRepository,
-      );
+    test(
+      'confirmReactivation with valid code sets status to authenticated',
+      () async {
+        profileRepository = MockProfileRepository(
+          state: MockProfileState.deactivated,
+        );
+        lifecycleRepository = MockAccountLifecycleRepository(
+          profileRepository: profileRepository,
+          verificationCodeRepository: verificationCodeRepository,
+        );
+        controller = AuthController(
+          authRepository,
+          profileRepository,
+          lifecycleRepository,
+        );
 
-      await controller.signInWithGoogle();
-      expect(controller.status, AuthStatus.deactivated);
+        await controller.signInWithGoogle();
+        expect(controller.status, AuthStatus.deactivated);
 
-      await controller.confirmReactivation(
-        MockVerificationCodeRepository.mockCode,
-      );
+        await controller.confirmReactivation(
+          MockVerificationCodeRepository.mockCode,
+        );
 
-      expect(controller.status, AuthStatus.authenticated);
-      expect(controller.profile!.isActive, isTrue);
-    });
+        expect(controller.status, AuthStatus.authenticated);
+        expect(controller.profile!.isActive, isTrue);
+      },
+    );
 
-    test('confirmReactivation with wrong code throws and stays deactivated',
-        () async {
-      profileRepository = MockProfileRepository(
-        state: MockProfileState.deactivated,
-      );
-      lifecycleRepository = MockAccountLifecycleRepository(
-        profileRepository: profileRepository,
-        verificationCodeRepository: verificationCodeRepository,
-      );
-      controller = AuthController(
-        authRepository,
-        profileRepository,
-        lifecycleRepository,
-      );
+    test(
+      'confirmReactivation with wrong code throws and stays deactivated',
+      () async {
+        profileRepository = MockProfileRepository(
+          state: MockProfileState.deactivated,
+        );
+        lifecycleRepository = MockAccountLifecycleRepository(
+          profileRepository: profileRepository,
+          verificationCodeRepository: verificationCodeRepository,
+        );
+        controller = AuthController(
+          authRepository,
+          profileRepository,
+          lifecycleRepository,
+        );
 
-      await controller.signInWithGoogle();
+        await controller.signInWithGoogle();
 
-      expect(
-        () => controller.confirmReactivation('000000'),
-        throwsA(isA<CodeValidationException>()),
-      );
-      expect(controller.status, AuthStatus.deactivated);
-    });
+        expect(
+          () => controller.confirmReactivation('000000'),
+          throwsA(isA<CodeValidationException>()),
+        );
+        expect(controller.status, AuthStatus.deactivated);
+      },
+    );
 
     test('requestReactivation sends a reactivation code', () async {
       await controller.requestReactivation();
@@ -283,17 +341,19 @@ void main() {
       expect(controller.profile, isNull);
     });
 
-    test('confirmDeactivation with wrong code throws and stays signed in',
-        () async {
-      await controller.signInWithGoogle();
+    test(
+      'confirmDeactivation with wrong code throws and stays signed in',
+      () async {
+        await controller.signInWithGoogle();
 
-      await controller.requestDeactivation();
+        await controller.requestDeactivation();
 
-      expect(
-        () => controller.confirmDeactivation('000000'),
-        throwsA(isA<CodeValidationException>()),
-      );
-      expect(controller.status, AuthStatus.authenticated);
-    });
+        expect(
+          () => controller.confirmDeactivation('000000'),
+          throwsA(isA<CodeValidationException>()),
+        );
+        expect(controller.status, AuthStatus.authenticated);
+      },
+    );
   });
 }

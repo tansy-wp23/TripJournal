@@ -43,7 +43,10 @@ class MockAuthRepository implements AuthRepository {
           'Google sign-in cancelled (mock).',
         );
       case MockAuthResult.success:
-        final session = AppSession.signedIn(userId: mockUserId, email: mockEmail);
+        final session = AppSession.signedIn(
+          userId: mockUserId,
+          email: mockEmail,
+        );
         _current = session;
         _controller.add(session);
         return session;
@@ -77,6 +80,11 @@ class MockAuthRepository implements AuthRepository {
 
   @override
   Stream<AppSession> authStateChanges() => _controller.stream;
+
+  /// Releases the broadcast stream owned by this test double.
+  Future<void> dispose() async {
+    await _controller.close();
+  }
 
   @override
   String? currentUserId() => _current?.userId;

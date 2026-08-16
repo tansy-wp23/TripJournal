@@ -1,49 +1,32 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:tripjournal/data/mock_account_lifecycle_repository.dart';
-import 'package:tripjournal/data/mock_auth_repository.dart';
-import 'package:tripjournal/data/mock_profile_repository.dart';
-import 'package:tripjournal/data/mock_verification_code_repository.dart';
 import 'package:tripjournal/features/auth/auth_gate.dart';
-import 'package:tripjournal/features/auth/controller/auth_controller.dart';
 import 'package:tripjournal/features/auth/screens/login_screen.dart';
 import 'package:tripjournal/features/auth/screens/suspended_screen.dart';
 import 'package:tripjournal/models/profile.dart';
 
-void main() {
-  late MockAuthRepository authRepository;
-  late MockProfileRepository profileRepository;
-  late MockVerificationCodeRepository verificationCodeRepository;
-  late MockAccountLifecycleRepository lifecycleRepository;
+import 'support/auth_test_harness.dart';
 
-  setUp(() {
-    authRepository = MockAuthRepository();
-    profileRepository = MockProfileRepository(state: MockProfileState.active);
-    verificationCodeRepository = MockVerificationCodeRepository();
-    lifecycleRepository = MockAccountLifecycleRepository(
-      profileRepository: profileRepository,
-      verificationCodeRepository: verificationCodeRepository,
-    );
+void main() {
+  late AuthTestHarness harness;
+
+  setUp(() async {
+    harness = AuthTestHarness();
+    await harness.signOut();
   });
 
-  Widget wrapped() {
-    return ProviderScope(
-      overrides: [
-        authControllerProvider.overrideWith(
-          (ref) => AuthController(authRepository, profileRepository, lifecycleRepository),
-        ),
-      ],
-      child: const MaterialApp(home: AuthGate()),
-    );
-  }
+  tearDown(() => harness.dispose());
+
+  Widget wrapped() => harness.wrap(const AuthGate());
 
   group('AuthGate routes a suspended profile to SuspendedScreen', () {
     testWidgets('signing in as an already-suspended profile shows '
         'SuspendedScreen, not HomeScreen', (tester) async {
-      final existing = (await profileRepository.getProfile('user-001'))!;
-      await profileRepository.updateProfile(
+      final existing = (await harness.profileRepository.getProfile(
+        'user-001',
+      ))!;
+      await harness.profileRepository.updateProfile(
         existing.copyWith(status: AccountStatus.suspended),
       );
 
@@ -59,8 +42,10 @@ void main() {
 
     testWidgets('tapping "Sign out" on SuspendedScreen returns to '
         'LoginScreen', (tester) async {
-      final existing = (await profileRepository.getProfile('user-001'))!;
-      await profileRepository.updateProfile(
+      final existing = (await harness.profileRepository.getProfile(
+        'user-001',
+      ))!;
+      await harness.profileRepository.updateProfile(
         existing.copyWith(status: AccountStatus.suspended),
       );
 

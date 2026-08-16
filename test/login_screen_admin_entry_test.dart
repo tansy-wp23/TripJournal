@@ -1,15 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:tripjournal/data/mock_account_lifecycle_repository.dart';
-import 'package:tripjournal/data/mock_auth_repository.dart';
-import 'package:tripjournal/data/mock_profile_repository.dart';
-import 'package:tripjournal/data/mock_verification_code_repository.dart';
 import 'package:tripjournal/features/admin/screens/admin_login_screen.dart';
-import 'package:tripjournal/features/auth/controller/auth_controller.dart';
 import 'package:tripjournal/features/auth/screens/login_screen.dart';
 import 'package:tripjournal/widgets/app_logo.dart';
+
+import 'support/auth_test_harness.dart';
 
 void main() {
   // `tester.pump(duration)` doesn't advance real wall-clock time, so tests
@@ -17,58 +13,52 @@ void main() {
   // actually sleeping. Reset after every test so it never leaks between
   // them (default tests below rely on the real clock, which always
   // produces small real gaps well within the 3s window).
-  tearDown(() => loginScreenDebugClock = DateTime.now);
+  late AuthTestHarness harness;
 
-  Widget buildLoginScreen() {
-    final profileRepository = MockProfileRepository(
-      state: MockProfileState.active,
-    );
-    final verificationCodeRepository = MockVerificationCodeRepository();
-    final authController = AuthController(
-      MockAuthRepository(),
-      profileRepository,
-      MockAccountLifecycleRepository(
-        profileRepository: profileRepository,
-        verificationCodeRepository: verificationCodeRepository,
-      ),
-    );
-
-    return ProviderScope(
-      overrides: [
-        authControllerProvider.overrideWith((ref) => authController),
-      ],
-      child: const MaterialApp(home: LoginScreen()),
-    );
-  }
-
-  testWidgets('the sign-in screen shows the app artwork, not a placeholder icon',
-      (tester) async {
-    await tester.pumpWidget(buildLoginScreen());
-    await tester.pumpAndSettle();
-
-    // The logo doubles as the hidden admin tap target, so it has to stay
-    // *inside* that GestureDetector rather than become a sibling of it.
-    expect(
-      find.descendant(
-        of: find.byKey(const Key('login-logo-tap-target')),
-        matching: find.byType(AppLogo),
-      ),
-      findsOneWidget,
-    );
-    expect(find.byIcon(Icons.card_travel), findsNothing);
+  setUp(() async {
+    harness = AuthTestHarness();
+    await harness.signOut();
   });
 
+  tearDown(() async {
+    loginScreenDebugClock = DateTime.now;
+    await harness.dispose();
+  });
+
+  Widget buildLoginScreen() => harness.wrap(const LoginScreen());
+
+  testWidgets(
+    'the sign-in screen shows the app artwork, not a placeholder icon',
+    (tester) async {
+      await tester.pumpWidget(buildLoginScreen());
+      await tester.pumpAndSettle();
+
+      // The logo doubles as the hidden admin tap target, so it has to stay
+      // *inside* that GestureDetector rather than become a sibling of it.
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('login-logo-tap-target')),
+          matching: find.byType(AppLogo),
+        ),
+        findsOneWidget,
+      );
+      expect(find.byIcon(Icons.card_travel), findsNothing);
+    },
+  );
+
   group('LoginScreen hidden admin entry', () {
-    testWidgets('no visible "Admin Portal" text is shown to travelers',
-        (tester) async {
+    testWidgets('no visible "Admin Portal" text is shown to travelers', (
+      tester,
+    ) async {
       await tester.pumpWidget(buildLoginScreen());
       await tester.pumpAndSettle();
 
       expect(find.text('Admin Portal'), findsNothing);
     });
 
-    testWidgets('tapping the logo 3 times within the window opens AdminGate',
-        (tester) async {
+    testWidgets('tapping the logo 3 times within the window opens AdminGate', (
+      tester,
+    ) async {
       await tester.pumpWidget(buildLoginScreen());
       await tester.pumpAndSettle();
 
@@ -96,8 +86,9 @@ void main() {
       expect(find.byType(AdminLoginScreen), findsNothing);
     });
 
-    testWidgets('taps spread outside the window do not accumulate',
-        (tester) async {
+    testWidgets('taps spread outside the window do not accumulate', (
+      tester,
+    ) async {
       await tester.pumpWidget(buildLoginScreen());
       await tester.pumpAndSettle();
 
@@ -106,7 +97,9 @@ void main() {
 
       final logo = find.byKey(const Key('login-logo-tap-target'));
       await tester.tap(logo); // tap 1 at fakeNow
-      fakeNow = fakeNow.add(const Duration(seconds: 4)); // exceeds the 3s window
+      fakeNow = fakeNow.add(
+        const Duration(seconds: 4),
+      ); // exceeds the 3s window
       await tester.tap(logo); // window resets; this becomes tap 1 again
       fakeNow = fakeNow.add(const Duration(milliseconds: 100));
       await tester.tap(logo); // tap 2 within the (reset) window

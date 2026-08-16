@@ -1,48 +1,26 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:tripjournal/data/mock_account_lifecycle_repository.dart';
-import 'package:tripjournal/data/mock_auth_repository.dart';
-import 'package:tripjournal/data/mock_profile_repository.dart';
 import 'package:tripjournal/data/mock_verification_code_repository.dart';
 import 'package:tripjournal/features/auth/controller/auth_controller.dart';
 import 'package:tripjournal/features/auth/screens/code_entry_screen.dart';
 import 'package:tripjournal/models/profile.dart';
 import 'package:tripjournal/models/verification_code.dart';
 
-void main() {
-  late MockAuthRepository authRepository;
-  late MockProfileRepository profileRepository;
-  late MockVerificationCodeRepository verificationCodeRepository;
-  late MockAccountLifecycleRepository lifecycleRepository;
+import 'support/auth_test_harness.dart';
 
-  setUp(() {
-    authRepository = MockAuthRepository();
-    profileRepository = MockProfileRepository(state: MockProfileState.active);
-    verificationCodeRepository = MockVerificationCodeRepository();
-    lifecycleRepository = MockAccountLifecycleRepository(
-      profileRepository: profileRepository,
-      verificationCodeRepository: verificationCodeRepository,
-    );
+void main() {
+  late AuthTestHarness harness;
+
+  setUp(() async {
+    harness = AuthTestHarness();
+    await harness.signOut();
   });
 
-  Widget wrapped(VerificationPurpose purpose) {
-    return ProviderScope(
-      overrides: [
-        authControllerProvider.overrideWith(
-          (ref) => AuthController(
-            authRepository,
-            profileRepository,
-            lifecycleRepository,
-          ),
-        ),
-      ],
-      child: MaterialApp(
-        home: CodeEntryScreen(purpose: purpose),
-      ),
-    );
-  }
+  tearDown(() => harness.dispose());
+
+  Widget wrapped(VerificationPurpose purpose) =>
+      harness.wrap(CodeEntryScreen(purpose: purpose));
 
   group('CodeEntryScreen (reactivation)', () {
     testWidgets('shows reactivation title and message', (tester) async {
@@ -55,8 +33,9 @@ void main() {
       expect(find.byKey(const Key('code-entry-input')), findsOneWidget);
     });
 
-    testWidgets('confirm button is disabled until 6 digits entered',
-        (tester) async {
+    testWidgets('confirm button is disabled until 6 digits entered', (
+      tester,
+    ) async {
       await tester.pumpWidget(wrapped(VerificationPurpose.reactivation));
       await tester.pumpAndSettle();
 
@@ -67,10 +46,7 @@ void main() {
 
       // Enter digits one at a time.
       for (var i = 0; i < 6; i++) {
-        await tester.enterText(
-          find.byKey(Key('otp-digit-$i')),
-          '${i + 1}',
-        );
+        await tester.enterText(find.byKey(Key('otp-digit-$i')), '${i + 1}');
         await tester.pump();
       }
 
@@ -81,15 +57,6 @@ void main() {
     });
 
     testWidgets('cancel signs out and returns to login', (tester) async {
-      // Set up a deactivated profile so sign-in routes to reactivation.
-      profileRepository = MockProfileRepository(
-        state: MockProfileState.deactivated,
-      );
-      lifecycleRepository = MockAccountLifecycleRepository(
-        profileRepository: profileRepository,
-        verificationCodeRepository: verificationCodeRepository,
-      );
-
       await tester.pumpWidget(wrapped(VerificationPurpose.reactivation));
       await tester.pumpAndSettle();
 
@@ -97,11 +64,7 @@ void main() {
       await tester.pumpAndSettle();
 
       // After signOut, the auth controller status is signedOut.
-      final container = ProviderScope.containerOf(
-        tester.element(find.byType(CodeEntryScreen)),
-      );
-      final auth = container.read(authControllerProvider);
-      expect(auth.status, AuthStatus.signedOut);
+      expect(harness.controller.status, AuthStatus.signedOut);
     });
 
     testWidgets('resend code sends a new code', (tester) async {
@@ -109,13 +72,13 @@ void main() {
       await tester.pumpAndSettle();
 
       // Send an initial code.
-      await lifecycleRepository.requestReactivation();
-      final firstCode = verificationCodeRepository.activeCode;
+      await harness.lifecycleRepository.requestReactivation();
+      final firstCode = harness.verificationRepository.activeCode;
 
       await tester.tap(find.byKey(const Key('code-entry-resend')));
       await tester.pumpAndSettle();
 
-      final secondCode = verificationCodeRepository.activeCode;
+      final secondCode = harness.verificationRepository.activeCode;
       expect(secondCode, isNotNull);
       expect(secondCode!.codeID, isNot(firstCode!.codeID));
     });
@@ -132,17 +95,18 @@ void main() {
       expect(find.byKey(const Key('code-entry-input')), findsOneWidget);
     });
 
-    testWidgets('auto-sends a deactivation code when the screen opens',
-        (tester) async {
+    testWidgets('auto-sends a deactivation code when the screen opens', (
+      tester,
+    ) async {
       await tester.pumpWidget(wrapped(VerificationPurpose.deactivation));
       await tester.pumpAndSettle();
 
       // The screen should have automatically sent a deactivation code.
       expect(
-        verificationCodeRepository.activeCode?.purpose,
+        harness.verificationRepository.activeCode?.purpose,
         VerificationPurpose.deactivation,
       );
-      expect(verificationCodeRepository.activeCode, isNotNull);
+      expect(harness.verificationRepository.activeCode, isNotNull);
     });
 
     testWidgets('cancel pops back without side effects', (tester) async {
@@ -156,46 +120,41 @@ void main() {
       expect(find.byType(CodeEntryScreen), findsNothing);
 
       // Profile should still be active and session intact.
-      final container = ProviderScope.containerOf(
-        tester.element(find.byType(MaterialApp)),
-      );
-      final auth = container.read(authControllerProvider);
-      expect(auth.status, AuthStatus.signedOut); // not signed in in this setup
+      expect(
+        harness.controller.status,
+        AuthStatus.signedOut,
+      ); // not signed in in this setup
     });
 
-    testWidgets('confirm with valid code deactivates the profile and signs out',
-        (tester) async {
-      // Sign in first so the profile exists and the session is active.
-      final preAuth = AuthController(
-        authRepository,
-        profileRepository,
-        lifecycleRepository,
-      );
-      await preAuth.signInWithGoogle();
-      preAuth.dispose();
+    testWidgets(
+      'confirm with valid code deactivates the profile and signs out',
+      (tester) async {
+        // Sign in first so the profile exists and the session is active.
+        await harness.signIn();
 
-      await tester.pumpWidget(wrapped(VerificationPurpose.deactivation));
-      await tester.pumpAndSettle();
+        await tester.pumpWidget(wrapped(VerificationPurpose.deactivation));
+        await tester.pumpAndSettle();
 
-      // The screen auto-sends a code on open (verified above); the mock
-      // already has an active deactivation code.
+        // The screen auto-sends a code on open (verified above); the mock
+        // already has an active deactivation code.
 
-      // Enter the valid mock code.
-      for (var i = 0; i < 6; i++) {
-        await tester.enterText(
-          find.byKey(Key('otp-digit-$i')),
-          MockVerificationCodeRepository.mockCode[i],
-        );
-        await tester.pump();
-      }
+        // Enter the valid mock code.
+        for (var i = 0; i < 6; i++) {
+          await tester.enterText(
+            find.byKey(Key('otp-digit-$i')),
+            MockVerificationCodeRepository.mockCode[i],
+          );
+          await tester.pump();
+        }
 
-      await tester.tap(find.byKey(const Key('code-entry-confirm')));
-      await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('code-entry-confirm')));
+        await tester.pumpAndSettle();
 
-      // Profile should now be deactivated.
-      final profile = await profileRepository.getProfile('user-001');
-      expect(profile!.status, AccountStatus.deactivated);
-      expect(profile.deactivatedAt, isNotNull);
-    });
+        // Profile should now be deactivated.
+        final profile = await harness.profileRepository.getProfile('user-001');
+        expect(profile!.status, AccountStatus.deactivated);
+        expect(profile.deactivatedAt, isNotNull);
+      },
+    );
   });
 }
