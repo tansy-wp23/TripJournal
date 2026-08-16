@@ -42,6 +42,8 @@
     * https://docs.flutter.dev/platform-integration/web/initialization
   -->
   <script>
+    window.tripJournalGoogleMapsSdkState = 'unconfigured';
+
     (async () => {
       // Local/CI builds may generate the gitignored google_maps_config.json.
       // The committed token remains when that file is absent, so no-key builds
@@ -78,11 +80,22 @@
       }
 
       const maps = document.createElement('script');
+      window.tripJournalGoogleMapsSdkState = 'loading';
       maps.src =
         'https://maps.googleapis.com/maps/api/js?key=' +
         encodeURIComponent(googleMapsWebKey);
-      maps.onload = startFlutter;
-      maps.onerror = startFlutter;
+      maps.onload = () => {
+        if (window.google && window.google.maps) {
+          window.tripJournalGoogleMapsSdkState = 'ready';
+        } else {
+          window.tripJournalGoogleMapsSdkState = 'failed';
+        }
+        startFlutter();
+      };
+      maps.onerror = () => {
+        window.tripJournalGoogleMapsSdkState = 'failed';
+        startFlutter();
+      };
       document.head.appendChild(maps);
     })();
   </script>

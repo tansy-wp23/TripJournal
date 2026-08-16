@@ -90,34 +90,68 @@ void main() {
     ]);
   });
 
-  test('configuration checks only the current platform rendering key', () {
+  test('web rendering stays unavailable when no web key is configured', () {
     expect(
-      googleMapsKeyConfiguredForPlatform(
+      googleMapsRenderingConfiguredForPlatform(
         isWeb: true,
         platform: TargetPlatform.android,
         androidKey: 'android-key',
         iosKey: 'ios-key',
         webKey: '  ',
+        webSdkReady: true,
       ),
       isFalse,
     );
+  });
+
+  test('web rendering is available when its key and SDK loader are ready', () {
     expect(
-      googleMapsKeyConfiguredForPlatform(
+      googleMapsRenderingConfiguredForPlatform(
+        isWeb: true,
+        platform: TargetPlatform.android,
+        androidKey: '',
+        iosKey: '',
+        webKey: 'web-key',
+        webSdkReady: true,
+      ),
+      isTrue,
+    );
+  });
+
+  test('web rendering stays unavailable when its SDK loader failed', () {
+    expect(
+      googleMapsRenderingConfiguredForPlatform(
+        isWeb: true,
+        platform: TargetPlatform.android,
+        androidKey: '',
+        iosKey: '',
+        webKey: 'web-key',
+        webSdkReady: false,
+      ),
+      isFalse,
+    );
+  });
+
+  test('native configuration checks only the current platform key', () {
+    expect(
+      googleMapsRenderingConfiguredForPlatform(
         isWeb: false,
         platform: TargetPlatform.android,
         androidKey: 'android-key',
         iosKey: '',
         webKey: '',
+        webSdkReady: false,
       ),
       isTrue,
     );
     expect(
-      googleMapsKeyConfiguredForPlatform(
+      googleMapsRenderingConfiguredForPlatform(
         isWeb: false,
         platform: TargetPlatform.windows,
         androidKey: 'android-key',
         iosKey: 'ios-key',
         webKey: 'web-key',
+        webSdkReady: true,
       ),
       isFalse,
     );
@@ -162,6 +196,56 @@ void main() {
     expect(map.myLocationButtonEnabled, isFalse);
   });
 
+  testWidgets('initial multi-group bounds wait for a post-layout frame', (
+    tester,
+  ) async {
+    final model = modelFor([
+      entry(id: 'south', createdAt: tripStart, latitude: -2, longitude: 5),
+      entry(
+        id: 'north',
+        createdAt: tripStart.add(const Duration(hours: 1)),
+        latitude: 4,
+        longitude: -3,
+      ),
+    ]);
+    final controller = _RecordingCameraController();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SizedBox(
+          width: 400,
+          height: 400,
+          child: GoogleTripMapSurface(
+            model: model,
+            onSelected: (_) {},
+            platformBuilder:
+                ({
+                  required initialCameraPosition,
+                  required markers,
+                  required onMapCreated,
+                }) => TextButton(
+                  key: const Key('fake-multi-group-map-ready'),
+                  onPressed: () => onMapCreated(controller),
+                  child: const Text('Map ready'),
+                ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const Key('fake-multi-group-map-ready')));
+    expect(
+      controller.updates,
+      isEmpty,
+      reason: 'Bounds cannot be applied until the platform view is laid out.',
+    );
+
+    await tester.pump();
+    expect(controller.updates, hasLength(1));
+    final updateJson = controller.updates.single.toJson() as List<Object?>;
+    expect(updateJson.first, 'newLatLngBounds');
+  });
+
   testWidgets('camera platform errors show fallback and allow retry', (
     tester,
   ) async {
@@ -203,7 +287,7 @@ void main() {
     );
 
     await tester.tap(find.byKey(const Key('fake-google-map-ready')));
-    await tester.pump();
+    await tester.pumpAndSettle();
 
     expect(find.text('Map unavailable'), findsOneWidget);
     expect(find.text('Retry'), findsOneWidget);
@@ -220,5 +304,14 @@ class _FailingCameraController implements TripMapCameraController {
   @override
   Future<void> animateCamera(CameraUpdate update) {
     throw PlatformException(code: 'camera-failed');
+  }
+}
+
+class _RecordingCameraController implements TripMapCameraController {
+  final updates = <CameraUpdate>[];
+
+  @override
+  Future<void> animateCamera(CameraUpdate update) async {
+    updates.add(update);
   }
 }

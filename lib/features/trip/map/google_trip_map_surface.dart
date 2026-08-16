@@ -4,6 +4,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
+import 'google_maps_web_sdk_state_stub.dart'
+    if (dart.library.js_interop) 'google_maps_web_sdk_state_web.dart';
 import 'trip_map_model.dart';
 import 'trip_map_view.dart';
 
@@ -27,19 +29,21 @@ typedef GoogleTripMapPlatformBuilder =
       required ValueChanged<TripMapCameraController> onMapCreated,
     });
 
-/// Returns whether the rendering key for [platform] is configured.
+/// Returns whether Google Maps can render on the selected platform.
 ///
 /// Rendering keys are platform-restricted and intentionally checked
-/// independently: an Android key must never enable the iOS or web surface.
+/// independently: an Android key must never enable the iOS or web surface. Web
+/// also requires the bootstrap loader to have exposed a ready Maps SDK.
 @visibleForTesting
-bool googleMapsKeyConfiguredForPlatform({
+bool googleMapsRenderingConfiguredForPlatform({
   required bool isWeb,
   required TargetPlatform platform,
   required String androidKey,
   required String iosKey,
   required String webKey,
+  required bool webSdkReady,
 }) {
-  if (isWeb) return webKey.trim().isNotEmpty;
+  if (isWeb) return webKey.trim().isNotEmpty && webSdkReady;
   return switch (platform) {
     TargetPlatform.android => androidKey.trim().isNotEmpty,
     TargetPlatform.iOS => iosKey.trim().isNotEmpty,
@@ -50,13 +54,15 @@ bool googleMapsKeyConfiguredForPlatform({
   };
 }
 
-bool get isGoogleMapsRenderingConfigured => googleMapsKeyConfiguredForPlatform(
-  isWeb: kIsWeb,
-  platform: defaultTargetPlatform,
-  androidKey: _googleMapsAndroidKey,
-  iosKey: _googleMapsIosKey,
-  webKey: _googleMapsWebKey,
-);
+bool get isGoogleMapsRenderingConfigured =>
+    googleMapsRenderingConfiguredForPlatform(
+      isWeb: kIsWeb,
+      platform: defaultTargetPlatform,
+      androidKey: _googleMapsAndroidKey,
+      iosKey: _googleMapsIosKey,
+      webKey: _googleMapsWebKey,
+      webSdkReady: isGoogleMapsWebSdkReady,
+    );
 
 /// The builder consumed by [TripMapView]. Missing platform configuration is a
 /// supported state, so it deterministically returns the navigable fallback.
@@ -241,7 +247,20 @@ class _GoogleTripMapSurfaceState extends State<GoogleTripMapSurface> {
 
   void _onMapCreated(TripMapCameraController controller) {
     _controller = controller;
+    if (widget.model.groups.length > 1) {
+      _applyCameraAfterLayout(controller);
+      return;
+    }
     unawaited(_applyCamera(controller));
+  }
+
+  void _applyCameraAfterLayout(TripMapCameraController controller) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && identical(controller, _controller) && !_cameraFailed) {
+        unawaited(_applyCamera(controller));
+      }
+    });
+    WidgetsBinding.instance.ensureVisualUpdate();
   }
 
   Future<void> _applyCamera(TripMapCameraController controller) async {

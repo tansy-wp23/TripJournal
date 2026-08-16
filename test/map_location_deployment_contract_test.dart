@@ -42,14 +42,29 @@ void main() {
     }
   });
 
+  test('web bootstrap exposes Google Maps SDK loader readiness to Dart', () {
+    final web = readProjectFile('web/index.html');
+
+    expect(web, contains("tripJournalGoogleMapsSdkState = 'unconfigured'"));
+    expect(web, contains("tripJournalGoogleMapsSdkState = 'ready'"));
+    expect(web, contains("tripJournalGoogleMapsSdkState = 'failed'"));
+    expect(web, isNot(contains('maps.onerror = startFlutter')));
+  });
+
   test('setup guide documents every required application restriction', () {
     final guide = readProjectFile('docs/MAP_LOCATION_SETUP.md');
 
     expect(guide, contains('com.tripjournal.tripjournal'));
     expect(guide, contains('SHA-1'));
-    expect(guide, contains('SHA-256'));
+    expect(guide, isNot(contains('SHA-256')));
+    expect(guide, contains('Play app-signing certificate SHA-1'));
+    expect(guide, contains('not the upload certificate'));
     expect(guide, contains('bundle ID'));
     expect(guide, contains('HTTP referrer'));
+    expect(guide, contains('`http://localhost`'));
+    expect(guide, contains('`http://localhost/*`'));
+    expect(guide, contains('omitting the port matches any port'));
+    expect(guide, isNot(contains('localhost:*')));
     expect(guide, contains('Set-Content -Encoding utf8'));
   });
 

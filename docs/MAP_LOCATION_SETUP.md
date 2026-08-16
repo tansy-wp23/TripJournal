@@ -19,11 +19,11 @@ native app (or vice versa).
 1. Enable **Maps SDK for Android** and restrict the key to that API.
 2. Set the application restriction to **Android apps**.
 3. Add package name `com.tripjournal.tripjournal`.
-4. Add the signing certificate's **SHA-1** and **SHA-256** fingerprints. The
-   debug and release certificates are different, so register each certificate
-   used to build an installable app.
+4. Add the signing certificate's **SHA-1** fingerprint. Register the SHA-1 for
+   every certificate that signs an APK users actually install; debug and
+   release certificates are normally different.
 
-For the standard debug keystore on Windows, inspect both fingerprints with:
+For the standard debug keystore on Windows, inspect its SHA-1 with:
 
 ```powershell
 keytool -list -v -alias androiddebugkey `
@@ -31,8 +31,12 @@ keytool -list -v -alias androiddebugkey `
   -storepass android -keypass android
 ```
 
-Use the actual release/upload signing certificate when registering CI or
-store builds; never reuse the debug certificate for production restrictions.
+For Google Play builds, copy the **Play app-signing certificate SHA-1** from
+Play Console's app-integrity page, not the upload certificate. The upload
+certificate authenticates the bundle submitted to Play; Google signs the APK
+installed by users with the app-signing certificate. For an APK distributed
+directly or through another store, register the SHA-1 of the certificate that
+signs that installed APK. Never use the debug certificate for production.
 
 ### iOS key
 
@@ -50,8 +54,10 @@ deployment target in the Xcode project.
 2. Set the application restriction to **Websites**.
 3. Add the exact production **HTTP referrer** patterns, for example
    `https://journal.example.com/*`. Add preview domains individually. Add a
-   localhost pattern such as `http://localhost:*/*` only to a development key,
-   never to the production key.
+   bare `http://localhost` entry and `http://localhost/*` for all local paths
+   only to a development key, never to the production key. In website
+   restrictions, omitting the port matches any port; a wildcard in the port is
+   not valid.
 
 Allowing all referrers defeats the web restriction. Do not use an IP-address
 restriction for a browser key.
@@ -107,6 +113,11 @@ iOS key, `GMSServices` is not initialized and Dart uses the fallback surface.
 The tracked `web/index.html` contains `__GOOGLE_MAPS_WEB_KEY__`, not a key. A
 normal no-key build finds no local web configuration, skips loading the Maps
 JavaScript API, and uses the fallback surface.
+
+The bootstrap exposes whether that SDK load is ready, unconfigured, or failed
+before starting Flutter. Dart requires both the web build key and the ready
+state, so a loader failure shows the fallback instead of constructing a
+`GoogleMap` while `google.maps` is absent.
 
 For a configured release, generate the gitignored web configuration containing
 only the web key, then build with the matching Dart define:
@@ -166,6 +177,8 @@ browsers; the HTTP referrer and API restrictions are the security boundary.
   is installed or deployed.
 - A catchable controller/camera platform error switches the Google surface to
   the same fallback and shows **Retry**.
+- A Maps JavaScript SDK network/loader failure starts Flutter with a failed
+  readiness state, which selects the same fallback and **Retry** surface.
 - Google Maps tile authentication, billing, API-enable, and restriction errors
   are reported by the native/web SDK and are not exposed by `GoogleMap` as a
   catchable Dart exception. Check device/browser logs and Google Cloud's Maps
