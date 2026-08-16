@@ -17,6 +17,8 @@ import '../journal/widgets/mood_display.dart';
 import '../journal/widgets/photo_thumbnail.dart';
 import '../settings/settings_providers.dart';
 import 'controller/trip_controller.dart';
+import 'map/google_trip_map_surface.dart';
+import 'map/trip_map_view.dart';
 import 'screens/trip_photo_slideshow_screen.dart';
 import 'screens/trip_wellness_screen.dart';
 import 'trip_day_groups.dart';
@@ -43,7 +45,10 @@ class TripViewScreen extends ConsumerStatefulWidget {
   ConsumerState<TripViewScreen> createState() => _TripViewScreenState();
 }
 
-class _TripViewScreenState extends ConsumerState<TripViewScreen> {
+class _TripViewScreenState extends ConsumerState<TripViewScreen>
+    with SingleTickerProviderStateMixin {
+  late final TabController _tabController;
+  int _selectedTabIndex = 0;
   bool _searchVisible = false;
   bool _dataLoadInProgress = false;
   bool _identityResolved = false;
@@ -61,7 +66,26 @@ class _TripViewScreenState extends ConsumerState<TripViewScreen> {
   @override
   void initState() {
     super.initState();
+    _tabController = TabController(length: 2, vsync: this)
+      ..addListener(_handleTabSelection);
     WidgetsBinding.instance.addPostFrameCallback((_) => _loadData());
+  }
+
+  @override
+  void dispose() {
+    _tabController
+      ..removeListener(_handleTabSelection)
+      ..dispose();
+    super.dispose();
+  }
+
+  void _handleTabSelection() {
+    if (!mounted || _selectedTabIndex == _tabController.index) return;
+    setState(() => _selectedTabIndex = _tabController.index);
+  }
+
+  void _showEntriesForLocation() {
+    _tabController.animateTo(0);
   }
 
   Future<void> _loadData() async {
@@ -295,37 +319,56 @@ class _TripViewScreenState extends ConsumerState<TripViewScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text(trip.title),
+        bottom: TabBar(
+          controller: _tabController,
+          tabs: const [
+            Tab(key: Key('trip-view-entries-tab'), text: 'Entries'),
+            Tab(key: Key('trip-view-map-tab'), text: 'Map'),
+          ],
+        ),
         actions: [
-          ReportIssueButton(page: 'TripViewScreen', userIdProvider: widget.userIdProvider),
+          ReportIssueButton(
+            page: 'TripViewScreen',
+            userIdProvider: widget.userIdProvider,
+          ),
           IconButton(
             key: const Key('trip-view-export-pdf-button'),
             icon: const Icon(Icons.picture_as_pdf_outlined),
             tooltip: 'Export trip as PDF',
             onPressed: () => _exportTripPdf(trip, journalController.entries),
           ),
-          IconButton(
-            key: const Key('trip-view-search-toggle'),
-            icon: Icon(_searchVisible ? Icons.search_off : Icons.search),
-            onPressed: () {
-              setState(() => _searchVisible = !_searchVisible);
-              if (!_searchVisible) {
-                ref.read(journalControllerProvider.notifier).setFilter(
-                  filter.copyWith(query: ''),
-                );
-              }
-            },
-          ),
-          IconButton(
-            key: const Key('trip-view-filter-button'),
-            tooltip: 'Filter entries',
-            onPressed: () => _openEntryFilters(filter),
-            icon: Badge(
-              key: Key('journal-filter-count-${(filter.mood == null ? 0 : 1) + (filter.startDate == null && filter.endDate == null ? 0 : 1)}'),
-              isLabelVisible: filter.mood != null || filter.startDate != null || filter.endDate != null,
-              label: Text('${(filter.mood == null ? 0 : 1) + (filter.startDate == null && filter.endDate == null ? 0 : 1)}'),
-              child: const Icon(Icons.filter_alt_outlined),
+          if (_selectedTabIndex == 0) ...[
+            IconButton(
+              key: const Key('trip-view-search-toggle'),
+              icon: Icon(_searchVisible ? Icons.search_off : Icons.search),
+              onPressed: () {
+                setState(() => _searchVisible = !_searchVisible);
+                if (!_searchVisible) {
+                  ref
+                      .read(journalControllerProvider.notifier)
+                      .setFilter(filter.copyWith(query: ''));
+                }
+              },
             ),
-          ),
+            IconButton(
+              key: const Key('trip-view-filter-button'),
+              tooltip: 'Filter entries',
+              onPressed: () => _openEntryFilters(filter),
+              icon: Badge(
+                key: Key(
+                  'journal-filter-count-${(filter.mood == null ? 0 : 1) + (filter.startDate == null && filter.endDate == null ? 0 : 1)}',
+                ),
+                isLabelVisible:
+                    filter.mood != null ||
+                    filter.startDate != null ||
+                    filter.endDate != null,
+                label: Text(
+                  '${(filter.mood == null ? 0 : 1) + (filter.startDate == null && filter.endDate == null ? 0 : 1)}',
+                ),
+                child: const Icon(Icons.filter_alt_outlined),
+              ),
+            ),
+          ],
           IconButton(
             key: const Key('trip-view-edit-button'),
             icon: const Icon(Icons.edit),
@@ -339,51 +382,74 @@ class _TripViewScreenState extends ConsumerState<TripViewScreen> {
           ),
         ],
       ),
-      body: Column(
+      body: IndexedStack(
+        index: _selectedTabIndex,
         children: [
-          if (_searchVisible)
-            JournalSearchBar(
-              filter: filter,
-              onChanged: (f) =>
-                  ref.read(journalControllerProvider.notifier).setFilter(f),
+          Column(
+            children: [
+              if (_searchVisible)
+                JournalSearchBar(
+                  filter: filter,
+                  onChanged: (f) =>
+                      ref.read(journalControllerProvider.notifier).setFilter(f),
+                ),
+              Expanded(
+                child: filter.isActive && displayDayGroups.isEmpty
+                    ? ListView(
+                        key: const PageStorageKey<String>(
+                          'trip-view-entries-list',
+                        ),
+                        children: [
+                          _buildHeader(
+                            context,
+                            trip,
+                            stats,
+                            journalController.entries,
+                            tripPhotos,
+                          ),
+                          _NoMatchingEntriesState(
+                            onClearFilters: () => ref
+                                .read(journalControllerProvider.notifier)
+                                .clearFilter(),
+                          ),
+                        ],
+                      )
+                    : ListView.builder(
+                        key: const PageStorageKey<String>(
+                          'trip-view-entries-list',
+                        ),
+                        itemCount: displayDayGroups.length + 1,
+                        itemBuilder: (context, index) {
+                          if (index == 0) {
+                            return _buildHeader(
+                              context,
+                              trip,
+                              stats,
+                              journalController.entries,
+                              tripPhotos,
+                            );
+                          }
+                          return _DayGroupTile(
+                            trip: trip,
+                            group: displayDayGroups[index - 1],
+                            tripPhotos: tripPhotos,
+                          );
+                        },
+                      ),
+              ),
+            ],
+          ),
+          TripMapView(
+            entries: journalController.entries,
+            tripStartDate: trip.startDate,
+            mapBuilder: buildConfiguredTripMapSurface,
+            onOpenEntry: (entry) => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => EntryDetailScreen(entryId: entry.id),
+              ),
             ),
-          Expanded(
-            child: filter.isActive && displayDayGroups.isEmpty
-                ? ListView(
-                    children: [
-                      _buildHeader(
-                        context,
-                        trip,
-                        stats,
-                        journalController.entries,
-                        tripPhotos,
-                      ),
-                      _NoMatchingEntriesState(
-                        onClearFilters: () => ref
-                            .read(journalControllerProvider.notifier)
-                            .clearFilter(),
-                      ),
-                    ],
-                  )
-                : ListView.builder(
-                    itemCount: displayDayGroups.length + 1,
-                    itemBuilder: (context, index) {
-                      if (index == 0) {
-                        return _buildHeader(
-                          context,
-                          trip,
-                          stats,
-                          journalController.entries,
-                          tripPhotos,
-                        );
-                      }
-                      return _DayGroupTile(
-                        trip: trip,
-                        group: displayDayGroups[index - 1],
-                        tripPhotos: tripPhotos,
-                      );
-                    },
-                  ),
+            onAddLocation: _showEntriesForLocation,
           ),
         ],
       ),

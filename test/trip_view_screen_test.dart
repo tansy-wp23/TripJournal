@@ -18,6 +18,55 @@ Widget _wrapped(String tripId) {
 }
 
 void main() {
+  testWidgets(
+    'Entries and Map tabs coexist with the current Trip actions and carousel',
+    (tester) async {
+      tester.view.physicalSize = const Size(1200, 2600);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      await tester.pumpWidget(_wrapped('trip-001'));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('trip-view-entries-tab')), findsOneWidget);
+      expect(find.byKey(const Key('trip-view-map-tab')), findsOneWidget);
+      expect(find.byKey(const Key('trip-photo-carousel')), findsOneWidget);
+      expect(find.byKey(const Key('trip-wellness-link')), findsOneWidget);
+      expect(find.byKey(const Key('trip-summary-card')), findsOneWidget);
+      expect(find.byKey(const Key('trip-notes-card')), findsOneWidget);
+      expect(find.byKey(const Key('trip-view-search-toggle')), findsOneWidget);
+      expect(find.byKey(const Key('trip-view-filter-button')), findsOneWidget);
+      expect(
+        find.byKey(const Key('trip-view-export-pdf-button')),
+        findsOneWidget,
+      );
+      expect(find.byKey(const Key('report-issue-button')), findsOneWidget);
+      expect(find.byKey(const Key('trip-view-edit-button')), findsOneWidget);
+      expect(find.byKey(const Key('trip-view-delete-button')), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('trip-view-map-tab')));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('trip-view-search-toggle')), findsNothing);
+      expect(find.byKey(const Key('trip-view-filter-button')), findsNothing);
+      expect(
+        find.byKey(const Key('trip-view-export-pdf-button')),
+        findsOneWidget,
+      );
+      expect(find.byKey(const Key('report-issue-button')), findsOneWidget);
+      expect(find.byKey(const Key('trip-view-edit-button')), findsOneWidget);
+      expect(find.byKey(const Key('trip-view-delete-button')), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('trip-view-entries-tab')));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('trip-photo-carousel')), findsOneWidget);
+      expect(find.byKey(const Key('trip-view-search-toggle')), findsOneWidget);
+      expect(find.byKey(const Key('trip-view-filter-button')), findsOneWidget);
+    },
+  );
+
   testWidgets('today/past days show an Add entry action, no Upcoming marker', (
     tester,
   ) async {
