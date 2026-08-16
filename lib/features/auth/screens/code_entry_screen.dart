@@ -144,7 +144,11 @@ class _CodeEntryScreenState extends ConsumerState<CodeEntryScreen> {
                 const SizedBox(height: 12),
                 TextButton(
                   key: const Key('code-entry-cancel'),
-                  onPressed: _submitting ? null : () => _cancel(context),
+                  onPressed: _submitting
+                      ? null
+                      : () async {
+                          await _cancel(context);
+                        },
               child: Text(_isReactivation ? 'Cancel' : 'Back'),
             ),
           ],

@@ -51,6 +51,7 @@ class AuthController extends ChangeNotifier {
   // confirmed-absent) actually arrives.
   bool _loading = true;
   String? _error;
+  int _authOperationVersion = 0;
 
   AppSession? get session => _session;
   Profile? get profile => _profile;
@@ -84,6 +85,7 @@ class AuthController extends ChangeNotifier {
   /// 3. Branch on profile status (PB-04 active / PB-06 deactivated).
   ///    If deactivated, automatically send a reactivation code (PB-06).
   Future<void> signInWithGoogle() async {
+    _authOperationVersion++;
     _loading = true;
     _error = null;
     notifyListeners();
@@ -123,11 +125,19 @@ class AuthController extends ChangeNotifier {
   /// screen's cancel action (Architecture Decision 7 — don't leave a gated
   /// session hanging) and by the logout button (Phase 3).
   Future<void> signOut() async {
-    await _authRepository.signOut();
-    _session = null;
-    _profile = null;
+    // Invalidate any profile restore already awaiting the repository. This
+    // is deliberately silent: publishing a loading state here would make
+    // AuthGate replace the current screen with the launch splash on logout.
+    _authOperationVersion++;
     _error = null;
-    notifyListeners();
+    try {
+      await _authRepository.signOut();
+    } finally {
+      _session = null;
+      _profile = null;
+      _loading = false;
+      notifyListeners();
+    }
   }
 
   /// Sends a reactivation code to the user's email. Called automatically
@@ -183,6 +193,7 @@ class AuthController extends ChangeNotifier {
   /// emits a stream event for an interactive sign-in too, so both code
   /// paths can observe the same event).
   Future<void> _onAuthStateChanged(AppSession session) async {
+    final operationVersion = ++_authOperationVersion;
     if (!session.isSignedIn) {
       _session = null;
       _profile = null;
@@ -206,9 +217,11 @@ class AuthController extends ChangeNotifier {
         email: session.email!,
         displayName: _deriveDisplayName(session.email!),
       );
+      if (operationVersion != _authOperationVersion) return;
       _profile = profile;
       _error = null;
     } catch (e) {
+      if (operationVersion != _authOperationVersion) return;
       // Couldn't restore the profile for an otherwise-valid session —
       // treat as signed out rather than getting stuck on the splash
       // screen indefinitely.
@@ -216,8 +229,10 @@ class AuthController extends ChangeNotifier {
       _session = null;
       _profile = null;
     } finally {
-      _loading = false;
-      notifyListeners();
+      if (operationVersion == _authOperationVersion) {
+        _loading = false;
+        notifyListeners();
+      }
     }
   }
 

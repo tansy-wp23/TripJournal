@@ -46,7 +46,9 @@ class SuspendedScreen extends ConsumerWidget {
                 const SizedBox(height: 32),
                 OutlinedButton(
                   key: const Key('suspended-sign-out'),
-                  onPressed: () => ref.read(authControllerProvider.notifier).signOut(),
+                  onPressed: () async {
+                    await ref.read(authControllerProvider.notifier).signOut();
+                  },
                   child: const Text('Sign out'),
                 ),
               ],

@@ -56,14 +56,15 @@ void main() {
       expect(enabledButton.onPressed, isNotNull);
     });
 
-    testWidgets('cancel signs out and returns to login', (tester) async {
+    testWidgets('cancel signs out', (tester) async {
+      await harness.signIn();
       await tester.pumpWidget(wrapped(VerificationPurpose.reactivation));
       await tester.pumpAndSettle();
 
       await tester.tap(find.byKey(const Key('code-entry-cancel')));
-      await tester.pumpAndSettle();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
 
-      // After signOut, the auth controller status is signedOut.
       expect(harness.controller.status, AuthStatus.signedOut);
     });
 
@@ -109,22 +110,27 @@ void main() {
       expect(harness.verificationRepository.activeCode, isNotNull);
     });
 
-    testWidgets('cancel pops back without side effects', (tester) async {
-      await tester.pumpWidget(wrapped(VerificationPurpose.deactivation));
-      await tester.pumpAndSettle();
+    testWidgets(
+      'back returns to the previous route without auth side effects',
+      (tester) async {
+        await harness.signIn();
+        final statusBeforeBack = harness.controller.status;
+        await tester.pumpWidget(harness.wrap(const _CodeEntrySentinel()));
+        await tester.pumpAndSettle();
 
-      await tester.tap(find.byKey(const Key('code-entry-cancel')));
-      await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('open-deactivation-code-entry')));
+        await tester.pumpAndSettle();
+        expect(find.byType(CodeEntryScreen), findsOneWidget);
 
-      // The screen should be popped (no longer visible).
-      expect(find.byType(CodeEntryScreen), findsNothing);
+        await tester.tap(find.byKey(const Key('code-entry-cancel')));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 500));
 
-      // Profile should still be active and session intact.
-      expect(
-        harness.controller.status,
-        AuthStatus.signedOut,
-      ); // not signed in in this setup
-    });
+        expect(find.byType(CodeEntryScreen), findsNothing);
+        expect(find.byKey(const Key('code-entry-sentinel')), findsOneWidget);
+        expect(harness.controller.status, statusBeforeBack);
+      },
+    );
 
     testWidgets(
       'confirm with valid code deactivates the profile and signs out',
@@ -157,4 +163,28 @@ void main() {
       },
     );
   });
+}
+
+class _CodeEntrySentinel extends StatelessWidget {
+  const _CodeEntrySentinel();
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      key: const Key('code-entry-sentinel'),
+      body: Center(
+        child: FilledButton(
+          key: const Key('open-deactivation-code-entry'),
+          onPressed: () => Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder: (_) => const CodeEntryScreen(
+                purpose: VerificationPurpose.deactivation,
+              ),
+            ),
+          ),
+          child: const Text('Open deactivation'),
+        ),
+      ),
+    );
+  }
 }

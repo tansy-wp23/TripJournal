@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:tripjournal/features/auth/auth_gate.dart';
+import 'package:tripjournal/features/auth/controller/auth_controller.dart';
 import 'package:tripjournal/features/auth/screens/login_screen.dart';
 import 'package:tripjournal/features/auth/screens/suspended_screen.dart';
 import 'package:tripjournal/models/profile.dart';
@@ -56,8 +57,10 @@ void main() {
       expect(find.byType(SuspendedScreen), findsOneWidget);
 
       await tester.tap(find.byKey(const Key('suspended-sign-out')));
-      await tester.pumpAndSettle();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
 
+      expect(harness.controller.status, AuthStatus.signedOut);
       expect(find.byType(LoginScreen), findsOneWidget);
       expect(find.byType(SuspendedScreen), findsNothing);
     });

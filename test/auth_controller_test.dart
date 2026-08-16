@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:tripjournal/data/account_lifecycle_repository.dart';
@@ -231,6 +233,170 @@ void main() {
       expect(controller.profile, isNull);
     });
 
+    test('signOut during an auth-stream restore finishes signedOut', () async {
+      controller.dispose();
+      final eventAuthRepository = _SignOutBeforeEventAuthRepository();
+      final deferredProfileRepository = _DeferredProfileRepository();
+      authRepository = eventAuthRepository;
+      profileRepository = deferredProfileRepository;
+      lifecycleRepository = MockAccountLifecycleRepository(
+        profileRepository: profileRepository,
+        verificationCodeRepository: verificationCodeRepository,
+      );
+      controller = AuthController(
+        authRepository,
+        profileRepository,
+        lifecycleRepository,
+      );
+      final states = <AuthStatus>[controller.status];
+      controller.addListener(() => states.add(controller.status));
+
+      eventAuthRepository.emitSignedInSession();
+      await deferredProfileRepository.createStarted;
+
+      await controller.signOut();
+
+      expect(
+        controller.status,
+        AuthStatus.signedOut,
+        reason: 'Observed auth states: $states',
+      );
+
+      deferredProfileRepository.releaseCreate();
+      await Future<void>.delayed(Duration.zero);
+
+      expect(controller.session, isNull);
+      expect(controller.profile, isNull);
+
+      eventAuthRepository.emitSignedOutSession();
+      await Future<void>.delayed(Duration.zero);
+
+      final firstSignedOut = states.indexOf(AuthStatus.signedOut);
+      expect(firstSignedOut, isNonNegative);
+      expect(states.skip(firstSignedOut), everyElement(AuthStatus.signedOut));
+    });
+
+    test(
+      'pending signOut prevents an older auth restore from publishing',
+      () async {
+        controller.dispose();
+        final eventAuthRepository = _SignOutBeforeEventAuthRepository(
+          deferSignOut: true,
+        );
+        final deferredProfileRepository = _DeferredProfileRepository();
+        authRepository = eventAuthRepository;
+        profileRepository = deferredProfileRepository;
+        lifecycleRepository = MockAccountLifecycleRepository(
+          profileRepository: profileRepository,
+          verificationCodeRepository: verificationCodeRepository,
+        );
+        controller = AuthController(
+          authRepository,
+          profileRepository,
+          lifecycleRepository,
+        );
+        final states = <AuthStatus>[controller.status];
+        controller.addListener(() => states.add(controller.status));
+
+        eventAuthRepository.emitSignedInSession();
+        await deferredProfileRepository.createStarted;
+
+        final signOut = controller.signOut();
+        await eventAuthRepository.signOutStarted;
+        deferredProfileRepository.releaseCreate();
+        await Future<void>.delayed(Duration.zero);
+
+        expect(controller.status, AuthStatus.loading);
+        expect(controller.profile, isNull);
+        expect(states, everyElement(AuthStatus.loading));
+
+        eventAuthRepository.releaseSignOut();
+        await signOut;
+
+        expect(controller.status, AuthStatus.signedOut);
+        expect(controller.session, isNull);
+        expect(controller.profile, isNull);
+      },
+    );
+
+    test(
+      'a new signIn prevents an older auth restore from clearing loading',
+      () async {
+        controller.dispose();
+        final deferredAuthRepository = _DeferredSignInAuthRepository();
+        final deferredProfileRepository = _DeferredProfileRepository();
+        authRepository = deferredAuthRepository;
+        profileRepository = deferredProfileRepository;
+        lifecycleRepository = MockAccountLifecycleRepository(
+          profileRepository: profileRepository,
+          verificationCodeRepository: verificationCodeRepository,
+        );
+        controller = AuthController(
+          authRepository,
+          profileRepository,
+          lifecycleRepository,
+        );
+        final states = <AuthStatus>[controller.status];
+        controller.addListener(() => states.add(controller.status));
+
+        deferredAuthRepository.emitSignedInSession();
+        await deferredProfileRepository.createStarted;
+
+        final signIn = controller.signInWithGoogle();
+        await deferredAuthRepository.signInStarted;
+        deferredProfileRepository.releaseCreate();
+        await Future<void>.delayed(Duration.zero);
+
+        expect(controller.status, AuthStatus.loading);
+        expect(controller.profile, isNull);
+        expect(states, everyElement(AuthStatus.loading));
+
+        deferredAuthRepository.releaseSignIn();
+        await signIn;
+        await Future<void>.delayed(Duration.zero);
+
+        expect(controller.status, AuthStatus.authenticated);
+        expect(controller.profile, isNotNull);
+      },
+    );
+
+    test(
+      'failed signOut during an auth-stream restore still finishes signedOut',
+      () async {
+        controller.dispose();
+        final eventAuthRepository = _SignOutBeforeEventAuthRepository(
+          signOutError: StateError('remote sign-out failed'),
+        );
+        final deferredProfileRepository = _DeferredProfileRepository();
+        authRepository = eventAuthRepository;
+        profileRepository = deferredProfileRepository;
+        lifecycleRepository = MockAccountLifecycleRepository(
+          profileRepository: profileRepository,
+          verificationCodeRepository: verificationCodeRepository,
+        );
+        controller = AuthController(
+          authRepository,
+          profileRepository,
+          lifecycleRepository,
+        );
+
+        eventAuthRepository.emitSignedInSession();
+        await deferredProfileRepository.createStarted;
+
+        await expectLater(controller.signOut(), throwsStateError);
+
+        expect(controller.status, AuthStatus.signedOut);
+        expect(controller.session, isNull);
+        expect(controller.profile, isNull);
+
+        deferredProfileRepository.releaseCreate();
+        await Future<void>.delayed(Duration.zero);
+
+        expect(controller.session, isNull);
+        expect(controller.profile, isNull);
+      },
+    );
+
     test('loading is true during sign-in, false after', () async {
       final future = controller.signInWithGoogle();
       expect(controller.loading, isTrue);
@@ -356,4 +522,68 @@ void main() {
       },
     );
   });
+}
+
+final class _SignOutBeforeEventAuthRepository extends MockAuthRepository {
+  _SignOutBeforeEventAuthRepository({
+    this.signOutError,
+    this.deferSignOut = false,
+  });
+
+  final Object? signOutError;
+  final bool deferSignOut;
+  final Completer<void> _signOutStarted = Completer<void>();
+  final Completer<void> _releaseSignOut = Completer<void>();
+
+  Future<void> get signOutStarted => _signOutStarted.future;
+
+  void releaseSignOut() => _releaseSignOut.complete();
+
+  @override
+  Future<void> signOut() async {
+    if (!_signOutStarted.isCompleted) _signOutStarted.complete();
+    if (deferSignOut) await _releaseSignOut.future;
+    final error = signOutError;
+    if (error != null) throw error;
+  }
+}
+
+final class _DeferredProfileRepository extends MockProfileRepository {
+  final Completer<void> _createStarted = Completer<void>();
+  final Completer<void> _releaseCreate = Completer<void>();
+
+  Future<void> get createStarted => _createStarted.future;
+
+  void releaseCreate() => _releaseCreate.complete();
+
+  @override
+  Future<Profile> createProfileIfMissing({
+    required String userId,
+    required String email,
+    required String displayName,
+  }) async {
+    if (!_createStarted.isCompleted) _createStarted.complete();
+    await _releaseCreate.future;
+    return super.createProfileIfMissing(
+      userId: userId,
+      email: email,
+      displayName: displayName,
+    );
+  }
+}
+
+final class _DeferredSignInAuthRepository extends MockAuthRepository {
+  final Completer<void> _signInStarted = Completer<void>();
+  final Completer<void> _releaseSignIn = Completer<void>();
+
+  Future<void> get signInStarted => _signInStarted.future;
+
+  void releaseSignIn() => _releaseSignIn.complete();
+
+  @override
+  Future<AppSession> signInWithGoogle() async {
+    if (!_signInStarted.isCompleted) _signInStarted.complete();
+    await _releaseSignIn.future;
+    return super.signInWithGoogle();
+  }
 }
