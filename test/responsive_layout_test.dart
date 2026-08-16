@@ -274,12 +274,19 @@ void main() {
         tester,
         () => _app(const CreateEditEntryScreen(tripId: 'trip-001')),
         after: (tester) async {
+          final addMealButton = find.byKey(const Key('add-meal-button'));
           await tester.scrollUntilVisible(
-            find.byKey(const Key('add-meal-button')),
+            addMealButton,
             200,
             scrollable: find.byType(Scrollable).first,
           );
-          await tester.tap(find.byKey(const Key('add-meal-button')));
+          await tester.ensureVisible(addMealButton);
+          await tester.pump();
+          await tester.tap(addMealButton);
+          await tester.pumpAndSettle();
+
+          expect(find.byType(AlertDialog), findsOneWidget);
+          Navigator.of(tester.element(find.byType(AlertDialog))).pop();
           await tester.pumpAndSettle();
         },
       );
