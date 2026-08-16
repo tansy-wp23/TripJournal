@@ -3,6 +3,9 @@ project_id = "trip-management-mvp"
 [functions.purge-deleted-trips]
 verify_jwt = false
 
+[functions.places-proxy]
+verify_jwt = true
+
 [functions.verification-send]
 verify_jwt = false
 
