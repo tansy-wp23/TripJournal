@@ -397,6 +397,84 @@ void main() {
       },
     );
 
+    test(
+      'failed signOut fences a queued signed-in event until signed-out is observed',
+      () async {
+        controller.dispose();
+        final signOutError = StateError('remote sign-out failed');
+        final queuedAuthRepository = _QueuedSignedInAuthRepository(
+          signOutError: signOutError,
+        );
+        final deferredProfileRepository = _DeferredCountingProfileRepository();
+        authRepository = queuedAuthRepository;
+        profileRepository = deferredProfileRepository;
+        lifecycleRepository = MockAccountLifecycleRepository(
+          profileRepository: profileRepository,
+          verificationCodeRepository: verificationCodeRepository,
+        );
+        controller = AuthController(
+          authRepository,
+          profileRepository,
+          lifecycleRepository,
+        );
+        addTearDown(queuedAuthRepository.dispose);
+
+        queuedAuthRepository.queueSignedInSession();
+        await expectLater(controller.signOut(), throwsA(same(signOutError)));
+
+        queuedAuthRepository.releaseSignedInEvent();
+        final sessionAfterQueuedEvent = controller.session;
+        final createsAfterQueuedEvent =
+            deferredProfileRepository.createCallCount;
+
+        deferredProfileRepository.releaseCreate();
+        await Future<void>.delayed(Duration.zero);
+
+        expect(sessionAfterQueuedEvent, isNull);
+        expect(createsAfterQueuedEvent, 0);
+        expect(controller.status, AuthStatus.signedOut);
+
+        final restored = Completer<void>();
+        controller.addListener(() {
+          if (controller.status == AuthStatus.authenticated &&
+              !restored.isCompleted) {
+            restored.complete();
+          }
+        });
+        queuedAuthRepository.emitSignedOutSession();
+        queuedAuthRepository.emitSignedInSessionNow();
+        await restored.future;
+
+        expect(controller.status, AuthStatus.authenticated);
+      },
+    );
+
+    test(
+      'a deliberate interactive sign-in clears a failed signOut fence',
+      () async {
+        controller.dispose();
+        final queuedAuthRepository = _QueuedSignedInAuthRepository(
+          signOutError: StateError('remote sign-out failed'),
+        );
+        authRepository = queuedAuthRepository;
+        controller = AuthController(
+          authRepository,
+          profileRepository,
+          lifecycleRepository,
+        );
+        addTearDown(queuedAuthRepository.dispose);
+
+        await expectLater(controller.signOut(), throwsStateError);
+
+        final signIn = controller.signInWithGoogle();
+        queuedAuthRepository.releaseSignedInEvent();
+        await signIn;
+
+        expect(controller.status, AuthStatus.authenticated);
+        expect(controller.currentUserId, queuedAuthRepository.mockUserId);
+      },
+    );
+
     test('a queued signed-in event cannot override a later signOut', () async {
       controller.dispose();
       final queuedAuthRepository = _QueuedSignedInAuthRepository();
@@ -461,6 +539,81 @@ void main() {
         expect(controller.status, AuthStatus.signedOut);
         expect(controller.session, isNull);
         expect(controller.profile, isNull);
+      },
+    );
+
+    test(
+      'matching interactive auth event does not duplicate profile creation',
+      () async {
+        controller.dispose();
+        final queuedAuthRepository = _QueuedSignedInAuthRepository();
+        final deferredProfileRepository = _DeferredCountingProfileRepository();
+        authRepository = queuedAuthRepository;
+        profileRepository = deferredProfileRepository;
+        lifecycleRepository = MockAccountLifecycleRepository(
+          profileRepository: profileRepository,
+          verificationCodeRepository: verificationCodeRepository,
+        );
+        controller = AuthController(
+          authRepository,
+          profileRepository,
+          lifecycleRepository,
+        );
+        addTearDown(queuedAuthRepository.dispose);
+
+        final signIn = controller.signInWithGoogle();
+        await deferredProfileRepository.createStarted;
+
+        queuedAuthRepository.releaseSignedInEvent();
+        final createCallsWhilePending =
+            deferredProfileRepository.createCallCount;
+        final statusWhilePending = controller.status;
+
+        deferredProfileRepository.releaseCreate();
+        await signIn;
+        await Future<void>.delayed(Duration.zero);
+
+        expect(createCallsWhilePending, 1);
+        expect(statusWhilePending, AuthStatus.loading);
+        expect(controller.status, AuthStatus.authenticated);
+      },
+    );
+
+    test(
+      'matching auth event cannot publish before interactive reactivation setup',
+      () async {
+        controller.dispose();
+        final queuedAuthRepository = _QueuedSignedInAuthRepository();
+        final countingProfileRepository = _CountingProfileRepository(
+          state: MockProfileState.deactivated,
+        );
+        final deferredLifecycleRepository =
+            _DeferredReactivationLifecycleRepository(
+              profileRepository: countingProfileRepository,
+              verificationCodeRepository: verificationCodeRepository,
+            );
+        authRepository = queuedAuthRepository;
+        profileRepository = countingProfileRepository;
+        lifecycleRepository = deferredLifecycleRepository;
+        controller = AuthController(
+          authRepository,
+          profileRepository,
+          lifecycleRepository,
+        );
+        addTearDown(queuedAuthRepository.dispose);
+
+        final signIn = controller.signInWithGoogle();
+        await deferredLifecycleRepository.reactivationStarted;
+
+        queuedAuthRepository.releaseSignedInEvent();
+        final statusWhileCodeDeliveryIsPending = controller.status;
+
+        deferredLifecycleRepository.releaseReactivation();
+        await signIn;
+
+        expect(statusWhileCodeDeliveryIsPending, AuthStatus.loading);
+        expect(countingProfileRepository.createCallCount, 1);
+        expect(controller.status, AuthStatus.deactivated);
       },
     );
 
@@ -639,6 +792,87 @@ final class _DeferredProfileRepository extends MockProfileRepository {
   }
 }
 
+class _CountingProfileRepository extends MockProfileRepository {
+  _CountingProfileRepository({super.state});
+
+  int createCallCount = 0;
+
+  @override
+  Future<Profile> createProfileIfMissing({
+    required String userId,
+    required String email,
+    required String displayName,
+  }) async {
+    createCallCount++;
+    return createWithoutCounting(
+      userId: userId,
+      email: email,
+      displayName: displayName,
+    );
+  }
+
+  Future<Profile> createWithoutCounting({
+    required String userId,
+    required String email,
+    required String displayName,
+  }) {
+    return super.createProfileIfMissing(
+      userId: userId,
+      email: email,
+      displayName: displayName,
+    );
+  }
+}
+
+final class _DeferredCountingProfileRepository
+    extends _CountingProfileRepository {
+  final Completer<void> _createStarted = Completer<void>();
+  final Completer<void> _releaseCreate = Completer<void>();
+
+  Future<void> get createStarted => _createStarted.future;
+
+  void releaseCreate() {
+    if (!_releaseCreate.isCompleted) _releaseCreate.complete();
+  }
+
+  @override
+  Future<Profile> createProfileIfMissing({
+    required String userId,
+    required String email,
+    required String displayName,
+  }) async {
+    createCallCount++;
+    if (!_createStarted.isCompleted) _createStarted.complete();
+    await _releaseCreate.future;
+    return createWithoutCounting(
+      userId: userId,
+      email: email,
+      displayName: displayName,
+    );
+  }
+}
+
+final class _DeferredReactivationLifecycleRepository
+    extends MockAccountLifecycleRepository {
+  _DeferredReactivationLifecycleRepository({
+    required super.profileRepository,
+    required super.verificationCodeRepository,
+  });
+
+  final Completer<void> _reactivationStarted = Completer<void>();
+  final Completer<void> _releaseReactivation = Completer<void>();
+
+  Future<void> get reactivationStarted => _reactivationStarted.future;
+
+  void releaseReactivation() => _releaseReactivation.complete();
+
+  @override
+  Future<void> requestReactivation() async {
+    if (!_reactivationStarted.isCompleted) _reactivationStarted.complete();
+    await _releaseReactivation.future;
+  }
+}
+
 final class _DeferredSignInAuthRepository extends MockAuthRepository {
   final Completer<void> _signInStarted = Completer<void>();
   final Completer<void> _releaseSignIn = Completer<void>();
@@ -656,30 +890,72 @@ final class _DeferredSignInAuthRepository extends MockAuthRepository {
 }
 
 final class _QueuedSignedInAuthRepository extends MockAuthRepository {
-  final Completer<void> _releaseSignedInEvent = Completer<void>();
-  String? _currentUserId;
+  _QueuedSignedInAuthRepository({this.signOutError});
 
-  void releaseSignedInEvent() => _releaseSignedInEvent.complete();
+  final Object? signOutError;
+  final StreamController<AppSession> _events =
+      StreamController<AppSession>.broadcast(sync: true);
+  AppSession? _current;
+  AppSession? _queuedSignedIn;
+
+  void queueSignedInSession({String? userId, String? email}) {
+    final session = AppSession.signedIn(
+      userId: userId ?? mockUserId,
+      email: email ?? mockEmail,
+    );
+    _current = session;
+    _queuedSignedIn = session;
+  }
+
+  void releaseSignedInEvent() {
+    final session = _queuedSignedIn;
+    if (session == null) return;
+    _queuedSignedIn = null;
+    _events.add(session);
+  }
+
+  void emitSignedInSessionNow({String? userId, String? email}) {
+    final session = AppSession.signedIn(
+      userId: userId ?? mockUserId,
+      email: email ?? mockEmail,
+    );
+    _current = session;
+    _events.add(session);
+  }
 
   @override
   void emitSignedInSession({String? userId, String? email}) {
-    _currentUserId = userId ?? mockUserId;
-    super.emitSignedInSession(userId: userId, email: email);
+    queueSignedInSession(userId: userId, email: email);
   }
 
   @override
-  Stream<AppSession> authStateChanges() {
-    return super.authStateChanges().asyncMap((session) async {
-      if (session.isSignedIn) await _releaseSignedInEvent.future;
-      return session;
-    });
+  void emitSignedOutSession() {
+    _current = null;
+    _events.add(const AppSession.signedOut());
   }
+
+  @override
+  Future<AppSession> signInWithGoogle() async {
+    queueSignedInSession();
+    return _current!;
+  }
+
+  @override
+  Stream<AppSession> authStateChanges() => _events.stream;
 
   @override
   Future<void> signOut() async {
-    _currentUserId = null;
+    final error = signOutError;
+    if (error != null) throw error;
+    emitSignedOutSession();
   }
 
   @override
-  String? currentUserId() => _currentUserId;
+  String? currentUserId() => _current?.userId;
+
+  @override
+  Future<void> dispose() async {
+    await _events.close();
+    await super.dispose();
+  }
 }

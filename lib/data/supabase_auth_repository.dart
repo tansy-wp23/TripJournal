@@ -1,8 +1,7 @@
 import 'dart:async';
 
 import 'package:google_sign_in/google_sign_in.dart';
-import 'package:supabase_flutter/supabase_flutter.dart'
-    hide AuthException;
+import 'package:supabase_flutter/supabase_flutter.dart' hide AuthException;
 
 import '../models/app_session.dart';
 import 'auth_repository.dart';
@@ -16,20 +15,16 @@ import 'auth_repository.dart';
 /// `supabase.auth.signInWithIdToken(...)`. This avoids deep linking/redirect
 /// handling entirely — do **not** use `signInWithOAuth()` for this app.
 class SupabaseAuthRepository implements AuthRepository {
-  SupabaseAuthRepository(
-    this._client, {
-    GoogleSignIn? googleSignIn,
-  }) : _googleSignIn = googleSignIn ??
-      GoogleSignIn(
-        // The Web OAuth client ID (the same one registered with Supabase's
-        // Google provider). Required on Android — without this, signIn()
-        // returns an accessToken but idToken stays null.
-        serverClientId: _webClientId,
-        scopes: [
-          'email',
-          'profile',
-        ],
-      );
+  SupabaseAuthRepository(this._client, {GoogleSignIn? googleSignIn})
+    : _googleSignIn =
+          googleSignIn ??
+          GoogleSignIn(
+            // The Web OAuth client ID (the same one registered with Supabase's
+            // Google provider). Required on Android — without this, signIn()
+            // returns an accessToken but idToken stays null.
+            serverClientId: _webClientId,
+            scopes: ['email', 'profile'],
+          );
 
   /// Web OAuth client ID from Google Cloud Console (Manual Prerequisite A,
   /// step 5) — the same ID entered into Supabase's Google provider settings.
@@ -80,10 +75,7 @@ class SupabaseAuthRepository implements AuthRepository {
         );
       }
 
-      return AppSession.signedIn(
-        userId: user.id,
-        email: user.email ?? '',
-      );
+      return AppSession.signedIn(userId: user.id, email: user.email ?? '');
     } on AuthException {
       rethrow;
     } catch (e) {
@@ -93,8 +85,13 @@ class SupabaseAuthRepository implements AuthRepository {
 
   @override
   Future<void> signOut() async {
-    await _googleSignIn.signOut();
-    await _client.auth.signOut();
+    try {
+      await _googleSignIn.signOut();
+    } finally {
+      // Supabase owns the app session. Its remote/local cleanup must still run
+      // when the optional Google SDK cleanup fails.
+      await _client.auth.signOut();
+    }
   }
 
   @override

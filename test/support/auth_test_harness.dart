@@ -42,7 +42,7 @@ final class AuthTestHarness {
 
   Future<void> signIn() => controller.signInWithGoogle();
 
-  /// Waits until the controller has observed the signed-out stream event.
+  /// Waits for a separate stream subscription to observe the signed-out event.
   Future<void> signOut() async {
     final signedOut = authRepository.authStateChanges().firstWhere(
       (session) => !session.isSignedIn,

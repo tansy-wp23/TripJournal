@@ -29,7 +29,9 @@ class AuthController extends ChangeNotifier {
     this._profileRepository,
     this._accountLifecycleRepository,
   ) {
-    _sessionSubscription = _authRepository.authStateChanges().listen(_onAuthStateChanged);
+    _sessionSubscription = _authRepository.authStateChanges().listen(
+      _onAuthStateChanged,
+    );
   }
 
   final AuthRepository _authRepository;
@@ -53,7 +55,9 @@ class AuthController extends ChangeNotifier {
   String? _error;
   int _authOperationVersion = 0;
   Future<void>? _activeInteractiveSignIn;
+  int? _interactiveSignInOperationVersion;
   int _signOutsInProgress = 0;
+  bool _failedSignOutRestorationFence = false;
 
   AppSession? get session => _session;
   Profile? get profile => _profile;
@@ -87,8 +91,14 @@ class AuthController extends ChangeNotifier {
   /// 3. Branch on profile status (PB-04 active / PB-06 deactivated).
   ///    If deactivated, automatically send a reactivation code (PB-06).
   Future<void> signInWithGoogle() {
+    final operationVersion = ++_authOperationVersion;
+    _failedSignOutRestorationFence = false;
+    _interactiveSignInOperationVersion = operationVersion;
     late final Future<void> operation;
-    operation = _performSignInWithGoogle().whenComplete(() {
+    operation = _performSignInWithGoogle(operationVersion).whenComplete(() {
+      if (_interactiveSignInOperationVersion == operationVersion) {
+        _interactiveSignInOperationVersion = null;
+      }
       if (identical(_activeInteractiveSignIn, operation)) {
         _activeInteractiveSignIn = null;
       }
@@ -97,8 +107,7 @@ class AuthController extends ChangeNotifier {
     return operation;
   }
 
-  Future<void> _performSignInWithGoogle() async {
-    final operationVersion = ++_authOperationVersion;
+  Future<void> _performSignInWithGoogle(int operationVersion) async {
     _loading = true;
     _error = null;
     notifyListeners();
@@ -150,7 +159,9 @@ class AuthController extends ChangeNotifier {
     // AuthGate replace the current screen with the launch splash on logout.
     _authOperationVersion++;
     _signOutsInProgress++;
+    _failedSignOutRestorationFence = true;
     _error = null;
+    var repositorySignOutSucceeded = false;
     try {
       // If Google sign-in has already started, let its repository operation
       // settle before signing the resulting remote session out. Its controller
@@ -163,7 +174,11 @@ class AuthController extends ChangeNotifier {
         }
       }
       await _authRepository.signOut();
+      repositorySignOutSucceeded = true;
     } finally {
+      if (repositorySignOutSucceeded) {
+        _failedSignOutRestorationFence = false;
+      }
       _session = null;
       _profile = null;
       _loading = false;
@@ -220,13 +235,14 @@ class AuthController extends ChangeNotifier {
   /// so it has to do the same profile fetch [signInWithGoogle] does, not
   /// just react to sign-out.
   ///
-  /// The guard below avoids redoing that fetch if [signInWithGoogle] has
-  /// already populated a matching session by the time this fires (Supabase
-  /// emits a stream event for an interactive sign-in too, so both code
-  /// paths can observe the same event).
+  /// Supabase also emits a stream event for an interactive sign-in. The
+  /// interactive operation exclusively owns that matching event until its
+  /// profile and any reactivation-code setup finish; passive events outside
+  /// an interactive operation continue to restore sessions here.
   Future<void> _onAuthStateChanged(AppSession session) async {
     if (!session.isSignedIn) {
       _authOperationVersion++;
+      _failedSignOutRestorationFence = false;
       _session = null;
       _profile = null;
       _loading = false;
@@ -238,9 +254,15 @@ class AuthController extends ChangeNotifier {
     // later sign-out owns the transition, and reject delayed events whose
     // session no longer matches the repository's current auth state.
     if (_signOutsInProgress > 0 ||
+        _failedSignOutRestorationFence ||
         _authRepository.currentUserId() != session.userId) {
       return;
     }
+
+    // The interactive flow owns its matching provider event from start to
+    // finish. Letting the stream path consume it would duplicate profile
+    // creation and could publish before reactivation-code delivery completes.
+    if (_interactiveSignInOperationVersion != null) return;
     final operationVersion = _authOperationVersion;
 
     if (_session?.userId == session.userId && _profile != null) {
