@@ -52,6 +52,7 @@ class AuthController extends ChangeNotifier {
   bool _loading = true;
   String? _error;
   int _authOperationVersion = 0;
+  bool _signedOutIsTerminal = false;
 
   AppSession? get session => _session;
   Profile? get profile => _profile;
@@ -85,13 +86,15 @@ class AuthController extends ChangeNotifier {
   /// 3. Branch on profile status (PB-04 active / PB-06 deactivated).
   ///    If deactivated, automatically send a reactivation code (PB-06).
   Future<void> signInWithGoogle() async {
-    _authOperationVersion++;
+    final operationVersion = ++_authOperationVersion;
+    _signedOutIsTerminal = false;
     _loading = true;
     _error = null;
     notifyListeners();
 
     try {
       final session = await _authRepository.signInWithGoogle();
+      if (!_ownsAuthOperation(operationVersion)) return;
       _session = session;
 
       // Fetch or create the profile (PB-03).
@@ -100,6 +103,7 @@ class AuthController extends ChangeNotifier {
         email: session.email!,
         displayName: _deriveDisplayName(session.email!),
       );
+      if (!_ownsAuthOperation(operationVersion)) return;
       _profile = profile;
       _error = null;
 
@@ -110,14 +114,18 @@ class AuthController extends ChangeNotifier {
         await _accountLifecycleRepository.requestReactivation();
       }
     } on AuthException catch (e) {
+      if (!_ownsAuthOperation(operationVersion)) return;
       _error = e.kind == AuthExceptionKind.cancelled
           ? 'Sign-in cancelled.'
           : 'Sign-in failed: ${e.message}';
     } catch (e) {
+      if (!_ownsAuthOperation(operationVersion)) return;
       _error = 'An unexpected error occurred: $e';
     } finally {
-      _loading = false;
-      notifyListeners();
+      if (_ownsAuthOperation(operationVersion)) {
+        _loading = false;
+        notifyListeners();
+      }
     }
   }
 
@@ -129,6 +137,7 @@ class AuthController extends ChangeNotifier {
     // is deliberately silent: publishing a loading state here would make
     // AuthGate replace the current screen with the launch splash on logout.
     _authOperationVersion++;
+    _signedOutIsTerminal = true;
     _error = null;
     try {
       await _authRepository.signOut();
@@ -193,14 +202,21 @@ class AuthController extends ChangeNotifier {
   /// emits a stream event for an interactive sign-in too, so both code
   /// paths can observe the same event).
   Future<void> _onAuthStateChanged(AppSession session) async {
-    final operationVersion = ++_authOperationVersion;
     if (!session.isSignedIn) {
+      _authOperationVersion++;
+      _signedOutIsTerminal = true;
       _session = null;
       _profile = null;
       _loading = false;
       notifyListeners();
       return;
     }
+
+    // A signed-in event emitted before a later signOut can be delivered after
+    // signOut has already completed. Callback start time does not make that
+    // older event authoritative, so terminal signed-out state rejects it.
+    if (_signedOutIsTerminal) return;
+    final operationVersion = _authOperationVersion;
 
     if (_session?.userId == session.userId && _profile != null) {
       // Already populated (almost certainly by signInWithGoogle) — just
@@ -211,29 +227,43 @@ class AuthController extends ChangeNotifier {
     }
 
     _session = session;
+    var shouldPublishCompletion = false;
     try {
       final profile = await _profileRepository.createProfileIfMissing(
         userId: session.userId!,
         email: session.email!,
         displayName: _deriveDisplayName(session.email!),
       );
-      if (operationVersion != _authOperationVersion) return;
+      if (!_ownsAuthOperation(operationVersion) ||
+          _session?.userId != session.userId) {
+        return;
+      }
       _profile = profile;
       _error = null;
+      shouldPublishCompletion = true;
     } catch (e) {
-      if (operationVersion != _authOperationVersion) return;
+      if (!_ownsAuthOperation(operationVersion) ||
+          _session?.userId != session.userId) {
+        return;
+      }
       // Couldn't restore the profile for an otherwise-valid session —
       // treat as signed out rather than getting stuck on the splash
       // screen indefinitely.
       _error = 'Failed to restore session: $e';
       _session = null;
       _profile = null;
+      shouldPublishCompletion = true;
     } finally {
-      if (operationVersion == _authOperationVersion) {
+      if (shouldPublishCompletion && _ownsAuthOperation(operationVersion)) {
         _loading = false;
         notifyListeners();
       }
     }
+  }
+
+  bool _ownsAuthOperation(int operationVersion) {
+    return operationVersion == _authOperationVersion &&
+        !_signedOutIsTerminal;
   }
 
   String _deriveDisplayName(String email) {

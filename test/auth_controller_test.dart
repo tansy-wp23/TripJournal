@@ -397,6 +397,58 @@ void main() {
       },
     );
 
+    test('a queued signed-in event cannot override a later signOut', () async {
+      controller.dispose();
+      final queuedAuthRepository = _QueuedSignedInAuthRepository();
+      authRepository = queuedAuthRepository;
+      controller = AuthController(
+        authRepository,
+        profileRepository,
+        lifecycleRepository,
+      );
+
+      queuedAuthRepository.emitSignedInSession();
+      await controller.signOut();
+      expect(controller.status, AuthStatus.signedOut);
+
+      queuedAuthRepository.releaseSignedInEvent();
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+
+      expect(controller.status, AuthStatus.signedOut);
+      expect(controller.session, isNull);
+      expect(controller.profile, isNull);
+    });
+
+    test(
+      'interactive signIn completion cannot override a later signOut',
+      () async {
+        controller.dispose();
+        final deferredAuthRepository = _DeferredSignInAuthRepository();
+        authRepository = deferredAuthRepository;
+        controller = AuthController(
+          authRepository,
+          profileRepository,
+          lifecycleRepository,
+        );
+        deferredAuthRepository.emitSignedOutSession();
+        await Future<void>.delayed(Duration.zero);
+        expect(controller.status, AuthStatus.signedOut);
+
+        final signIn = controller.signInWithGoogle();
+        await deferredAuthRepository.signInStarted;
+        await controller.signOut();
+        expect(controller.status, AuthStatus.signedOut);
+
+        deferredAuthRepository.releaseSignIn();
+        await signIn;
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+
+        expect(controller.status, AuthStatus.signedOut);
+        expect(controller.session, isNull);
+        expect(controller.profile, isNull);
+      },
+    );
+
     test('loading is true during sign-in, false after', () async {
       final future = controller.signInWithGoogle();
       expect(controller.loading, isTrue);
@@ -586,4 +638,21 @@ final class _DeferredSignInAuthRepository extends MockAuthRepository {
     await _releaseSignIn.future;
     return super.signInWithGoogle();
   }
+}
+
+final class _QueuedSignedInAuthRepository extends MockAuthRepository {
+  final Completer<void> _releaseSignedInEvent = Completer<void>();
+
+  void releaseSignedInEvent() => _releaseSignedInEvent.complete();
+
+  @override
+  Stream<AppSession> authStateChanges() {
+    return super.authStateChanges().asyncMap((session) async {
+      if (session.isSignedIn) await _releaseSignedInEvent.future;
+      return session;
+    });
+  }
+
+  @override
+  Future<void> signOut() async {}
 }
