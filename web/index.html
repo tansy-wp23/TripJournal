@@ -41,6 +41,50 @@
     For more details:
     * https://docs.flutter.dev/platform-integration/web/initialization
   -->
-  <script src="flutter_bootstrap.js" async></script>
+  <script>
+    (async () => {
+      // Local/CI builds may generate the gitignored google_maps_config.json.
+      // The committed token remains when that file is absent, so no-key builds
+      // start normally without making a request to Google Maps.
+      let googleMapsWebKey = '__GOOGLE_MAPS_WEB_KEY__';
+      try {
+        const response = await fetch('google_maps_config.json', {
+          cache: 'no-store',
+        });
+        if (response.ok) {
+          const config = await response.json();
+          if (typeof config.GOOGLE_MAPS_WEB_KEY === 'string') {
+            googleMapsWebKey = config.GOOGLE_MAPS_WEB_KEY;
+          }
+        }
+      } catch (_) {
+        // A missing local config is the supported no-key deployment.
+      }
+
+      const hasGoogleMapsWebKey =
+        googleMapsWebKey.trim().length > 0 &&
+        !googleMapsWebKey.startsWith('__GOOGLE_MAPS_');
+
+      const startFlutter = () => {
+        const bootstrap = document.createElement('script');
+        bootstrap.src = 'flutter_bootstrap.js';
+        bootstrap.async = true;
+        document.body.appendChild(bootstrap);
+      };
+
+      if (!hasGoogleMapsWebKey) {
+        startFlutter();
+        return;
+      }
+
+      const maps = document.createElement('script');
+      maps.src =
+        'https://maps.googleapis.com/maps/api/js?key=' +
+        encodeURIComponent(googleMapsWebKey);
+      maps.onload = startFlutter;
+      maps.onerror = startFlutter;
+      document.head.appendChild(maps);
+    })();
+  </script>
 </body>
 </html>

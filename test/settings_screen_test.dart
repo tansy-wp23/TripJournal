@@ -51,4 +51,22 @@ void main() {
     await tester.pumpAndSettle();
     expect(store.value.themeMode, ThemeMode.dark);
   });
+
+  testWidgets('opens legal notices when map configuration is absent', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [settingsStoreProvider.overrideWithValue(_Store())],
+        child: const MaterialApp(home: SettingsScreen()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.scrollUntilVisible(find.text('Legal notices'), 300);
+    await tester.tap(find.text('Legal notices'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(LicensePage), findsOneWidget);
+  });
 }

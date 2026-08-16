@@ -33,6 +33,10 @@
 	</array>
 	<key>CFBundleVersion</key>
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
+	<!-- Flutter's generated Xcode configuration supplies this build-time
+	     placeholder. AppDelegate decodes only GOOGLE_MAPS_IOS_KEY. -->
+	<key>TripJournalDartDefines</key>
+	<string>$(DART_DEFINES)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSHealthShareUsageDescription</key>

@@ -147,6 +147,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             title: const Text('TripJournal'),
             subtitle: Text(_version.isEmpty ? 'Travel and wellness journal' : 'Version $_version'),
           ),
+          ListTile(
+            leading: const Icon(Icons.policy_outlined),
+            title: const Text('Legal notices'),
+            onTap: () => showLicensePage(
+              context: context,
+              applicationName: 'TripJournal',
+            ),
+          ),
         ],
       ),
     );
