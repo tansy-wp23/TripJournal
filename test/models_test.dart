@@ -98,6 +98,35 @@ void main() {
   group('GeoTag', () {
     const tag = GeoTag(latitude: 35.0116, longitude: 135.7681, placeName: 'Gion, Kyoto');
 
+    test('loads old three-field JSON without optional location metadata', () {
+      final restored = GeoTag.fromJson({
+        'latitude': 3.139,
+        'longitude': 101.6869,
+        'placeName': 'Merdeka Square',
+      });
+
+      expect(restored.latitude, 3.139);
+      expect(restored.longitude, 101.6869);
+      expect(restored.placeName, 'Merdeka Square');
+      expect(restored.formattedAddress, isNull);
+      expect(restored.placeId, isNull);
+    });
+
+    test('round-trips full location metadata', () {
+      const full = GeoTag(
+        latitude: 3.139,
+        longitude: 101.6869,
+        placeName: 'Merdeka Square',
+        formattedAddress: 'Jalan Raja, Kuala Lumpur',
+        placeId: 'place-123',
+      );
+
+      final restored = GeoTag.fromJson(full.toJson());
+
+      expect(restored.formattedAddress, 'Jalan Raja, Kuala Lumpur');
+      expect(restored.placeId, 'place-123');
+    });
+
     test('toJson/fromJson round-trip', () {
       final restored = GeoTag.fromJson(tag.toJson());
       expect(restored.latitude, tag.latitude);
@@ -229,6 +258,20 @@ void main() {
       expect(updated.id, entry.id);
       expect(updated.body, entry.body);
       expect(updated.healthLog, entry.healthLog);
+    });
+
+    test('copyWith clearLocation removes an existing location', () {
+      expect(entry.copyWith(clearLocation: true).location, isNull);
+    });
+
+    test('copyWith rejects providing a location while clearing it', () {
+      expect(
+        () => entry.copyWith(
+          location: const GeoTag(latitude: 1, longitude: 2),
+          clearLocation: true,
+        ),
+        throwsA(isA<AssertionError>()),
+      );
     });
 
     group('displayTitle', () {

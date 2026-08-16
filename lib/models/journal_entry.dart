@@ -82,10 +82,12 @@ class JournalEntry {
     Mood? mood,
     List<String>? photoPaths,
     GeoTag? location,
+    bool clearLocation = false,
     DateTime? createdAt,
     DateTime? updatedAt,
     HealthLog? healthLog,
   }) {
+    assert(!(clearLocation && location != null));
     return JournalEntry(
       id: id ?? this.id,
       tripId: tripId ?? this.tripId,
@@ -93,7 +95,7 @@ class JournalEntry {
       body: body ?? this.body,
       mood: mood ?? this.mood,
       photoPaths: photoPaths ?? this.photoPaths,
-      location: location ?? this.location,
+      location: clearLocation ? null : (location ?? this.location),
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       healthLog: healthLog ?? this.healthLog,
