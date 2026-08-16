@@ -50,6 +50,7 @@ void main() {
     expect(guide, contains('SHA-256'));
     expect(guide, contains('bundle ID'));
     expect(guide, contains('HTTP referrer'));
+    expect(guide, contains('Set-Content -Encoding utf8'));
   });
 
   test('map configuration does not request device location permission', () {

@@ -115,7 +115,8 @@ only the web key, then build with the matching Dart define:
 $mapsConfig = Get-Content -Raw maps.local.json | ConvertFrom-Json
 @{
   GOOGLE_MAPS_WEB_KEY = [string]$mapsConfig.GOOGLE_MAPS_WEB_KEY
-} | ConvertTo-Json -Compress | Set-Content web\google_maps_config.json
+} | ConvertTo-Json -Compress |
+  Set-Content -Encoding utf8 -Path web\google_maps_config.json
 
 try {
   D:\Download\flutter-sdk\bin\flutter.bat build web --release `
@@ -159,7 +160,10 @@ browsers; the HTTP referrer and API restrictions are the security boundary.
 ## 4. Failure behavior and diagnostics
 
 - Missing or blank current-platform configuration always selects
-  `TripMapUnavailableSurface`, where every located entry remains selectable.
+  `TripMapUnavailableSurface`, where every located entry remains selectable
+  and **Retry** rechecks the platform gate. A build-time key cannot appear in a
+  running release, so the fallback remains until a correctly configured build
+  is installed or deployed.
 - A catchable controller/camera platform error switches the Google surface to
   the same fallback and shows **Retry**.
 - Google Maps tile authentication, billing, API-enable, and restriction errors

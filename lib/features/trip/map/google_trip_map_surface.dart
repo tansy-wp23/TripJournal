@@ -63,11 +63,44 @@ bool get isGoogleMapsRenderingConfigured => googleMapsKeyConfiguredForPlatform(
 Widget buildConfiguredTripMapSurface({
   required TripMapModel model,
   required ValueChanged<TripMapMarkerGroup> onSelected,
-}) {
-  if (!isGoogleMapsRenderingConfigured) {
-    return TripMapUnavailableSurface(model: model, onSelected: onSelected);
+}) => _ConfiguredTripMapSurface(model: model, onSelected: onSelected);
+
+class _ConfiguredTripMapSurface extends StatefulWidget {
+  const _ConfiguredTripMapSurface({
+    required this.model,
+    required this.onSelected,
+  });
+
+  final TripMapModel model;
+  final ValueChanged<TripMapMarkerGroup> onSelected;
+
+  @override
+  State<_ConfiguredTripMapSurface> createState() =>
+      _ConfiguredTripMapSurfaceState();
+}
+
+class _ConfiguredTripMapSurfaceState extends State<_ConfiguredTripMapSurface> {
+  @override
+  Widget build(BuildContext context) {
+    if (!isGoogleMapsRenderingConfigured) {
+      return TripMapUnavailableSurface(
+        model: widget.model,
+        onSelected: widget.onSelected,
+        onRetry: _retryConfiguration,
+      );
+    }
+    return GoogleTripMapSurface(
+      model: widget.model,
+      onSelected: widget.onSelected,
+    );
   }
-  return GoogleTripMapSurface(model: model, onSelected: onSelected);
+
+  void _retryConfiguration() {
+    // Build-time keys do not change within a release process. Re-evaluate the
+    // platform gate anyway so Retry stays honest: the fallback remains until
+    // the host is rebuilt/restarted with the current platform key.
+    setState(() {});
+  }
 }
 
 /// Builds Google markers for every visible map group.

@@ -123,7 +123,9 @@ void main() {
     );
   });
 
-  test('configured builder falls back when this platform has no key', () {
+  testWidgets('configured builder falls back with Retry when no key exists', (
+    tester,
+  ) async {
     final model = modelFor([
       entry(id: 'mapped', createdAt: tripStart, latitude: 1, longitude: 2),
     ]);
@@ -133,7 +135,16 @@ void main() {
       onSelected: (_) {},
     );
 
-    expect(surface, isA<TripMapUnavailableSurface>());
+    await tester.pumpWidget(
+      MaterialApp(home: SizedBox(width: 400, height: 400, child: surface)),
+    );
+
+    expect(find.byType(TripMapUnavailableSurface), findsOneWidget);
+    expect(find.text('Retry'), findsOneWidget);
+
+    await tester.tap(find.text('Retry'));
+    await tester.pump();
+    expect(find.byType(TripMapUnavailableSurface), findsOneWidget);
   });
 
   test('platform map keeps current-location features disabled', () {
