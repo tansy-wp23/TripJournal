@@ -30,8 +30,50 @@ void main() {
   tearDown(() => controller.dispose());
 
   group('AuthController', () {
-    test('initial status is signedOut', () {
+    test('initial status is loading (waiting for session restoration)', () {
+      expect(controller.status, AuthStatus.loading);
+    });
+
+    test('passively restored session routes to authenticated', () async {
+      authRepository.emitSignedInSession();
+      await Future.delayed(const Duration(milliseconds: 10));
+
+      expect(controller.loading, isFalse);
+      expect(controller.status, AuthStatus.authenticated);
+      expect(controller.profile, isNotNull);
+      expect(controller.profile!.isActive, isTrue);
+    });
+
+    test('passively restored session for a deactivated user routes to deactivated',
+        () async {
+      profileRepository = MockProfileRepository(state: MockProfileState.deactivated);
+      lifecycleRepository = MockAccountLifecycleRepository(
+        profileRepository: profileRepository,
+        verificationCodeRepository: verificationCodeRepository,
+      );
+      controller = AuthController(
+        authRepository,
+        profileRepository,
+        lifecycleRepository,
+      );
+
+      authRepository.emitSignedInSession();
+      await Future.delayed(const Duration(milliseconds: 10));
+
+      expect(controller.loading, isFalse);
+      expect(controller.status, AuthStatus.deactivated);
+      expect(controller.profile!.isDeactivated, isTrue);
+    });
+
+    test('passively restored signed-out session (no persisted session) routes to signedOut',
+        () async {
+      authRepository.emitSignedOutSession();
+      await Future.delayed(const Duration(milliseconds: 10));
+
+      expect(controller.loading, isFalse);
       expect(controller.status, AuthStatus.signedOut);
+      expect(controller.session, isNull);
+      expect(controller.profile, isNull);
     });
 
     test('successful sign-in sets status to authenticated', () async {
