@@ -16,7 +16,13 @@ import '../../../models/profile.dart';
 /// Maps to the "Authentication Flow Component" and "Session Management"
 /// components from Component.md. Listens to [AuthRepository.authStateChanges]
 /// for session persistence (PB-08) so a signed-in user stays signed in
-/// across navigation within the running app.
+/// across navigation within the running app — including a session restored
+/// from local storage on app start (e.g. after a hot restart), not just a
+/// fresh interactive sign-in. See [_onAuthStateChanged]'s doc comment; this
+/// was a real gap until 2026-08-16 — the controller previously only ever
+/// populated _session/_profile from an explicit signInWithGoogle() call,
+/// so a passively-restored session was never picked up and the app always
+/// fell back to the login screen on restart.
 class AuthController extends ChangeNotifier {
   AuthController(
     this._authRepository,
@@ -34,7 +40,16 @@ class AuthController extends ChangeNotifier {
 
   AppSession? _session;
   Profile? _profile;
-  bool _loading = false;
+
+  // Starts true, not false: on app launch, Supabase hasn't finished
+  // checking local storage for a persisted session yet. If this defaulted
+  // to false, `status` below would read `_session == null` as a definitive
+  // "signed out" and route to the login screen before restoration ever had
+  // a chance to complete — appearing to "lose" a perfectly valid session on
+  // every restart. _onAuthStateChanged is what eventually flips this back
+  // to false, once the stream's first event (restored session or
+  // confirmed-absent) actually arrives.
+  bool _loading = true;
   String? _error;
 
   AppSession? get session => _session;
@@ -154,13 +169,54 @@ class AuthController extends ChangeNotifier {
     notifyListeners();
   }
 
-  void _onAuthStateChanged(AppSession session) {
-    // The stream fires on sign-in (already handled by signInWithGoogle) and
-    // sign-out. Only act on sign-out here — sign-in is handled by
-    // signInWithGoogle which also does the profile fetch.
+  /// Handles every emission from [AuthRepository.authStateChanges] —
+  /// crucially including the *first* one, which is how a session restored
+  /// from local storage on app launch (e.g. after a hot restart) is ever
+  /// discovered. [signInWithGoogle] populates _session/_profile itself for
+  /// an interactive sign-in, but that method is never called for a passive
+  /// restore — this listener is the only code path that runs in that case,
+  /// so it has to do the same profile fetch [signInWithGoogle] does, not
+  /// just react to sign-out.
+  ///
+  /// The guard below avoids redoing that fetch if [signInWithGoogle] has
+  /// already populated a matching session by the time this fires (Supabase
+  /// emits a stream event for an interactive sign-in too, so both code
+  /// paths can observe the same event).
+  Future<void> _onAuthStateChanged(AppSession session) async {
     if (!session.isSignedIn) {
       _session = null;
       _profile = null;
+      _loading = false;
+      notifyListeners();
+      return;
+    }
+
+    if (_session?.userId == session.userId && _profile != null) {
+      // Already populated (almost certainly by signInWithGoogle) — just
+      // make sure we're not still showing the splash.
+      _loading = false;
+      notifyListeners();
+      return;
+    }
+
+    _session = session;
+    try {
+      final profile = await _profileRepository.createProfileIfMissing(
+        userId: session.userId!,
+        email: session.email!,
+        displayName: _deriveDisplayName(session.email!),
+      );
+      _profile = profile;
+      _error = null;
+    } catch (e) {
+      // Couldn't restore the profile for an otherwise-valid session —
+      // treat as signed out rather than getting stuck on the splash
+      // screen indefinitely.
+      _error = 'Failed to restore session: $e';
+      _session = null;
+      _profile = null;
+    } finally {
+      _loading = false;
       notifyListeners();
     }
   }

@@ -56,6 +56,25 @@ class MockAuthRepository implements AuthRepository {
     _controller.add(const AppSession.signedOut());
   }
 
+  /// Simulates Supabase emitting a restored session on app start (e.g. after
+  /// a hot restart or app relaunch) — the real `onAuthStateChange` stream
+  /// fires once on subscribe with the current session from local storage.
+  /// This mirrors that so the controller's passive-restore path can be tested.
+  void emitSignedInSession({String? userId, String? email}) {
+    final session = AppSession.signedIn(
+      userId: userId ?? mockUserId,
+      email: email ?? mockEmail,
+    );
+    _current = session;
+    _controller.add(session);
+  }
+
+  /// Simulates Supabase confirming no persisted session exists on app start.
+  void emitSignedOutSession() {
+    _current = null;
+    _controller.add(const AppSession.signedOut());
+  }
+
   @override
   Stream<AppSession> authStateChanges() => _controller.stream;
 
