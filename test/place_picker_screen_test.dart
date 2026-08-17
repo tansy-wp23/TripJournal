@@ -387,6 +387,47 @@ void main() {
     expect(dragged?.longitude, 2.5);
     expect(dragged?.placeName, isNull);
   });
+
+  test('Google picker map diagnostic keys do not contain coordinates', () {
+    final map =
+        buildGooglePlacePickerPlatform(
+              selectedLocation: initialLocation,
+              onPinDragged: (_) {},
+            )
+            as GoogleMap;
+
+    expect(map.key?.toString(), isNot(contains('35.0116')));
+    expect(map.key?.toString(), isNot(contains('135.7681')));
+  });
+
+  testWidgets('Google picker map recreates its surface for new coordinates', (
+    tester,
+  ) async {
+    var initializations = 0;
+
+    Widget pickerMap(GeoTag location) => MaterialApp(
+      home: GooglePlacePickerMap(
+        selectedLocation: location,
+        onPinDragged: (_) {},
+        platformBuilder: ({required selectedLocation, required onPinDragged}) =>
+            _MapLifecycleProbe(onInit: () => initializations++),
+      ),
+    );
+
+    await tester.pumpWidget(pickerMap(initialLocation));
+    expect(initializations, 1);
+
+    await tester.pumpWidget(
+      pickerMap(
+        const GeoTag(
+          latitude: 34.994856,
+          longitude: 135.785046,
+          placeName: 'Kiyomizu-dera',
+        ),
+      ),
+    );
+    expect(initializations, 2);
+  });
 }
 
 Widget _picker({
@@ -493,4 +534,24 @@ class _FakePlaceSearchService implements PlaceSearchService {
     if (error != null) throw error;
     return reverseResult!;
   }
+}
+
+class _MapLifecycleProbe extends StatefulWidget {
+  const _MapLifecycleProbe({required this.onInit});
+
+  final VoidCallback onInit;
+
+  @override
+  State<_MapLifecycleProbe> createState() => _MapLifecycleProbeState();
+}
+
+class _MapLifecycleProbeState extends State<_MapLifecycleProbe> {
+  @override
+  void initState() {
+    super.initState();
+    widget.onInit();
+  }
+
+  @override
+  Widget build(BuildContext context) => const SizedBox.expand();
 }

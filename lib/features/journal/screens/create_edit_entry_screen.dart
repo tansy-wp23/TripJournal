@@ -400,6 +400,7 @@ class _CreateEditEntryScreenState extends ConsumerState<CreateEditEntryScreen> {
 
   Future<void> _save() async {
     if (_saving) return;
+    FocusScope.of(context).unfocus();
     setState(() {
       _saving = true;
       _justSaved = false;
@@ -499,7 +500,7 @@ class _CreateEditEntryScreenState extends ConsumerState<CreateEditEntryScreen> {
   }
 
   Future<void> _handleBackAttempt(bool didPop, Object? result) async {
-    if (didPop) return;
+    if (didPop || _saving) return;
     final discard = await _confirmDiscard();
     if (!mounted) return;
     if (discard) Navigator.pop(context);
@@ -588,178 +589,184 @@ class _CreateEditEntryScreenState extends ConsumerState<CreateEditEntryScreen> {
   @override
   Widget build(BuildContext context) {
     return PopScope(
-      canPop: !_dirty,
+      canPop: !_dirty && !_saving,
       onPopInvokedWithResult: _handleBackAttempt,
       child: Scaffold(
         appBar: AppBar(title: Text(_isEditing ? 'Edit entry' : 'New entry')),
-        body: SingleChildScrollView(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              TextField(
-                key: const Key('entry-title-field'),
-                controller: _titleController,
-                decoration: const InputDecoration(labelText: 'Title'),
-                maxLength: kEntryTitleMaxLength,
-                onChanged: (_) => _markDirty(),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                key: const Key('entry-body-field'),
-                controller: _bodyController,
-                decoration: const InputDecoration(labelText: 'Body'),
-                maxLines: 5,
-                maxLength: kEntryBodyMaxLength,
-                onChanged: (_) => _markDirty(),
-              ),
-              const SizedBox(height: 16),
-              Text('Mood', style: Theme.of(context).textTheme.titleSmall),
-              const SizedBox(height: 8),
-              MoodPicker(
-                selected: _mood,
-                onSelected: (mood) => setState(() {
-                  _mood = mood;
-                  _dirty = true;
-                  _justSaved = false;
-                }),
-              ),
-              const SizedBox(height: 16),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text('Photos', style: Theme.of(context).textTheme.titleSmall),
-                  TextButton.icon(
-                    key: const Key('add-photo-button'),
-                    onPressed: _addPhoto,
-                    icon: const Icon(Icons.add_a_photo),
-                    label: const Text('Add photo'),
-                  ),
-                ],
-              ),
-              if (_photoPaths.isEmpty)
-                const Text('No photos added.')
-              else
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    for (var i = 0; i < _photoPaths.length; i++)
-                      PhotoThumbnail(
-                        key: Key('photo-thumbnail-$i'),
-                        photoPath: _photoPaths[i],
-                        onTap: () => Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => PhotoViewerScreen(
-                              photoPaths: _photoPaths,
-                              initialIndex: i,
-                            ),
-                          ),
-                        ),
-                        onRemove: () => _removePhoto(i),
-                        removeButtonKey: Key('remove-photo-$i'),
-                      ),
-                  ],
+        body: AbsorbPointer(
+          absorbing: _saving,
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                TextField(
+                  key: const Key('entry-title-field'),
+                  controller: _titleController,
+                  decoration: const InputDecoration(labelText: 'Title'),
+                  maxLength: kEntryTitleMaxLength,
+                  onChanged: (_) => _markDirty(),
                 ),
-              const SizedBox(height: 16),
-              _LocationSection(
-                location: _location,
-                onAddOrChange: _pickLocation,
-                onRemove: _removeLocation,
-              ),
-              const SizedBox(height: 16),
-              if (_prefillingHealthData)
-                const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 24),
-                  child: Center(
-                    child: Column(
-                      children: [
-                        CircularProgressIndicator(),
-                        SizedBox(height: 8),
-                        Text('Checking your health data…'),
-                      ],
-                    ),
-                  ),
-                )
-              else
-                HealthLogForm(
-                  initialSteps: _steps,
-                  initialCaloriesBurned: _caloriesBurned,
-                  initialMeals: _meals,
-                  entryDate:
-                      _persistedEntry?.createdAt ??
-                      widget.initialDate ??
-                      DateTime.now(),
-                  initialStepsFromHealth: _stepsFromHealth,
-                  initialCaloriesFromHealth: _caloriesFromHealth,
-                  initialShowConnectHealthNote: _showConnectHealthNote,
-                  healthDataSource: widget.healthDataSource,
-                  onChanged: (data) {
-                    _steps = data.steps;
-                    _caloriesBurned = data.caloriesBurned;
-                    _meals = data.meals;
-                    _markDirty();
-                  },
-                ),
-              const SizedBox(height: 24),
-              if (_generatingAdvice ||
-                  _adviceFailed ||
-                  _aiAdviceText != null) ...[
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(12),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'AI Suggestion',
-                          style: Theme.of(context).textTheme.titleMedium,
-                        ),
-                        const SizedBox(height: 8),
-                        if (_generatingAdvice)
-                          const Row(
-                            key: Key('ai-advice-loading'),
-                            children: [
-                              SizedBox(
-                                width: 16,
-                                height: 16,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                ),
-                              ),
-                              SizedBox(width: 8),
-                              Text('Generating suggestion…'),
-                            ],
-                          )
-                        else if (_adviceFailed)
-                          InkWell(
-                            key: const Key('ai-advice-retry'),
-                            onTap: () {
-                              final entry = _persistedEntry;
-                              if (entry != null) _generateAdvice(entry);
-                            },
-                            child: const Text(
-                              "Couldn't generate suggestion — tap to retry.",
-                            ),
-                          )
-                        else
-                          Text(
-                            _aiAdviceText ?? '',
-                            key: const Key('ai-advice-text'),
-                          ),
-                      ],
-                    ),
-                  ),
+                const SizedBox(height: 12),
+                TextField(
+                  key: const Key('entry-body-field'),
+                  controller: _bodyController,
+                  decoration: const InputDecoration(labelText: 'Body'),
+                  maxLines: 5,
+                  maxLength: kEntryBodyMaxLength,
+                  onChanged: (_) => _markDirty(),
                 ),
                 const SizedBox(height: 16),
+                Text('Mood', style: Theme.of(context).textTheme.titleSmall),
+                const SizedBox(height: 8),
+                MoodPicker(
+                  selected: _mood,
+                  onSelected: (mood) => setState(() {
+                    _mood = mood;
+                    _dirty = true;
+                    _justSaved = false;
+                  }),
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Photos',
+                      style: Theme.of(context).textTheme.titleSmall,
+                    ),
+                    TextButton.icon(
+                      key: const Key('add-photo-button'),
+                      onPressed: _addPhoto,
+                      icon: const Icon(Icons.add_a_photo),
+                      label: const Text('Add photo'),
+                    ),
+                  ],
+                ),
+                if (_photoPaths.isEmpty)
+                  const Text('No photos added.')
+                else
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      for (var i = 0; i < _photoPaths.length; i++)
+                        PhotoThumbnail(
+                          key: Key('photo-thumbnail-$i'),
+                          photoPath: _photoPaths[i],
+                          onTap: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => PhotoViewerScreen(
+                                photoPaths: _photoPaths,
+                                initialIndex: i,
+                              ),
+                            ),
+                          ),
+                          onRemove: () => _removePhoto(i),
+                          removeButtonKey: Key('remove-photo-$i'),
+                        ),
+                    ],
+                  ),
+                const SizedBox(height: 16),
+                _LocationSection(
+                  location: _location,
+                  onAddOrChange: _pickLocation,
+                  onRemove: _removeLocation,
+                ),
+                const SizedBox(height: 16),
+                if (_prefillingHealthData)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 24),
+                    child: Center(
+                      child: Column(
+                        children: [
+                          CircularProgressIndicator(),
+                          SizedBox(height: 8),
+                          Text('Checking your health data…'),
+                        ],
+                      ),
+                    ),
+                  )
+                else
+                  HealthLogForm(
+                    initialSteps: _steps,
+                    initialCaloriesBurned: _caloriesBurned,
+                    initialMeals: _meals,
+                    entryDate:
+                        _persistedEntry?.createdAt ??
+                        widget.initialDate ??
+                        DateTime.now(),
+                    initialStepsFromHealth: _stepsFromHealth,
+                    initialCaloriesFromHealth: _caloriesFromHealth,
+                    initialShowConnectHealthNote: _showConnectHealthNote,
+                    healthDataSource: widget.healthDataSource,
+                    onChanged: (data) {
+                      _steps = data.steps;
+                      _caloriesBurned = data.caloriesBurned;
+                      _meals = data.meals;
+                      _markDirty();
+                    },
+                  ),
+                const SizedBox(height: 24),
+                if (_generatingAdvice ||
+                    _adviceFailed ||
+                    _aiAdviceText != null) ...[
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'AI Suggestion',
+                            style: Theme.of(context).textTheme.titleMedium,
+                          ),
+                          const SizedBox(height: 8),
+                          if (_generatingAdvice)
+                            const Row(
+                              key: Key('ai-advice-loading'),
+                              children: [
+                                SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                ),
+                                SizedBox(width: 8),
+                                Text('Generating suggestion…'),
+                              ],
+                            )
+                          else if (_adviceFailed)
+                            InkWell(
+                              key: const Key('ai-advice-retry'),
+                              onTap: () {
+                                final entry = _persistedEntry;
+                                if (entry != null) _generateAdvice(entry);
+                              },
+                              child: const Text(
+                                "Couldn't generate suggestion — tap to retry.",
+                              ),
+                            )
+                          else
+                            Text(
+                              _aiAdviceText ?? '',
+                              key: const Key('ai-advice-text'),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                ],
+                FilledButton(
+                  key: const Key('save-entry-button'),
+                  onPressed: _saving ? null : _save,
+                  child: Text(_justSaved ? 'Saved' : 'Save'),
+                ),
               ],
-              FilledButton(
-                key: const Key('save-entry-button'),
-                onPressed: _saving ? null : _save,
-                child: Text(_justSaved ? 'Saved' : 'Save'),
-              ),
-            ],
+            ),
           ),
         ),
       ),

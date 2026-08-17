@@ -75,7 +75,7 @@ class PlacePickerMapUnavailableSurface extends StatelessWidget {
   }
 }
 
-class GooglePlacePickerMap extends StatelessWidget {
+class GooglePlacePickerMap extends StatefulWidget {
   const GooglePlacePickerMap({
     super.key,
     required this.selectedLocation,
@@ -88,9 +88,33 @@ class GooglePlacePickerMap extends StatelessWidget {
   final PlacePickerMapBuilder platformBuilder;
 
   @override
-  Widget build(BuildContext context) => platformBuilder(
-    selectedLocation: selectedLocation,
-    onPinDragged: onPinDragged,
+  State<GooglePlacePickerMap> createState() => _GooglePlacePickerMapState();
+}
+
+class _GooglePlacePickerMapState extends State<GooglePlacePickerMap> {
+  int _surfaceRevision = 0;
+
+  @override
+  void didUpdateWidget(GooglePlacePickerMap oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!_sameCoordinates(
+      oldWidget.selectedLocation,
+      widget.selectedLocation,
+    )) {
+      // Recreate the platform surface so its initial camera follows a newly
+      // searched or dragged selection. The opaque revision keeps precise
+      // coordinates out of diagnostic keys and crash reports.
+      _surfaceRevision++;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => KeyedSubtree(
+    key: ValueKey(_surfaceRevision),
+    child: widget.platformBuilder(
+      selectedLocation: widget.selectedLocation,
+      onPinDragged: widget.onPinDragged,
+    ),
   );
 }
 
@@ -121,7 +145,6 @@ Widget buildGooglePlacePickerPlatform({
         };
 
   return GoogleMap(
-    key: ValueKey('place-picker-map-${target.latitude},${target.longitude}'),
     initialCameraPosition: CameraPosition(
       target: target,
       zoom: selected == null ? 1.5 : 14,
@@ -134,6 +157,9 @@ Widget buildGooglePlacePickerPlatform({
     ),
   );
 }
+
+bool _sameCoordinates(GeoTag? left, GeoTag? right) =>
+    left?.latitude == right?.latitude && left?.longitude == right?.longitude;
 
 String _coordinateLabel(double latitude, double longitude) =>
     '${latitude.toStringAsFixed(6)}, ${longitude.toStringAsFixed(6)}';

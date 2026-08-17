@@ -199,6 +199,48 @@ void main() {
     expect(repository.updates.every((entry) => entry.id == draft.id), isTrue);
   });
 
+  testWidgets(
+    'confirmed save blocks draft mutation and back until write ends',
+    (tester) async {
+      _useLargeView(tester);
+      final repository = _GatedJournalRepository();
+      final service = _FakePlaceSearchService(reverseResult: pickedLocation);
+
+      await _pumpEditorRoute(tester, service: service, repository: repository);
+      await tester.enterText(
+        find.byKey(const Key('entry-title-field')),
+        'Blocked write',
+      );
+      await tester.tap(find.byKey(const Key('add-location-button')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('fake-location-pin')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('place-picker-confirm')));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('save-entry-button')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('save-confirm-confirm')));
+      await tester.pump();
+      expect(repository.addCalls, 1);
+
+      await tester.tap(
+        find.byKey(const Key('remove-location-button')),
+        warnIfMissed: false,
+      );
+      await tester.pageBack();
+      await tester.pump();
+
+      repository.addGate.complete();
+      await tester.pumpAndSettle();
+
+      expect(find.text('Kiyomizu-dera'), findsOneWidget);
+      expect(find.text('Discard changes?'), findsNothing);
+      expect(find.text('Edit entry'), findsOneWidget);
+      expect(repository.addCalls, 1);
+    },
+  );
+
   test(
     'MockJournalRepository retains location through existing CRUD',
     () async {
@@ -252,6 +294,42 @@ Future<void> _pumpEditor(
       ),
     ),
   );
+  await tester.pumpAndSettle();
+}
+
+Future<void> _pumpEditorRoute(
+  WidgetTester tester, {
+  required PlaceSearchService service,
+  required JournalRepository repository,
+}) async {
+  final controller = JournalController(repository, _FakeDailyAdviceService());
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: [journalControllerProvider.overrideWith((ref) => controller)],
+      child: MaterialApp(
+        home: Builder(
+          builder: (context) => Scaffold(
+            body: TextButton(
+              key: const Key('open-editor'),
+              onPressed: () => Navigator.push<void>(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => CreateEditEntryScreen(
+                    tripId: 'trip-001',
+                    healthDataSource: _FakeHealthDataSource(),
+                    placeSearchService: service,
+                    placePickerMapBuilder: _fakeLocationMap,
+                  ),
+                ),
+              ),
+              child: const Text('Open editor'),
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
+  await tester.tap(find.byKey(const Key('open-editor')));
   await tester.pumpAndSettle();
 }
 
