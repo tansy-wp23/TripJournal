@@ -424,7 +424,7 @@ export function createPlacesProxyHandler(
             },
             body: JSON.stringify({
               textQuery: validated.query,
-              maxResultCount: 5,
+              pageSize: 5,
             }),
           },
         );

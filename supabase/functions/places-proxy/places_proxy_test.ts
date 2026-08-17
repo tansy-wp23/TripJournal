@@ -221,7 +221,8 @@ Deno.test("search trims the query and accepts inclusive lengths 2 through 120", 
     const headers = new Headers(init?.headers);
     return Promise.resolve(
       body.textQuery === "KL" &&
-        body.maxResultCount === 5 &&
+        body.pageSize === 5 &&
+        body.maxResultCount === undefined &&
         headers.get("x-goog-api-key") === providerKey &&
         headers.get("x-goog-fieldmask") ===
           "places.id,places.displayName,places.formattedAddress"
