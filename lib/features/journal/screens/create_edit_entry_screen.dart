@@ -3,8 +3,10 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:uuid/uuid.dart';
 
 import '../../../models/health_log.dart';
+import '../../../models/geo_tag.dart';
 import '../../../models/journal_entry.dart';
 import '../../../models/meal.dart';
 import '../../../models/mood.dart';
@@ -15,6 +17,10 @@ import '../../../validation/journal_entry_validation.dart';
 import '../../../validation/photo_validation.dart';
 import '../../health/health_data_source.dart';
 import '../../health/health_data_source_locator.dart' as locator;
+import '../../location/google_place_picker_map.dart';
+import '../../location/place_picker_screen.dart';
+import '../../location/place_search_locator.dart' as place_locator;
+import '../../location/place_search_service.dart';
 import '../controller/journal_controller.dart';
 import '../entry_timestamp.dart';
 import '../mock_trip.dart';
@@ -32,6 +38,8 @@ class CreateEditEntryScreen extends ConsumerStatefulWidget {
     this.trip,
     this.healthDataSource,
     this.photoStorage,
+    this.placeSearchService,
+    this.placePickerMapBuilder = buildConfiguredGooglePlacePickerMap,
   });
 
   final JournalEntry? existingEntry;
@@ -64,8 +72,15 @@ class CreateEditEntryScreen extends ConsumerStatefulWidget {
   /// call sites never pass this.
   final PhotoStorage? photoStorage;
 
+  /// Overrides the production Places service for focused widget tests.
+  final PlaceSearchService? placeSearchService;
+
+  /// Keeps the picker testable without constructing a platform map.
+  final PlacePickerMapBuilder placePickerMapBuilder;
+
   @override
-  ConsumerState<CreateEditEntryScreen> createState() => _CreateEditEntryScreenState();
+  ConsumerState<CreateEditEntryScreen> createState() =>
+      _CreateEditEntryScreenState();
 }
 
 class _CreateEditEntryScreenState extends ConsumerState<CreateEditEntryScreen> {
@@ -73,6 +88,7 @@ class _CreateEditEntryScreenState extends ConsumerState<CreateEditEntryScreen> {
   late final TextEditingController _bodyController;
   late Mood _mood;
   late List<String> _photoPaths;
+  late GeoTag? _location;
   int _steps = 0;
   int? _caloriesBurned;
   List<Meal> _meals = const [];
@@ -96,6 +112,7 @@ class _CreateEditEntryScreenState extends ConsumerState<CreateEditEntryScreen> {
   JournalEntry? _persistedEntry;
 
   bool _justSaved = false;
+  bool _saving = false;
   bool _generatingAdvice = false;
   bool _adviceFailed = false;
   String? _aiAdviceText;
@@ -110,6 +127,8 @@ class _CreateEditEntryScreenState extends ConsumerState<CreateEditEntryScreen> {
 
   late final HealthDataSource _healthDataSource;
   late final PhotoStorage _photoStorage;
+  late final String _draftEntryId;
+  late final String _draftHealthLogId;
 
   @override
   void initState() {
@@ -120,12 +139,15 @@ class _CreateEditEntryScreenState extends ConsumerState<CreateEditEntryScreen> {
     _bodyController = TextEditingController(text: entry?.body ?? '');
     _mood = entry?.mood ?? Mood.neutral;
     _photoPaths = List.of(entry?.photoPaths ?? const []);
+    _location = entry?.location;
     _steps = entry?.healthLog?.steps ?? 0;
     _caloriesBurned = entry?.healthLog?.caloriesBurned;
     _meals = List.of(entry?.healthLog?.meals ?? const []);
     _aiAdviceText = entry?.healthLog?.aiAdvice;
     _healthDataSource = widget.healthDataSource ?? locator.healthDataSource;
     _photoStorage = widget.photoStorage ?? photo_locator.photoStorage;
+    _draftEntryId = entry?.id ?? const Uuid().v4();
+    _draftHealthLogId = entry?.healthLog?.id ?? const Uuid().v4();
 
     if (!_isEditing) {
       _prefillFromHealthData();
@@ -227,12 +249,16 @@ class _CreateEditEntryScreenState extends ConsumerState<CreateEditEntryScreen> {
   Future<void> _addFromCamera() async {
     try {
       final picked = await ImagePicker().pickImage(source: ImageSource.camera);
-      if (picked == null || !mounted) return; // user backed out of the OS picker
+      if (picked == null || !mounted) {
+        return; // user backed out of the OS picker
+      }
 
       final sizeError = validatePhotoSize(await picked.length());
       if (sizeError != null) {
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(sizeError)));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(sizeError)));
         return;
       }
 
@@ -250,7 +276,11 @@ class _CreateEditEntryScreenState extends ConsumerState<CreateEditEntryScreen> {
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Couldn't access photos — you can still save without one.")),
+        const SnackBar(
+          content: Text(
+            "Couldn't access photos — you can still save without one.",
+          ),
+        ),
       );
     }
   }
@@ -264,7 +294,9 @@ class _CreateEditEntryScreenState extends ConsumerState<CreateEditEntryScreen> {
   Future<void> _addFromGallery(int remaining) async {
     try {
       final picked = await ImagePicker().pickMultiImage(limit: remaining);
-      if (picked.isEmpty || !mounted) return; // user backed out / selected nothing
+      if (picked.isEmpty || !mounted) {
+        return; // user backed out / selected nothing
+      }
 
       final accepted = <String>[];
       var overflowed = false;
@@ -298,12 +330,18 @@ class _CreateEditEntryScreenState extends ConsumerState<CreateEditEntryScreen> {
         if (oversized) 'This image is too large (max 32 MB).',
       ];
       if (warnings.isNotEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(warnings.join(' '))));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(warnings.join(' '))));
       }
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Couldn't access photos — you can still save without one.")),
+        const SnackBar(
+          content: Text(
+            "Couldn't access photos — you can still save without one.",
+          ),
+        ),
       );
     }
   }
@@ -328,81 +366,136 @@ class _CreateEditEntryScreenState extends ConsumerState<CreateEditEntryScreen> {
     }
   }
 
-  Future<void> _save() async {
-    setState(() => _justSaved = false);
-
-    final title = _titleController.text.trim();
-    final body = _bodyController.text.trim();
-
-    final now = DateTime.now();
-    final existing = _persistedEntry;
-    final createdAt = existing?.createdAt ?? deriveEntryTimestamp(widget.initialDate ?? now, now: now);
-    final entryId = existing?.id ?? 'entry-${now.microsecondsSinceEpoch}';
-    final healthLogId = existing?.healthLog?.id ?? 'health-${now.microsecondsSinceEpoch}';
-    final totalCaloriesEaten = _meals.fold<int>(0, (sum, m) => sum + m.calories);
-
-    final entry = JournalEntry(
-      id: entryId,
-      tripId: existing?.tripId ?? widget.tripId ?? kMockTripId,
-      title: title,
-      body: body,
-      mood: _mood,
-      photoPaths: _photoPaths,
-      location: existing?.location,
-      createdAt: createdAt,
-      updatedAt: now,
-      // Preserve whatever advice already existed — generateAndAttachAdvice
-      // regenerates it as a separate step right after this save completes,
-      // per IMPLEMENTATION_PLAN_UX_AI.md §3.
-      healthLog: HealthLog(
-        id: healthLogId,
-        entryId: entryId,
-        steps: _steps,
-        caloriesEaten: totalCaloriesEaten,
-        caloriesBurned: _caloriesBurned,
-        meals: _meals,
-        aiAdvice: existing?.healthLog?.aiAdvice,
+  Future<void> _pickLocation() async {
+    final location = await Navigator.push<GeoTag>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => PlacePickerScreen(
+          service:
+              widget.placeSearchService ?? place_locator.placeSearchService,
+          mapBuilder: widget.placePickerMapBuilder,
+          initialLocation: _location,
+        ),
       ),
     );
-
-    // Content-required, length caps, steps/meal invariants, and (for new
-    // entries) the date/trip-range rules all live in the controller — see
-    // IMPLEMENTATION_PLAN_VALIDATION.md's "Where Validation Lives" — so they
-    // hold no matter how save is triggered, not just from this screen.
-    final controller = ref.read(journalControllerProvider.notifier);
-    final validationError = controller.validate(entry, checkDate: !_isEditing, trip: widget.trip);
-    if (validationError != null) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(validationError)));
-      return;
-    }
-
-    // Only a validated entry reaches the confirmation prompt — guards
-    // against accidental saves while making the (potentially AI-triggering)
-    // save a conscious action (IMPLEMENTATION_PLAN_UX_POLISH.md §5).
-    final confirmed = await _confirmSave();
-    if (!confirmed || !mounted) return; // Cancel — stay in the editor, input intact.
-
-    final error = _isEditing
-        ? await controller.edit(entry)
-        : await controller.create(entry, trip: widget.trip);
-    if (error != null) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error)));
-      return;
-    }
-    if (!mounted) return;
-
-    // Stay on this screen — do NOT navigate away. This entry is now the
-    // persisted one going forward, so further saves edit it in place rather
-    // than creating a second entry.
+    if (!mounted || location == null) return;
     setState(() {
-      _persistedEntry = entry;
-      _justSaved = true;
-      _dirty = false;
+      _location = location;
+      _dirty = true;
+      _justSaved = false;
+    });
+  }
+
+  void _removeLocation() {
+    setState(() {
+      _location = null;
+      final persisted = _persistedEntry;
+      if (persisted != null) {
+        _persistedEntry = persisted.copyWith(clearLocation: true);
+      }
+      _dirty = true;
+      _justSaved = false;
+    });
+  }
+
+  Future<void> _save() async {
+    if (_saving) return;
+    setState(() {
+      _saving = true;
+      _justSaved = false;
     });
 
-    unawaited(_generateAdvice(entry));
+    try {
+      final title = _titleController.text.trim();
+      final body = _bodyController.text.trim();
+
+      final now = DateTime.now();
+      final existing = _persistedEntry;
+      final createdAt =
+          existing?.createdAt ??
+          deriveEntryTimestamp(widget.initialDate ?? now, now: now);
+      final entryId = existing?.id ?? _draftEntryId;
+      final healthLogId = existing?.healthLog?.id ?? _draftHealthLogId;
+      final totalCaloriesEaten = _meals.fold<int>(
+        0,
+        (sum, meal) => sum + meal.calories,
+      );
+
+      final entry = JournalEntry(
+        id: entryId,
+        tripId: existing?.tripId ?? widget.tripId ?? kMockTripId,
+        title: title,
+        body: body,
+        mood: _mood,
+        photoPaths: _photoPaths,
+        location: _location,
+        createdAt: createdAt,
+        updatedAt: now,
+        // Preserve whatever advice already existed — generateAndAttachAdvice
+        // regenerates it as a separate step right after this save completes,
+        // per IMPLEMENTATION_PLAN_UX_AI.md §3.
+        healthLog: HealthLog(
+          id: healthLogId,
+          entryId: entryId,
+          steps: _steps,
+          caloriesEaten: totalCaloriesEaten,
+          caloriesBurned: _caloriesBurned,
+          meals: _meals,
+          aiAdvice: existing?.healthLog?.aiAdvice,
+        ),
+      );
+
+      // Content-required, length caps, steps/meal invariants, and (for new
+      // entries) the date/trip-range rules all live in the controller — see
+      // IMPLEMENTATION_PLAN_VALIDATION.md's "Where Validation Lives" — so they
+      // hold no matter how save is triggered, not just from this screen.
+      final controller = ref.read(journalControllerProvider.notifier);
+      final validationError = controller.validate(
+        entry,
+        checkDate: !_isEditing,
+        trip: widget.trip,
+      );
+      if (validationError != null) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(validationError)));
+        return;
+      }
+
+      // Only a validated entry reaches the confirmation prompt — guards
+      // against accidental saves while making the (potentially AI-triggering)
+      // save a conscious action (IMPLEMENTATION_PLAN_UX_POLISH.md §5).
+      final confirmed = await _confirmSave();
+      if (!confirmed || !mounted) {
+        return; // Cancel — stay in the editor, input intact.
+      }
+
+      final error = _isEditing
+          ? await controller.edit(entry)
+          : await controller.create(entry, trip: widget.trip);
+      if (error != null) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(error)));
+        return;
+      }
+      if (!mounted) return;
+
+      // Stay on this screen — do NOT navigate away. This entry is now the
+      // persisted one going forward, so further saves edit it in place rather
+      // than creating a second entry.
+      setState(() {
+        _persistedEntry = entry;
+        _justSaved = true;
+        _dirty = false;
+      });
+
+      unawaited(_generateAdvice(entry));
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
   }
 
   Future<void> _handleBackAttempt(bool didPop, Object? result) async {
@@ -482,7 +575,9 @@ class _CreateEditEntryScreenState extends ConsumerState<CreateEditEntryScreen> {
         _adviceFailed = false;
         final healthLog = entry.healthLog;
         if (healthLog != null) {
-          _persistedEntry = entry.copyWith(healthLog: healthLog.copyWith(aiAdvice: advice));
+          _persistedEntry = entry.copyWith(
+            healthLog: healthLog.copyWith(aiAdvice: advice),
+          );
         }
       } else {
         _adviceFailed = true;
@@ -497,150 +592,288 @@ class _CreateEditEntryScreenState extends ConsumerState<CreateEditEntryScreen> {
       onPopInvokedWithResult: _handleBackAttempt,
       child: Scaffold(
         appBar: AppBar(title: Text(_isEditing ? 'Edit entry' : 'New entry')),
-        body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          TextField(
-            key: const Key('entry-title-field'),
-            controller: _titleController,
-            decoration: const InputDecoration(labelText: 'Title'),
-            maxLength: kEntryTitleMaxLength,
-            onChanged: (_) => _markDirty(),
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            key: const Key('entry-body-field'),
-            controller: _bodyController,
-            decoration: const InputDecoration(labelText: 'Body'),
-            maxLines: 5,
-            maxLength: kEntryBodyMaxLength,
-            onChanged: (_) => _markDirty(),
-          ),
-          const SizedBox(height: 16),
-          Text('Mood', style: Theme.of(context).textTheme.titleSmall),
-          const SizedBox(height: 8),
-          MoodPicker(
-            selected: _mood,
-            onSelected: (mood) => setState(() {
-              _mood = mood;
-              _dirty = true;
-              _justSaved = false;
-            }),
-          ),
-          const SizedBox(height: 16),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        body: SingleChildScrollView(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text('Photos', style: Theme.of(context).textTheme.titleSmall),
-              TextButton.icon(
-                key: const Key('add-photo-button'),
-                onPressed: _addPhoto,
-                icon: const Icon(Icons.add_a_photo),
-                label: const Text('Add photo'),
+              TextField(
+                key: const Key('entry-title-field'),
+                controller: _titleController,
+                decoration: const InputDecoration(labelText: 'Title'),
+                maxLength: kEntryTitleMaxLength,
+                onChanged: (_) => _markDirty(),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                key: const Key('entry-body-field'),
+                controller: _bodyController,
+                decoration: const InputDecoration(labelText: 'Body'),
+                maxLines: 5,
+                maxLength: kEntryBodyMaxLength,
+                onChanged: (_) => _markDirty(),
+              ),
+              const SizedBox(height: 16),
+              Text('Mood', style: Theme.of(context).textTheme.titleSmall),
+              const SizedBox(height: 8),
+              MoodPicker(
+                selected: _mood,
+                onSelected: (mood) => setState(() {
+                  _mood = mood;
+                  _dirty = true;
+                  _justSaved = false;
+                }),
+              ),
+              const SizedBox(height: 16),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text('Photos', style: Theme.of(context).textTheme.titleSmall),
+                  TextButton.icon(
+                    key: const Key('add-photo-button'),
+                    onPressed: _addPhoto,
+                    icon: const Icon(Icons.add_a_photo),
+                    label: const Text('Add photo'),
+                  ),
+                ],
+              ),
+              if (_photoPaths.isEmpty)
+                const Text('No photos added.')
+              else
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (var i = 0; i < _photoPaths.length; i++)
+                      PhotoThumbnail(
+                        key: Key('photo-thumbnail-$i'),
+                        photoPath: _photoPaths[i],
+                        onTap: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => PhotoViewerScreen(
+                              photoPaths: _photoPaths,
+                              initialIndex: i,
+                            ),
+                          ),
+                        ),
+                        onRemove: () => _removePhoto(i),
+                        removeButtonKey: Key('remove-photo-$i'),
+                      ),
+                  ],
+                ),
+              const SizedBox(height: 16),
+              _LocationSection(
+                location: _location,
+                onAddOrChange: _pickLocation,
+                onRemove: _removeLocation,
+              ),
+              const SizedBox(height: 16),
+              if (_prefillingHealthData)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 24),
+                  child: Center(
+                    child: Column(
+                      children: [
+                        CircularProgressIndicator(),
+                        SizedBox(height: 8),
+                        Text('Checking your health data…'),
+                      ],
+                    ),
+                  ),
+                )
+              else
+                HealthLogForm(
+                  initialSteps: _steps,
+                  initialCaloriesBurned: _caloriesBurned,
+                  initialMeals: _meals,
+                  entryDate:
+                      _persistedEntry?.createdAt ??
+                      widget.initialDate ??
+                      DateTime.now(),
+                  initialStepsFromHealth: _stepsFromHealth,
+                  initialCaloriesFromHealth: _caloriesFromHealth,
+                  initialShowConnectHealthNote: _showConnectHealthNote,
+                  healthDataSource: widget.healthDataSource,
+                  onChanged: (data) {
+                    _steps = data.steps;
+                    _caloriesBurned = data.caloriesBurned;
+                    _meals = data.meals;
+                    _markDirty();
+                  },
+                ),
+              const SizedBox(height: 24),
+              if (_generatingAdvice ||
+                  _adviceFailed ||
+                  _aiAdviceText != null) ...[
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'AI Suggestion',
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
+                        const SizedBox(height: 8),
+                        if (_generatingAdvice)
+                          const Row(
+                            key: Key('ai-advice-loading'),
+                            children: [
+                              SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              ),
+                              SizedBox(width: 8),
+                              Text('Generating suggestion…'),
+                            ],
+                          )
+                        else if (_adviceFailed)
+                          InkWell(
+                            key: const Key('ai-advice-retry'),
+                            onTap: () {
+                              final entry = _persistedEntry;
+                              if (entry != null) _generateAdvice(entry);
+                            },
+                            child: const Text(
+                              "Couldn't generate suggestion — tap to retry.",
+                            ),
+                          )
+                        else
+                          Text(
+                            _aiAdviceText ?? '',
+                            key: const Key('ai-advice-text'),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+              ],
+              FilledButton(
+                key: const Key('save-entry-button'),
+                onPressed: _saving ? null : _save,
+                child: Text(_justSaved ? 'Saved' : 'Save'),
               ),
             ],
           ),
-          if (_photoPaths.isEmpty)
-            const Text('No photos added.')
-          else
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                for (var i = 0; i < _photoPaths.length; i++)
-                  PhotoThumbnail(
-                    key: Key('photo-thumbnail-$i'),
-                    photoPath: _photoPaths[i],
-                    onTap: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => PhotoViewerScreen(photoPaths: _photoPaths, initialIndex: i),
-                      ),
-                    ),
-                    onRemove: () => _removePhoto(i),
-                    removeButtonKey: Key('remove-photo-$i'),
-                  ),
-              ],
-            ),
-          const SizedBox(height: 16),
-          if (_prefillingHealthData)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 24),
-              child: Center(
-                child: Column(
-                  children: [
-                    CircularProgressIndicator(),
-                    SizedBox(height: 8),
-                    Text('Checking your health data…'),
-                  ],
-                ),
-              ),
-            )
-          else
-            HealthLogForm(
-              initialSteps: _steps,
-              initialCaloriesBurned: _caloriesBurned,
-              initialMeals: _meals,
-              entryDate: _persistedEntry?.createdAt ?? widget.initialDate ?? DateTime.now(),
-              initialStepsFromHealth: _stepsFromHealth,
-              initialCaloriesFromHealth: _caloriesFromHealth,
-              initialShowConnectHealthNote: _showConnectHealthNote,
-              healthDataSource: widget.healthDataSource,
-              onChanged: (data) {
-                _steps = data.steps;
-                _caloriesBurned = data.caloriesBurned;
-                _meals = data.meals;
-                _markDirty();
-              },
-            ),
-          const SizedBox(height: 24),
-          if (_generatingAdvice || _adviceFailed || _aiAdviceText != null) ...[
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('AI Suggestion', style: Theme.of(context).textTheme.titleMedium),
-                    const SizedBox(height: 8),
-                    if (_generatingAdvice)
-                      const Row(
-                        key: Key('ai-advice-loading'),
-                        children: [
-                          SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          ),
-                          SizedBox(width: 8),
-                          Text('Generating suggestion…'),
-                        ],
-                      )
-                    else if (_adviceFailed)
-                      InkWell(
-                        key: const Key('ai-advice-retry'),
-                        onTap: () {
-                          final entry = _persistedEntry;
-                          if (entry != null) _generateAdvice(entry);
-                        },
-                        child: const Text("Couldn't generate suggestion — tap to retry."),
-                      )
-                    else
-                      Text(_aiAdviceText ?? '', key: const Key('ai-advice-text')),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-          ],
-          FilledButton(
-            key: const Key('save-entry-button'),
-            onPressed: _save,
-            child: Text(_justSaved ? 'Saved' : 'Save'),
-          ),
-          ],
         ),
       ),
     );
   }
+}
+
+class _LocationSection extends StatelessWidget {
+  const _LocationSection({
+    required this.location,
+    required this.onAddOrChange,
+    required this.onRemove,
+  });
+
+  final GeoTag? location;
+  final VoidCallback onAddOrChange;
+  final VoidCallback onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    final selected = location;
+    return Column(
+      key: const Key('location-section'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text('Location', style: Theme.of(context).textTheme.titleSmall),
+        const SizedBox(height: 8),
+        if (selected == null) ...[
+          const Text('No location added.'),
+          const SizedBox(height: 4),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              key: const Key('add-location-button'),
+              onPressed: onAddOrChange,
+              icon: const Icon(Icons.add_location_alt_outlined),
+              label: const Text('Add location'),
+            ),
+          ),
+        ] else ...[
+          Card(
+            margin: EdgeInsets.zero,
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Padding(
+                        padding: EdgeInsets.only(top: 2),
+                        child: Icon(Icons.place_outlined),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(child: _LocationLabel(location: selected)),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 4,
+                    children: [
+                      TextButton(
+                        key: const Key('change-location-button'),
+                        onPressed: onAddOrChange,
+                        child: const Text('Change'),
+                      ),
+                      TextButton(
+                        key: const Key('remove-location-button'),
+                        onPressed: onRemove,
+                        child: const Text('Remove'),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _LocationLabel extends StatelessWidget {
+  const _LocationLabel({required this.location});
+
+  final GeoTag location;
+
+  @override
+  Widget build(BuildContext context) {
+    final coordinate =
+        '${location.latitude.toStringAsFixed(6)}, '
+        '${location.longitude.toStringAsFixed(6)}';
+    final name =
+        _nonBlank(location.placeName) ??
+        _nonBlank(location.formattedAddress) ??
+        coordinate;
+    final address = _nonBlank(location.formattedAddress);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(name, style: Theme.of(context).textTheme.titleMedium),
+        if (address != null && address != name) ...[
+          const SizedBox(height: 2),
+          Text(address),
+        ],
+      ],
+    );
+  }
+}
+
+String? _nonBlank(String? value) {
+  final trimmed = value?.trim();
+  return trimmed == null || trimmed.isEmpty ? null : trimmed;
 }
