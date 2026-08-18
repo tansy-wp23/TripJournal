@@ -8,6 +8,10 @@ web release build therefore work without Google credentials.
 The map shows saved entry coordinates only. It does not request GPS/current
 location, background location, or any Android/iOS location permission.
 
+This guide covers map **rendering** only. Searching for a place, and resolving a
+dropped pin to a place name, go through a Supabase Edge Function with its own
+server-side key: see [`PLACES_SEARCH_SETUP.md`](PLACES_SEARCH_SETUP.md).
+
 ## 1. Create three restricted keys
 
 In one Google Cloud project, enable billing and the platform API needed by
@@ -37,6 +41,14 @@ certificate authenticates the bundle submitted to Play; Google signs the APK
 installed by users with the app-signing certificate. For an APK distributed
 directly or through another store, register the SHA-1 of the certificate that
 signs that installed APK. Never use the debug certificate for production.
+
+**Current state of this repository:** `android/app/build.gradle.kts` still has
+`release { signingConfig = signingConfigs.getByName("debug") }` with a TODO
+beside it, so release builds are presently signed with the debug certificate.
+One registered debug fingerprint therefore covers both debug and release today.
+Whoever replaces that with a real release signing config must register the new
+certificate's SHA-1 as well, or the map will go blank in release builds only —
+a failure that will not reproduce while testing in debug.
 
 ### iOS key
 
@@ -69,7 +81,12 @@ The blank `GOOGLE_MAPS_ANDROID_KEY`, `GOOGLE_MAPS_IOS_KEY`, and
 names only. Leave them blank in `.env`: native Google SDK initialization cannot
 be supplied by Dart's bundled `.env` asset.
 
-Create a gitignored `maps.local.json` at the repository root instead:
+Create a gitignored `maps.local.json` at the repository root instead. A blank
+template is tracked, so copy it rather than typing the structure:
+
+```powershell
+copy maps.local.example.json maps.local.json
+```
 
 ```json
 {
@@ -81,6 +98,35 @@ Create a gitignored `maps.local.json` at the repository root instead:
 
 Only the key for the platform being built needs a value. Keep other values as
 empty strings. `maps.local.json` is ignored by Git; do not force-add it.
+
+If the file is missing, a build passing `--dart-define-from-file` fails
+outright with `Did not find the file passed to "--dart-define-from-file"`. The
+default VS Code configuration (`.vscode/launch.json`) therefore omits the flag
+and runs against the fallback surface; pick **TripJournal (with map tiles)**
+once the file exists.
+
+### Adding another developer
+
+Rendering keys are restricted per signing certificate, and every machine
+generates its own debug keystore. A key that works on one laptop renders a
+blank map on another, with no Dart-visible error, until that machine's
+fingerprint is registered.
+
+For each additional developer, either:
+
+1. **Share one key.** They run the `keytool` command above to read their debug
+   certificate's SHA-1 and send it over; an existing key accepts many
+   fingerprints, so add theirs alongside the others under the key's Android
+   app restrictions. They then create their own `maps.local.json` holding the
+   same key value.
+2. **Give them their own key**, in their own Cloud project. More isolated, but
+   each project needs its own billing account.
+
+Option 1 is normally the lighter path for a shared coursework project.
+
+Nothing needs to be shared for **place search**: it runs server-side through a
+deployed Edge Function, so it works for every developer with no local setup.
+See [`PLACES_SEARCH_SETUP.md`](PLACES_SEARCH_SETUP.md).
 
 ### Android
 

@@ -1,0 +1,25 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      // Default: works on a fresh clone with no setup. The map shows the
+      // navigable "Map unavailable" fallback; everything else, including
+      // place search, works normally.
+      "name": "TripJournal",
+      "request": "launch",
+      "type": "dart"
+    },
+    {
+      // Renders real map tiles. Requires `maps.local.json` at the repo root:
+      //   copy maps.local.example.json maps.local.json
+      // then paste your own Android key in. The file is gitignored, and the
+      // key must be registered against YOUR debug SHA-1 - see
+      // docs/MAP_LOCATION_SETUP.md ("Adding another developer").
+      // Without that file this configuration fails to build.
+      "name": "TripJournal (with map tiles)",
+      "request": "launch",
+      "type": "dart",
+      "toolArgs": ["--dart-define-from-file=maps.local.json"]
+    }
+  ]
+}

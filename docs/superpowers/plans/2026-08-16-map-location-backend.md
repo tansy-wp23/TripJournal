@@ -207,6 +207,13 @@ git commit -m "fix: protect journal saves from stale advice"
 
 List variable names without values, Google API restrictions, Supabase secret command, local D:-drive cache policy, rollback to `BACKEND_MODE=mock`, and Android/iOS/Web acceptance checklist.
 
+> **Partially done.** `docs/PLACES_SEARCH_SETUP.md` now covers the Google API
+> restrictions, the `GOOGLE_PLACES_SERVER_KEY` secret command, the deploy
+> command (including why `--no-verify-jwt` must not be used here), and
+> verification plus troubleshooting. Still outstanding for this step: the
+> D:-drive cache policy, the `BACKEND_MODE=mock` rollback, and the iOS/Web
+> acceptance checklist. Left unticked until those land.
+
 - [ ] **Step 2: Run automated verification**
 
 ```powershell
