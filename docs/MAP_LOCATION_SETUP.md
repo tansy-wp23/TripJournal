@@ -105,6 +105,36 @@ default VS Code configuration (`.vscode/launch.json`) therefore omits the flag
 and runs against the fallback surface; pick **TripJournal (with map tiles)**
 once the file exists.
 
+### Passing the flag from an IDE
+
+The define is per run configuration, so each IDE needs it once. A plain
+`flutter run`, or an IDE launch that omits the flag, always shows the fallback
+surface even when `maps.local.json` is filled in. Both map surfaces gate on the
+same check, so the trip map reads **Map unavailable** and the location picker
+reads **Map preview unavailable** together; place search is unaffected either
+way, because it runs server-side.
+
+**VS Code** already has this committed: choose the **TripJournal (with map
+tiles)** configuration.
+
+**Android Studio / IntelliJ:** *Run* > *Edit Configurations...*, select the
+Flutter configuration (normally `main.dart`), and put the flag in
+**Additional run args**:
+
+```
+--dart-define-from-file=maps.local.json
+```
+
+Apply, then fully stop and relaunch. A hot reload will not pick this up,
+because dart-defines are compiled in. If no Flutter configuration is listed
+yet, add one with **+** > *Flutter* and set the Dart entrypoint to
+`lib/main.dart`.
+
+The path is resolved against the run configuration's working directory, so that
+must be the repository root. A `Did not find the file passed to
+"--dart-define-from-file"` error with the file plainly present usually means the
+working directory is wrong.
+
 ### Adding another developer
 
 Rendering keys are restricted per signing certificate, and every machine
