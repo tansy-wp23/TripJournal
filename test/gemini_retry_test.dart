@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -11,7 +9,7 @@ void main() {
 
   // The backoff is real time in production; tests inject a no-op so a
   // three-attempt case stays instant instead of costing seconds.
-  final noSleep = (Duration _) async {};
+  Future<void> noSleep(Duration _) async {}
 
   test('returns a 200 without retrying', () async {
     var calls = 0;

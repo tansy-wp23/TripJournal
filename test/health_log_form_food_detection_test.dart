@@ -49,9 +49,16 @@ void main() {
       await tester.tap(find.byKey(const Key('detect-from-photo-button')));
       await tester.pumpAndSettle();
 
-      // Under `flutter test` there's no interactive file dialog, so the real
-      // ImagePicker call resolves with nothing picked — the same outcome as
-      // a user backing out of the OS picker on a real device.
+      // Under `flutter test` the ImagePicker method channel has no
+      // implementation and its future never completes — it does NOT resolve
+      // with nothing picked, despite what this comment used to claim. So what
+      // is covered here is that choosing a source cannot crash or strand the
+      // button, not the cancelled-picker path itself.
+      //
+      // The real "user cancelled" branch (which shows "No photo selected.")
+      // needs a picker seam on the dialog to be reachable from a test; there
+      // is none today, so it is verified on device rather than here. Do not
+      // add an assertion for that SnackBar to this test — it can never pass.
       await tester.tap(find.byKey(const Key('detect-photo-gallery')));
       await tester.pumpAndSettle();
 

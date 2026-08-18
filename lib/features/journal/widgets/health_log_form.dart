@@ -477,8 +477,9 @@ class _MealDialogState extends State<_MealDialog> {
 
   /// Optional photo → detected name + calorie pre-fill. Never blocks: a
   /// denied permission, no camera, a cancelled picker, or a failed/null
-  /// detection all fall back silently to manual entry, which always works on
-  /// its own.
+  /// detection all fall back to manual entry, which always works on its own.
+  /// Each of those outcomes says so, so that "nothing happened" is never a
+  /// state the user has to interpret.
   Future<void> _detectFromPhoto() async {
     final source = await showModalBottomSheet<ImageSource>(
       context: context,
@@ -505,7 +506,17 @@ class _MealDialogState extends State<_MealDialog> {
 
     try {
       final picked = await ImagePicker().pickImage(source: source);
-      if (picked == null || !mounted) return; // user backed out of the OS picker
+      if (!mounted) return;
+      if (picked == null) {
+        // Backing out of the OS picker and the picker failing to return
+        // anything are the same null here. Saying so out loud costs the user
+        // who cancelled nothing, and stops a broken picker looking like a
+        // button that does nothing at all.
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No photo selected.')),
+        );
+        return;
+      }
 
       final sizeError = validatePhotoSize(await picked.length());
       if (sizeError != null) {
