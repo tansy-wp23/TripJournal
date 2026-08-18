@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
@@ -152,6 +154,14 @@ Widget buildGooglePlacePickerPlatform({
     markers: marker,
     myLocationEnabled: false,
     myLocationButtonEnabled: false,
+    // The picker sits inside the screen's ListView, and a platform view does
+    // not claim drags by default: every pan and pinch was being won by the
+    // scrollable, so the page scrolled instead of the map moving. Claiming
+    // gestures eagerly gives the map every touch that starts on it. The page
+    // still scrolls from anywhere outside these 260 logical pixels.
+    gestureRecognizers: <Factory<OneSequenceGestureRecognizer>>{
+      Factory<EagerGestureRecognizer>(EagerGestureRecognizer.new),
+    },
     onTap: (position) => onPinDragged(
       GeoTag(latitude: position.latitude, longitude: position.longitude),
     ),
