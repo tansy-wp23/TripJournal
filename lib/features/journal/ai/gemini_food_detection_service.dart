@@ -1,10 +1,12 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import 'food_detection_service.dart';
 import 'gemini_model.dart';
+import 'gemini_retry.dart';
 
 /// Real vision-model implementation (IMPLEMENTATION_PLAN_UX_POLISH.md §2 —
 /// the deferred real-AI phase). Sends the photo inline to Gemini and asks
@@ -26,17 +28,29 @@ class GeminiFoodDetectionService implements FoodDetectionService {
       'the form {"name": "...", "estimatedCalories": <integer>} — no '
       'markdown, no code fences, no explanation.';
 
+  /// Debug-build-only breadcrumb. Every failure here returns null so the user
+  /// is never blocked, which also means a broken key, an exhausted quota, a
+  /// retired model and a missing file all look identical from the UI. Logging
+  /// the reason in debug costs nothing and turns a guessing game into one
+  /// glance at the console. Never logs the API key or the image itself.
+  static void _debugFailure(String reason) {
+    if (kDebugMode) debugPrint('[GeminiFoodDetection] failed: $reason');
+  }
+
   @override
   Future<DetectedFood?> detectFromImage(String imagePath) async {
     try {
       final file = File(imagePath);
-      if (!await file.exists()) return null;
+      if (!await file.exists()) {
+        _debugFailure('file does not exist at $imagePath');
+        return null;
+      }
 
       final bytes = await file.readAsBytes();
-      final response = await _client.post(
+      final response = await postGeminiWithRetry(
+        _client,
         Uri.parse('$_endpoint?key=$apiKey'),
-        headers: const {'Content-Type': 'application/json'},
-        body: jsonEncode({
+        jsonEncode({
           'contents': [
             {
               'parts': [
@@ -50,12 +64,26 @@ class GeminiFoodDetectionService implements FoodDetectionService {
         }),
       );
 
-      if (response.statusCode != 200) return null;
-      return _parseResponse(response.body);
-    } catch (_) {
+      if (response.statusCode != 200) {
+        _debugFailure(
+          'HTTP ${response.statusCode} from $geminiModel '
+          '(${bytes.length} byte image) — ${_truncate(response.body)}',
+        );
+        return null;
+      }
+      final parsed = _parseResponse(response.body);
+      if (parsed == null) {
+        _debugFailure('unparseable 200 response — ${_truncate(response.body)}');
+      }
+      return parsed;
+    } catch (error) {
+      _debugFailure('$error');
       return null;
     }
   }
+
+  static String _truncate(String body) =>
+      body.length <= 300 ? body : '${body.substring(0, 300)}...';
 
   DetectedFood? _parseResponse(String responseBody) {
     final decoded = jsonDecode(responseBody) as Map<String, dynamic>;

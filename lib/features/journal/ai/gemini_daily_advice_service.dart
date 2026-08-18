@@ -6,6 +6,7 @@ import '../../../models/meal.dart';
 import '../../../models/mood.dart';
 import 'daily_advice_service.dart';
 import 'gemini_model.dart';
+import 'gemini_retry.dart';
 
 /// Real text-model implementation (IMPLEMENTATION_PLAN_REAL_AI.md #2 — the
 /// deferred real-AI phase). Sends the day's meals/steps/mood to Gemini under
@@ -53,10 +54,10 @@ class GeminiDailyAdviceService implements DailyAdviceService {
     int? caloriesEaten,
     int? caloriesBurned,
   }) async {
-    final response = await _client.post(
+    final response = await postGeminiWithRetry(
+      _client,
       Uri.parse('$_endpoint?key=$apiKey'),
-      headers: const {'Content-Type': 'application/json'},
-      body: jsonEncode({
+      jsonEncode({
         'systemInstruction': {
           'parts': [
             {'text': _systemInstruction},
