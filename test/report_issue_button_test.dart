@@ -1,24 +1,43 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:tripjournal/data/admin_repository_locator.dart';
 import 'package:tripjournal/data/current_user_id_provider.dart';
+import 'package:tripjournal/data/issue_report_repository.dart';
+import 'package:tripjournal/data/mock_admin_audit_log_repository.dart';
+import 'package:tripjournal/data/mock_issue_report_repository.dart';
 import 'package:tripjournal/features/admin/widgets/report_issue_button.dart';
 
 void main() {
   group('ReportIssueButton', () {
-    Widget wrap({CurrentUserIdProvider? userIdProvider}) => MaterialApp(
+    // A plain StatelessWidget — no Riverpod provider seam needed, just the
+    // same constructor-injection pattern already established for
+    // userIdProvider (test-only, defaults to the real global otherwise).
+    // Each test gets its own repository instance so state doesn't bleed
+    // across tests, mirroring AdminTestHarness's per-test isolation.
+    IssueReportRepository newRepository() => MockIssueReportRepository(
+          auditLogRepository: MockAdminAuditLogRepository(),
+        );
+
+    Widget wrap({
+      CurrentUserIdProvider? userIdProvider,
+      required IssueReportRepository issueReportRepository,
+    }) =>
+        MaterialApp(
           home: Scaffold(
             appBar: AppBar(
               actions: [
-                ReportIssueButton(page: 'TestScreen', userIdProvider: userIdProvider),
+                ReportIssueButton(
+                  page: 'TestScreen',
+                  userIdProvider: userIdProvider,
+                  issueReportRepository: issueReportRepository,
+                ),
               ],
             ),
           ),
         );
 
     testWidgets('tapping the button opens the report form', (tester) async {
-      await tester.pumpWidget(wrap());
+      await tester.pumpWidget(wrap(issueReportRepository: newRepository()));
       await tester.tap(find.byKey(const Key('report-issue-button')));
       await tester.pumpAndSettle();
 
@@ -28,7 +47,7 @@ void main() {
 
     testWidgets('submitting with an empty description shows an error and '
         "doesn't submit", (tester) async {
-      await tester.pumpWidget(wrap());
+      await tester.pumpWidget(wrap(issueReportRepository: newRepository()));
       await tester.tap(find.byKey(const Key('report-issue-button')));
       await tester.pumpAndSettle();
 
@@ -42,7 +61,7 @@ void main() {
 
     testWidgets('cancel on a pristine, untouched form closes immediately, '
         'no discard prompt', (tester) async {
-      await tester.pumpWidget(wrap());
+      await tester.pumpWidget(wrap(issueReportRepository: newRepository()));
       await tester.tap(find.byKey(const Key('report-issue-button')));
       await tester.pumpAndSettle();
 
@@ -55,7 +74,7 @@ void main() {
 
     testWidgets('cancel with a typed description prompts "Discard this '
         'report?" instead of closing immediately', (tester) async {
-      await tester.pumpWidget(wrap());
+      await tester.pumpWidget(wrap(issueReportRepository: newRepository()));
       await tester.tap(find.byKey(const Key('report-issue-button')));
       await tester.pumpAndSettle();
 
@@ -73,7 +92,7 @@ void main() {
 
     testWidgets('"Keep editing" dismisses the prompt and leaves the typed '
         'description intact', (tester) async {
-      await tester.pumpWidget(wrap());
+      await tester.pumpWidget(wrap(issueReportRepository: newRepository()));
       await tester.tap(find.byKey(const Key('report-issue-button')));
       await tester.pumpAndSettle();
 
@@ -92,7 +111,8 @@ void main() {
 
     testWidgets('"Discard" closes the form without submitting a report',
         (tester) async {
-      await tester.pumpWidget(wrap());
+      final repository = newRepository();
+      await tester.pumpWidget(wrap(issueReportRepository: repository));
       await tester.tap(find.byKey(const Key('report-issue-button')));
       await tester.pumpAndSettle();
 
@@ -106,7 +126,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byKey(const Key('report-issue-description-field')), findsNothing);
-      final reports = await issueReportRepository.getAllReports();
+      final reports = await repository.getAllReports();
       expect(
         reports.any((r) => r.description == 'This report should never be submitted.'),
         isFalse,
@@ -115,7 +135,7 @@ void main() {
 
     testWidgets('the system back gesture on a dirty form prompts the same '
         'discard confirmation', (tester) async {
-      await tester.pumpWidget(wrap());
+      await tester.pumpWidget(wrap(issueReportRepository: newRepository()));
       await tester.tap(find.byKey(const Key('report-issue-button')));
       await tester.pumpAndSettle();
 
@@ -139,7 +159,8 @@ void main() {
 
     testWidgets('a filled-in description submits and creates a report an '
         'admin can see', (tester) async {
-      await tester.pumpWidget(wrap());
+      final repository = newRepository();
+      await tester.pumpWidget(wrap(issueReportRepository: repository));
       await tester.tap(find.byKey(const Key('report-issue-button')));
       await tester.pumpAndSettle();
 
@@ -154,7 +175,7 @@ void main() {
       expect(find.byKey(const Key('report-issue-description-field')), findsNothing);
       expect(find.textContaining('Thanks'), findsOneWidget);
 
-      final reports = await issueReportRepository.getAllReports();
+      final reports = await repository.getAllReports();
       final submitted =
           reports.where((r) => r.description == 'The map pin is offset on TestScreen.');
       expect(submitted, hasLength(1));
@@ -163,7 +184,13 @@ void main() {
 
     testWidgets('an unauthenticated userIdProvider blocks submission with a '
         'visible error', (tester) async {
-      await tester.pumpWidget(wrap(userIdProvider: _AlwaysUnauthenticated()));
+      final repository = newRepository();
+      await tester.pumpWidget(
+        wrap(
+          userIdProvider: _AlwaysUnauthenticated(),
+          issueReportRepository: repository,
+        ),
+      );
       await tester.tap(find.byKey(const Key('report-issue-button')));
       await tester.pumpAndSettle();
 
@@ -175,7 +202,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text(const UnauthenticatedTripUserException().toString()), findsOneWidget);
-      final reports = await issueReportRepository.getAllReports();
+      final reports = await repository.getAllReports();
       expect(
         reports.any((r) => r.description == 'This should not go through.'),
         isFalse,

@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:tripjournal/features/admin/screens/admin_login_screen.dart';
+import 'package:tripjournal/features/auth/controller/auth_controller.dart';
 import 'package:tripjournal/features/auth/screens/login_screen.dart';
 import 'package:tripjournal/widgets/app_logo.dart';
 
+import 'support/admin_test_harness.dart';
 import 'support/auth_test_harness.dart';
 
 Future<void> pumpAuthFrame(WidgetTester tester) async {
@@ -64,7 +67,26 @@ void main() {
     testWidgets('tapping the logo 3 times within the window opens AdminGate', (
       tester,
     ) async {
-      await tester.pumpWidget(buildLoginScreen());
+      // The 3rd tap pushes AdminGate onto the same ProviderScope this
+      // screen is wrapped in, and AdminGate/AdminLoginScreen immediately
+      // watch adminAuthControllerProvider — so this test needs both the
+      // traveler-side override (harness.wrap) and the admin one merged
+      // into a single ProviderScope, unlike every other test in this file,
+      // which never reaches AdminGate's own provider reads.
+      final adminHarness = AdminTestHarness();
+      addTearDown(adminHarness.dispose);
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            authControllerProvider.overrideWith(
+              (ref) => harness.controller,
+              disposeNotifier: false,
+            ),
+            ...adminHarness.overrides,
+          ],
+          child: const MaterialApp(home: LoginScreen()),
+        ),
+      );
       await pumpAuthFrame(tester);
 
       final logo = find.byKey(const Key('login-logo-tap-target'));

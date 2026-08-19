@@ -5,6 +5,7 @@ import 'package:image_picker/image_picker.dart';
 
 import '../../../data/admin_repository_locator.dart';
 import '../../../data/current_user_id_provider.dart';
+import '../../../data/issue_report_repository.dart';
 import '../../../data/trip_repository_locator.dart';
 import '../../../validation/photo_validation.dart';
 
@@ -22,11 +23,19 @@ import '../../../validation/photo_validation.dart';
 /// [userIdProvider] mirrors `HomeScreen`/`TripViewScreen`'s own
 /// `CurrentUserIdProvider?` constructor parameter, for the same
 /// test-injection reason — defaults to the shared `currentUserIdProvider`.
+/// [issueReportRepository] is the same pattern, defaulting to the shared
+/// global from `admin_repository_locator.dart` (Phase 14).
 class ReportIssueButton extends StatelessWidget {
-  const ReportIssueButton({super.key, required this.page, this.userIdProvider});
+  const ReportIssueButton({
+    super.key,
+    required this.page,
+    this.userIdProvider,
+    this.issueReportRepository,
+  });
 
   final String page;
   final CurrentUserIdProvider? userIdProvider;
+  final IssueReportRepository? issueReportRepository;
 
   @override
   Widget build(BuildContext context) {
@@ -45,18 +54,26 @@ class ReportIssueButton extends StatelessWidget {
         // report without ever consulting that guard.
         isDismissible: false,
         enableDrag: false,
-        builder: (_) =>
-            _ReportIssueForm(page: page, userIdProvider: userIdProvider),
+        builder: (_) => _ReportIssueForm(
+          page: page,
+          userIdProvider: userIdProvider,
+          issueReportRepository: issueReportRepository,
+        ),
       ),
     );
   }
 }
 
 class _ReportIssueForm extends StatefulWidget {
-  const _ReportIssueForm({required this.page, this.userIdProvider});
+  const _ReportIssueForm({
+    required this.page,
+    this.userIdProvider,
+    this.issueReportRepository,
+  });
 
   final String page;
   final CurrentUserIdProvider? userIdProvider;
+  final IssueReportRepository? issueReportRepository;
 
   @override
   State<_ReportIssueForm> createState() => _ReportIssueFormState();
@@ -213,7 +230,7 @@ class _ReportIssueFormState extends State<_ReportIssueForm> {
       // file's local device path is stored directly — there's no upload
       // step yet in mock mode (unlike `ProfileAvatarStorage`/
       // `TripCoverStorage`, which don't exist for issue-report photos).
-      await issueReportRepository.submitReport(
+      await (widget.issueReportRepository ?? issueReportRepository).submitReport(
         userId: userId,
         page: widget.page,
         description: description,

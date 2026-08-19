@@ -10,7 +10,12 @@ import 'issue_report_detail_screen.dart';
 /// `AdminDashboardScreen`'s app bar. Tapping a report opens
 /// `IssueReportDetailScreen` (Phase 11).
 class AdminIssueReportListScreen extends ConsumerStatefulWidget {
-  const AdminIssueReportListScreen({super.key});
+  const AdminIssueReportListScreen({super.key, this.detailScreenBuilder});
+
+  /// Test-only override for the screen pushed on tapping a report — see
+  /// `AdminDashboardScreen.userDetailScreenBuilder`'s doc comment for why
+  /// this exists.
+  final Widget Function(String reportId)? detailScreenBuilder;
 
   @override
   ConsumerState<AdminIssueReportListScreen> createState() => _AdminIssueReportListScreenState();
@@ -126,7 +131,10 @@ class _AdminIssueReportListScreenState extends ConsumerState<AdminIssueReportLis
     return ListView.builder(
       key: const Key('admin-issue-list-results'),
       itemCount: management.reports.length,
-      itemBuilder: (context, index) => _ReportTile(report: management.reports[index]),
+      itemBuilder: (context, index) => _ReportTile(
+        report: management.reports[index],
+        detailScreenBuilder: widget.detailScreenBuilder,
+      ),
     );
   }
 }
@@ -153,9 +161,10 @@ class _StatusFilterChip extends StatelessWidget {
 }
 
 class _ReportTile extends StatelessWidget {
-  const _ReportTile({required this.report});
+  const _ReportTile({required this.report, this.detailScreenBuilder});
 
   final IssueReport report;
+  final Widget Function(String reportId)? detailScreenBuilder;
 
   @override
   Widget build(BuildContext context) {
@@ -173,7 +182,9 @@ class _ReportTile extends StatelessWidget {
       ),
       onTap: () => Navigator.of(context).push(
         MaterialPageRoute(
-          builder: (_) => IssueReportDetailScreen(reportId: report.reportId),
+          builder: (_) => detailScreenBuilder != null
+              ? detailScreenBuilder!(report.reportId)
+              : IssueReportDetailScreen(reportId: report.reportId),
         ),
       ),
     );

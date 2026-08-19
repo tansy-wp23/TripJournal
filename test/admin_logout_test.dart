@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:tripjournal/features/admin/admin_gate.dart';
 import 'package:tripjournal/features/admin/controller/admin_auth_controller.dart';
 import 'package:tripjournal/features/admin/screens/admin_dashboard_screen.dart';
 import 'package:tripjournal/features/admin/screens/admin_login_screen.dart';
+
+import 'support/admin_test_harness.dart';
 
 /// PB-10: Logout Administrator (Phase 6). The behavior itself has existed
 /// since Phase 2 (a side effect of `AdminDashboardScreen`'s logout button)
@@ -19,15 +20,10 @@ void main() {
     testWidgets(
         'logout returns to AdminLoginScreen, driven by AdminGate state '
         'rather than a manual redirect', (tester) async {
-      final container = ProviderContainer();
-      addTearDown(container.dispose);
+      final harness = AdminTestHarness();
+      addTearDown(harness.dispose);
 
-      await tester.pumpWidget(
-        UncontrolledProviderScope(
-          container: container,
-          child: const MaterialApp(home: AdminGate()),
-        ),
-      );
+      await tester.pumpWidget(harness.wrap(const AdminGate()));
       await tester.pumpAndSettle();
       expect(find.byType(AdminLoginScreen), findsOneWidget);
 
@@ -47,21 +43,16 @@ void main() {
 
     testWidgets('logout clears profile and session — no stale admin state',
         (tester) async {
-      final container = ProviderContainer();
-      addTearDown(container.dispose);
+      final harness = AdminTestHarness();
+      addTearDown(harness.dispose);
 
-      await tester.pumpWidget(
-        UncontrolledProviderScope(
-          container: container,
-          child: const MaterialApp(home: AdminGate()),
-        ),
-      );
+      await tester.pumpWidget(harness.wrap(const AdminGate()));
       await tester.pumpAndSettle();
 
       await tester.tap(find.byKey(const Key('admin-sign-in-with-google')));
       await tester.pumpAndSettle();
 
-      final signedIn = container.read(adminAuthControllerProvider);
+      final signedIn = harness.authController;
       expect(signedIn.profile, isNotNull);
       expect(signedIn.session, isNotNull);
       expect(signedIn.status, AdminAuthStatus.authenticated);
@@ -69,25 +60,19 @@ void main() {
       await tester.tap(find.byKey(const Key('admin-logout')));
       await tester.pumpAndSettle();
 
-      final afterLogout = container.read(adminAuthControllerProvider);
-      expect(afterLogout.profile, isNull);
-      expect(afterLogout.session, isNull);
-      expect(afterLogout.error, isNull);
-      expect(afterLogout.status, AdminAuthStatus.signedOut);
+      expect(harness.authController.profile, isNull);
+      expect(harness.authController.session, isNull);
+      expect(harness.authController.error, isNull);
+      expect(harness.authController.status, AdminAuthStatus.signedOut);
     });
 
     testWidgets(
         'signing back in after logout reaches the dashboard again (no '
         'stale signedOut state blocking a fresh sign-in)', (tester) async {
-      final container = ProviderContainer();
-      addTearDown(container.dispose);
+      final harness = AdminTestHarness();
+      addTearDown(harness.dispose);
 
-      await tester.pumpWidget(
-        UncontrolledProviderScope(
-          container: container,
-          child: const MaterialApp(home: AdminGate()),
-        ),
-      );
+      await tester.pumpWidget(harness.wrap(const AdminGate()));
       await tester.pumpAndSettle();
 
       await tester.tap(find.byKey(const Key('admin-sign-in-with-google')));
@@ -99,7 +84,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byType(AdminDashboardScreen), findsOneWidget);
-      expect(container.read(adminAuthControllerProvider).status, AdminAuthStatus.authenticated);
+      expect(harness.authController.status, AdminAuthStatus.authenticated);
     });
   });
 }

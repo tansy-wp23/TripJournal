@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../data/admin_repository_locator.dart';
+import '../../../data/issue_report_repository.dart';
 import '../../../models/admin_audit_log.dart';
 import '../../../models/issue_report.dart';
 import '../../../models/profile.dart';
@@ -23,21 +24,37 @@ import '../widgets/leaving_resolved_remark_dialog.dart';
 /// `IssueReportDetailController` is still constructed locally per-instance
 /// rather than resolved from a global Riverpod provider; see that
 /// controller's doc comment for why.
+///
+/// [controller] / [issueReportRepositoryOverride] mirror
+/// `AdminUserDetailScreen`'s test-injection pattern — optional, defaulting
+/// to the real global instances (Phase 7/14,
+/// `ADMIN_MODULE_IMPLEMENTATION_PLAN.md`).
 class IssueReportDetailScreen extends ConsumerStatefulWidget {
-  const IssueReportDetailScreen({super.key, required this.reportId});
+  const IssueReportDetailScreen({
+    super.key,
+    required this.reportId,
+    this.controller,
+    this.issueReportRepositoryOverride,
+  });
 
   final String reportId;
+  final IssueReportDetailController? controller;
+  final IssueReportRepository? issueReportRepositoryOverride;
 
   @override
   ConsumerState<IssueReportDetailScreen> createState() => _IssueReportDetailScreenState();
 }
 
 class _IssueReportDetailScreenState extends ConsumerState<IssueReportDetailScreen> {
-  late final IssueReportDetailController _controller = IssueReportDetailController(
-    issueReportRepository,
-    adminUserDirectoryRepository,
-    adminAuditLogRepository,
-  );
+  late final IssueReportRepository _issueReportRepository =
+      widget.issueReportRepositoryOverride ?? issueReportRepository;
+  late final IssueReportDetailController _controller =
+      widget.controller ??
+      IssueReportDetailController(
+        _issueReportRepository,
+        adminUserDirectoryRepository,
+        adminAuditLogRepository,
+      );
 
   final TextEditingController _remarksController = TextEditingController();
   bool _remarksInitialized = false;
@@ -111,7 +128,7 @@ class _IssueReportDetailScreenState extends ConsumerState<IssueReportDetailScree
 
     setState(() => _updatingStatus = true);
     try {
-      await issueReportRepository.updateStatus(
+      await _issueReportRepository.updateStatus(
         adminUserId: admin.userID,
         reportId: report.reportId,
         status: status,

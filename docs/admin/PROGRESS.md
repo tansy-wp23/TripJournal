@@ -884,6 +884,142 @@ do this; not attempted here.
 
 ---
 
+## Phase 7 — Real Backend (complete, built 2026-08-19 alongside Phase 14)
+
+### Context / how this got unblocked
+
+Phase 7 sat as an outline-only "next sprint" placeholder until 2026-08-19,
+when this branch (`admin-module`) fast-forward-merged `main`, which had
+already picked up the User Management module's own real-backend work
+(`USER_MANAGEMENT_IMPLEMENTATION_PLAN.md` Phases 6–8, merged via PRs #7–#9):
+the real `profiles`/`verification_codes` tables, RLS, `is_active_user()`,
+and `Supabase*` repositories. That's exactly the schema Phase 7 needed to
+build against (`Profile.role`, `AccountStatus.suspended` — confirmed
+already shipped for real, matching Open Decision 2's recommended default
+taken back in Phase 0), so Phase 7 and Phase 14 were both built in the
+same session rather than waiting for a separate sprint.
+
+### What was built
+
+- **Migration `202608190001_admin_module_phase7.sql`**:
+  - `is_admin_user()` — mirrors `is_active_user()` (same SECURITY DEFINER +
+    pinned `search_path` rationale).
+  - `profiles_select_admin` — one new, purely additive SELECT policy on
+    `public.profiles` (owned by User Management). Does not touch
+    `profiles_select_own`/`profiles_update_own`. **Cross-module change**,
+    flagged per the plan's coordination rule — team decision 2026-08-19 to
+    proceed without a separate review cycle since it's additive-only (see
+    `202608190001_admin_module_phase7.sql`'s own header comment).
+  - `admin_audit_log` table + RLS (`is_admin_user()`-gated select; insert
+    policy is defense-in-depth, not the primary write path — see below).
+  - `admin_access_attempt_log` table + RLS. Deliberately **not**
+    `is_admin_user()`-gated on insert — the whole point is recording an
+    attempt from someone who just failed that exact check, so requiring it
+    would make every real attempt unrecordable. Insert policy is instead
+    `auth.uid() = attempted_user_id` (a caller can only record an attempt
+    about themselves); reads are `is_admin_user()`-scoped.
+- **Edge Functions** `admin-suspend-user` / `admin-reactivate-user`
+  (`supabase/functions/`, registered in `supabase/config.toml` with
+  `verify_jwt = false` — auth is checked manually inside, matching
+  `account-deactivate-confirm`'s pattern): two-client architecture
+  (anon client for identity only, service-role client for every
+  privileged read/write). `admin-suspend-user` also calls
+  `auth.admin.signOut(targetUserId)` (Architecture Decision 4 — the
+  reason this is a privileged function and not a plain RLS-guarded table
+  write) and re-checks "target is admin" / "target already suspended"
+  server-side as defense-in-depth against stale client state (Phase 5's
+  own validation decisions, now enforced on both ends).
+- **Real repositories** (`lib/data/`): `SupabaseAdminUserDirectoryRepository`,
+  `SupabaseAdminDashboardRepository` (computes stats client-side over a
+  minimal-column fetch, per Phase 0's "keep to fields a mock can trivially
+  compute" guidance — no server-side aggregate query), `SupabaseAdminAuditLogRepository`,
+  `SupabaseAdminAccountActionsRepository` (calls the two Edge Functions;
+  `adminUserId` param accepted for interface parity but not sent — the
+  Edge Function derives the acting admin from the caller's own JWT),
+  `SupabaseAdminAccessAttemptLogRepository`.
+- **`admin_repository_locator.dart` swapped** to lazy getters resolving
+  the real repositories (mirrors `user_management_repository_locator.dart`'s
+  Phase 7 shape). `adminAuthRepository` now reuses
+  `user_management_repository_locator.dart`'s `authRepository` directly
+  (Architecture Decision 2) rather than a separate instance — the mock
+  locator used a separate `MockAuthRepository` only because a mock can
+  simulate exactly one signed-in persona per instance; the real Supabase
+  Auth backend is one shared service for both flows.
+
+### The test-architecture gap this surfaced (and how it was closed)
+
+Every admin widget test that pumped a screen via a bare `ProviderScope`
+(or an un-overridden `ProviderContainer`) was implicitly relying on the
+locator's globals resolving to mocks. Swapping to real Supabase broke
+that silently — not a compile error, a runtime "you must initialize the
+Supabase instance" crash the moment any admin provider was first read.
+Two shapes of this problem, two different fixes:
+
+1. **Screens whose controller comes from a top-level Riverpod provider**
+   (`AdminDashboardScreen`, `AdminUserListScreen`, `AdminIssueReportListScreen`,
+   `AuditLogScreen`, `AdminGate`/`AdminLoginScreen`) — fixed with
+   **`AdminTestHarness`** (`test/support/admin_test_harness.dart`),
+   mirroring `AuthTestHarness`: a shared `MockAdminUserStore` + mock
+   repositories, five controllers built from them, and a `.wrap(widget)`
+   helper that overrides all five providers in one `ProviderScope`. All
+   directly-affected test files were migrated to it:
+   `admin_dashboard_screen_test.dart`, `admin_user_list_screen_test.dart`,
+   `admin_issue_report_list_screen_test.dart`, `admin_logout_test.dart`,
+   `report_issue_button_test.dart` (constructor-injection only — it's a
+   plain `StatelessWidget`, no provider), `responsive_layout_test.dart`
+   (new `_appWithMockAdmin` helper alongside its existing
+   `_appWithMockAuth`), and `login_screen_admin_entry_test.dart`'s one
+   test that reaches `AdminGate` (merged the traveler-side
+   `AuthTestHarness` override with `AdminTestHarness.overrides` in a
+   single `ProviderScope`, since that's the only test in the file that
+   crosses into admin providers at all).
+2. **`AdminUserDetailScreen` / `IssueReportDetailScreen`** — these were
+   already a known exception (Phase 4/10's own doc comments): their
+   controllers are constructed locally per-instance, not resolved from a
+   provider, because they need an instance parameter (`userId`/`reportId`)
+   a plain global provider can't carry. No provider means no override
+   seam. Fixed with **test-only constructor-injection params**
+   (`controller`, `accountActionsRepository` /
+   `issueReportRepositoryOverride`) — the same pattern `ReportIssueButton`
+   already used for `userIdProvider`. `admin_user_detail_screen_test.dart`
+   and `issue_report_detail_screen_test.dart` (which pump these screens
+   directly) inject harness-backed controllers this way.
+3. **Internal navigation *into* those two screens from elsewhere**
+   (tapping a dashboard access-attempt, a user-list row, an issue-report
+   tile, or an audit-log entry) is a third shape neither fix above
+   reaches: the *pushed* screen's constructor is called by production
+   code inside another screen's tap handler, not by the test. Closed by
+   adding a **test-only builder-function parameter** to the four
+   navigating screens (`AdminDashboardScreen.userDetailScreenBuilder`,
+   `AdminUserListScreen.userDetailScreenBuilder`,
+   `AdminIssueReportListScreen.detailScreenBuilder`,
+   `AuditLogScreen.userDetailScreenBuilder` +
+   `.issueDetailScreenBuilder`) — `Widget Function(String id)?`, defaulting
+   to the real screen construction, letting a test hand the pushed screen
+   a harness-backed controller the same way the two fixes above already
+   do. The five tests this affected (`admin_dashboard_screen_test.dart`,
+   `admin_user_list_screen_test.dart`, `admin_issue_report_list_screen_test.dart`,
+   and two in `audit_log_screen_test.dart`) now assert on the pushed
+   screen's actual loaded content again, not just that navigation happened.
+
+### Deferred / not built
+
+- `SystemHealthScreen`'s eventual "database connectivity status" (Sprint
+  3, Open Decision 7) — unrelated to this work, still N/A until built.
+- Real automatic screenshot upload for issue reports (Sprint 2 Open
+  Decision 5) — `ReportIssueButton` still stores the picked photo's local
+  device path directly, same as mock mode; the `issue-report-attachments`
+  storage bucket (Phase 14 migration) exists and is RLS-ready but nothing
+  uploads to it yet. Flagged as a known gap, not attempted here — wiring
+  actual upload is separate scope from "swap the mocks for real reads/writes."
+
+### Verification
+
+- `flutter analyze` — no issues found.
+- `flutter test` — full suite (941 tests) passes.
+
+---
+
 # Sprint 2 — Issue Management & Audit Monitoring
 
 ## Phase 8 — Recon & Contracts (complete)
@@ -1719,3 +1855,56 @@ gone on one accidental tap).
 - `flutter analyze` — no issues found.
 - `flutter test` — full suite (735 tests) passes, including the 4 net-new
   tests from this addition; no regressions.
+
+---
+
+## Phase 14 — Real Backend (Sprint 2) (complete, built 2026-08-19 alongside Phase 7)
+
+Built in the same session as Phase 7 (see that entry for why Phase
+7/14's "next sprint" gating resolved early) — see that entry for the
+shared test-architecture gap and how it was closed; not repeated here.
+
+### What was built
+
+- **Migration `202608190002_admin_module_phase14_issue_reports.sql`**:
+  `issue_reports` table (`report_id, submitted_by_user_id, page,
+  description, screenshot_url, status, admin_remarks, created_at,
+  updated_at`) + `handle_updated_at` trigger (reused from the User
+  Management module's `202608140001_user_management.sql`, already applied
+  to `profiles`). RLS: any signed-in user can insert/select their own
+  reports (Architecture Decision 7); `is_admin_user()` callers can select
+  and update any report — no admin delete policy, reports aren't
+  deletable through this module's scope. `issue-report-attachments`
+  storage bucket + policies, mirroring `profile-avatars`'s setup except
+  objects are also readable by `is_admin_user()` callers (an admin needs
+  to view any user's attachment, unlike avatars).
+- **`SupabaseIssueReportRepository`** (`lib/data/`). `updateStatus`
+  notably does **not** need an Edge Function the way suspend/reactivate
+  did — it doesn't call `auth.admin.signOut()` or anything else requiring
+  service role, so a direct RLS-scoped write from the signed-in admin's
+  own session is enough (`issue_reports_update_admin` +
+  `admin_audit_log_insert_admin` both evaluate `is_admin_user()` against
+  that session's real `auth.uid()`).
+- **`SupabaseAdminAuditLogRepository.getAllEntries`** (added Phase 8,
+  real-backed since this is the same repository class Phase 7 built) —
+  no separate work needed here since one audit table already served both
+  sprints' actions (Architecture Decision 5/6).
+- **`admin_repository_locator.dart`**: `issueReportRepository` swapped
+  alongside the four Phase 7 repositories in the same locator edit.
+
+### Deferred / not built
+
+Same two items noted in Phase 7's "Deferred / not built" — real
+screenshot upload to `issue-report-attachments` (bucket exists, nothing
+uploads to it yet) and `SystemHealthScreen`'s Sprint 3 work.
+
+### Verification
+
+- `flutter analyze` — no issues found.
+- `flutter test` — full suite (941 tests) passes.
+
+**Checkpoint reached**: both Sprint 1 (PB-01–PB-05, PB-10) and Sprint 2
+(PB-06–PB-10) now run against the real Supabase backend end-to-end, not
+mocks. Phase 15 onward (Sprint 3 — AI & System Monitoring) is still
+genuinely unbuilt and, per `ADMIN_MODULE_IMPLEMENTATION_PLAN.md`'s own
+numbering, the next phase in sequence.

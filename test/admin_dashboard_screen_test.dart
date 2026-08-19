@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:tripjournal/data/admin_repository_locator.dart';
 import 'package:tripjournal/features/admin/admin_gate.dart';
 import 'package:tripjournal/features/admin/screens/admin_dashboard_screen.dart';
 import 'package:tripjournal/features/admin/screens/admin_issue_report_list_screen.dart';
@@ -12,13 +10,16 @@ import 'package:tripjournal/features/admin/screens/admin_user_list_screen.dart';
 import 'package:tripjournal/features/admin/screens/audit_log_screen.dart';
 import 'package:tripjournal/models/admin_access_attempt_log.dart';
 
+import 'support/admin_test_harness.dart';
+
 void main() {
   group('AdminDashboardScreen', () {
     testWidgets('renders the stat grid with the default seed counts',
         (tester) async {
-      await tester.pumpWidget(
-        const ProviderScope(child: MaterialApp(home: AdminDashboardScreen())),
-      );
+      final harness = AdminTestHarness();
+      addTearDown(harness.dispose);
+
+      await tester.pumpWidget(harness.wrap(const AdminDashboardScreen()));
       await tester.pump(); // triggers the post-frame loadStats callback
       await tester.pumpAndSettle();
 
@@ -30,9 +31,10 @@ void main() {
     testWidgets(
         'full flow: sign in on AdminLoginScreen reaches the dashboard grid',
         (tester) async {
-      await tester.pumpWidget(
-        const ProviderScope(child: MaterialApp(home: AdminGate())),
-      );
+      final harness = AdminTestHarness();
+      addTearDown(harness.dispose);
+
+      await tester.pumpWidget(harness.wrap(const AdminGate()));
       await tester.pumpAndSettle();
 
       expect(find.byType(AdminLoginScreen), findsOneWidget);
@@ -52,6 +54,9 @@ void main() {
 
     testWidgets('shows a recorded unauthorized access attempt',
         (tester) async {
+      final harness = AdminTestHarness();
+      addTearDown(harness.dispose);
+
       // Tall virtual screen so the attempts section (below the stat grid)
       // is actually built — ListView is lazy and won't build off-screen
       // children at the default test viewport size.
@@ -60,12 +65,12 @@ void main() {
       addTearDown(tester.view.resetPhysicalSize);
       addTearDown(tester.view.resetDevicePixelRatio);
 
-      // Recorded directly against the shared mock (rather than driven
+      // Recorded directly against the harness's mock (rather than driven
       // through a full rejected sign-in) to test the screen's rendering in
       // isolation from the auth flow, which `admin_auth_controller_test.dart`
       // already covers. An existence check, not an exact count, so this
       // doesn't depend on whether other tests in this file ran first.
-      await adminAccessAttemptLogRepository.recordAttempt(
+      await harness.accessAttemptLogRepository.recordAttempt(
         AdminAccessAttemptLog(
           logId: 'test-attempt-1',
           attemptedUserId: 'user-101',
@@ -75,9 +80,7 @@ void main() {
         ),
       );
 
-      await tester.pumpWidget(
-        const ProviderScope(child: MaterialApp(home: AdminDashboardScreen())),
-      );
+      await tester.pumpWidget(harness.wrap(const AdminDashboardScreen()));
       await tester.pump();
       await tester.pumpAndSettle();
 
@@ -87,9 +90,10 @@ void main() {
 
     testWidgets('tapping the Suspended card opens the user list filtered '
         'to suspended users only', (tester) async {
-      await tester.pumpWidget(
-        const ProviderScope(child: MaterialApp(home: AdminDashboardScreen())),
-      );
+      final harness = AdminTestHarness();
+      addTearDown(harness.dispose);
+
+      await tester.pumpWidget(harness.wrap(const AdminDashboardScreen()));
       await tester.pump();
       await tester.pumpAndSettle();
 
@@ -104,9 +108,10 @@ void main() {
 
     testWidgets('tapping the Admins card opens the user list filtered to '
         'administrators only', (tester) async {
-      await tester.pumpWidget(
-        const ProviderScope(child: MaterialApp(home: AdminDashboardScreen())),
-      );
+      final harness = AdminTestHarness();
+      addTearDown(harness.dispose);
+
+      await tester.pumpWidget(harness.wrap(const AdminDashboardScreen()));
       await tester.pump();
       await tester.pumpAndSettle();
 
@@ -119,9 +124,10 @@ void main() {
 
     testWidgets('tapping the New this week card opens the user list '
         'filtered to recently created profiles', (tester) async {
-      await tester.pumpWidget(
-        const ProviderScope(child: MaterialApp(home: AdminDashboardScreen())),
-      );
+      final harness = AdminTestHarness();
+      addTearDown(harness.dispose);
+
+      await tester.pumpWidget(harness.wrap(const AdminDashboardScreen()));
       await tester.pump();
       await tester.pumpAndSettle();
 
@@ -135,9 +141,10 @@ void main() {
 
     testWidgets('tapping the Total users card opens the user list '
         'unfiltered', (tester) async {
-      await tester.pumpWidget(
-        const ProviderScope(child: MaterialApp(home: AdminDashboardScreen())),
-      );
+      final harness = AdminTestHarness();
+      addTearDown(harness.dispose);
+
+      await tester.pumpWidget(harness.wrap(const AdminDashboardScreen()));
       await tester.pump();
       await tester.pumpAndSettle();
 
@@ -151,9 +158,10 @@ void main() {
 
     testWidgets('tapping the Issue reports action opens the issue report '
         'list', (tester) async {
-      await tester.pumpWidget(
-        const ProviderScope(child: MaterialApp(home: AdminDashboardScreen())),
-      );
+      final harness = AdminTestHarness();
+      addTearDown(harness.dispose);
+
+      await tester.pumpWidget(harness.wrap(const AdminDashboardScreen()));
       await tester.pump();
       await tester.pumpAndSettle();
 
@@ -165,9 +173,10 @@ void main() {
 
     testWidgets('tapping the Audit log action opens the audit log screen',
         (tester) async {
-      await tester.pumpWidget(
-        const ProviderScope(child: MaterialApp(home: AdminDashboardScreen())),
-      );
+      final harness = AdminTestHarness();
+      addTearDown(harness.dispose);
+
+      await tester.pumpWidget(harness.wrap(const AdminDashboardScreen()));
       await tester.pump();
       await tester.pumpAndSettle();
 
@@ -179,12 +188,15 @@ void main() {
 
     testWidgets('tapping an access attempt with a matching profile opens '
         'that user\'s detail screen', (tester) async {
+      final harness = AdminTestHarness();
+      addTearDown(harness.dispose);
+
       tester.view.physicalSize = const Size(1200, 2000);
       tester.view.devicePixelRatio = 1.0;
       addTearDown(tester.view.resetPhysicalSize);
       addTearDown(tester.view.resetDevicePixelRatio);
 
-      await adminAccessAttemptLogRepository.recordAttempt(AdminAccessAttemptLog(
+      await harness.accessAttemptLogRepository.recordAttempt(AdminAccessAttemptLog(
         logId: 'access-attempt-test-reviewable',
         attemptedUserId: 'user-101', // seeded as Alice Tan
         attemptedEmail: 'alice.tan@example.com',
@@ -193,7 +205,15 @@ void main() {
       ));
 
       await tester.pumpWidget(
-        const ProviderScope(child: MaterialApp(home: AdminDashboardScreen())),
+        harness.wrap(
+          AdminDashboardScreen(
+            userDetailScreenBuilder: (userId) => AdminUserDetailScreen(
+              userId: userId,
+              controller: harness.userDetailController(),
+              accountActionsRepository: harness.accountActionsRepository,
+            ),
+          ),
+        ),
       );
       await tester.pump();
       await tester.pumpAndSettle();
@@ -207,12 +227,15 @@ void main() {
 
     testWidgets('an access attempt with no matching profile is not '
         'tappable', (tester) async {
+      final harness = AdminTestHarness();
+      addTearDown(harness.dispose);
+
       tester.view.physicalSize = const Size(1200, 2000);
       tester.view.devicePixelRatio = 1.0;
       addTearDown(tester.view.resetPhysicalSize);
       addTearDown(tester.view.resetDevicePixelRatio);
 
-      await adminAccessAttemptLogRepository.recordAttempt(AdminAccessAttemptLog(
+      await harness.accessAttemptLogRepository.recordAttempt(AdminAccessAttemptLog(
         logId: 'access-attempt-test-unreviewable',
         attemptedUserId: 'no-such-user-id',
         attemptedEmail: 'ghost@example.com',
@@ -220,9 +243,7 @@ void main() {
         createdAt: DateTime.now(),
       ));
 
-      await tester.pumpWidget(
-        const ProviderScope(child: MaterialApp(home: AdminDashboardScreen())),
-      );
+      await tester.pumpWidget(harness.wrap(const AdminDashboardScreen()));
       await tester.pump();
       await tester.pumpAndSettle();
 

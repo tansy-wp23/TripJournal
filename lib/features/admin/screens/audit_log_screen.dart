@@ -15,7 +15,17 @@ import 'issue_report_detail_screen.dart';
 /// entries via `getHistoryForTarget`. This screen is the only caller of
 /// `AdminAuditLogRepository.getAllEntries`.
 class AuditLogScreen extends ConsumerStatefulWidget {
-  const AuditLogScreen({super.key});
+  const AuditLogScreen({
+    super.key,
+    this.userDetailScreenBuilder,
+    this.issueDetailScreenBuilder,
+  });
+
+  /// Test-only overrides for the screens pushed on tapping an entry — see
+  /// `AdminDashboardScreen.userDetailScreenBuilder`'s doc comment for why
+  /// these exist.
+  final Widget Function(String userId)? userDetailScreenBuilder;
+  final Widget Function(String reportId)? issueDetailScreenBuilder;
 
   @override
   ConsumerState<AuditLogScreen> createState() => _AuditLogScreenState();
@@ -137,7 +147,12 @@ class _AuditLogScreenState extends ConsumerState<AuditLogScreen> {
       key: const Key('admin-audit-log-results'),
       itemCount: controller.entries.length,
       itemBuilder: (context, index) =>
-          _AuditLogEntryTile(entry: controller.entries[index], controller: controller),
+          _AuditLogEntryTile(
+            entry: controller.entries[index],
+            controller: controller,
+            userDetailScreenBuilder: widget.userDetailScreenBuilder,
+            issueDetailScreenBuilder: widget.issueDetailScreenBuilder,
+          ),
     );
   }
 }
@@ -229,10 +244,17 @@ class _FilterBar extends ConsumerWidget {
 }
 
 class _AuditLogEntryTile extends StatelessWidget {
-  const _AuditLogEntryTile({required this.entry, required this.controller});
+  const _AuditLogEntryTile({
+    required this.entry,
+    required this.controller,
+    this.userDetailScreenBuilder,
+    this.issueDetailScreenBuilder,
+  });
 
   final AdminAuditLog entry;
   final AuditLogController controller;
+  final Widget Function(String userId)? userDetailScreenBuilder;
+  final Widget Function(String reportId)? issueDetailScreenBuilder;
 
   /// Every entry's target is reachable — `AdminUserDetailScreen` and
   /// `IssueReportDetailScreen` already exist (Phase 4/Phase 11) and already
@@ -245,11 +267,19 @@ class _AuditLogEntryTile extends StatelessWidget {
     switch (entry.targetType) {
       case AdminAuditTargetType.user:
         Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => AdminUserDetailScreen(userId: entry.targetId)),
+          MaterialPageRoute(
+            builder: (_) => userDetailScreenBuilder != null
+                ? userDetailScreenBuilder!(entry.targetId)
+                : AdminUserDetailScreen(userId: entry.targetId),
+          ),
         );
       case AdminAuditTargetType.issueReport:
         Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => IssueReportDetailScreen(reportId: entry.targetId)),
+          MaterialPageRoute(
+            builder: (_) => issueDetailScreenBuilder != null
+                ? issueDetailScreenBuilder!(entry.targetId)
+                : IssueReportDetailScreen(reportId: entry.targetId),
+          ),
         );
     }
   }

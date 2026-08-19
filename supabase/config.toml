@@ -21,6 +21,12 @@ verify_jwt = false
 [functions.account-reactivate-confirm]
 verify_jwt = false
 
+[functions.admin-suspend-user]
+verify_jwt = false
+
+[functions.admin-reactivate-user]
+verify_jwt = false
+
 [api]
 port = 55321
 

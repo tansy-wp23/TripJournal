@@ -3,11 +3,15 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:tripjournal/data/admin_audit_log_repository.dart';
+import 'package:tripjournal/data/mock_admin_access_attempt_log_repository.dart';
+import 'package:tripjournal/data/mock_admin_account_actions_repository.dart';
 import 'package:tripjournal/data/mock_admin_audit_log_repository.dart';
 import 'package:tripjournal/data/mock_admin_user_directory_repository.dart';
 import 'package:tripjournal/data/mock_admin_user_store.dart';
 import 'package:tripjournal/data/mock_issue_report_repository.dart';
+import 'package:tripjournal/features/admin/controller/admin_user_detail_controller.dart';
 import 'package:tripjournal/features/admin/controller/audit_log_controller.dart';
+import 'package:tripjournal/features/admin/controller/issue_report_detail_controller.dart';
 import 'package:tripjournal/features/admin/screens/admin_user_detail_screen.dart';
 import 'package:tripjournal/features/admin/screens/audit_log_screen.dart';
 import 'package:tripjournal/features/admin/screens/issue_report_detail_screen.dart';
@@ -18,12 +22,20 @@ void main() {
 
   // Against the default seeded MockAdminUserStore/MockIssueReportRepository
   // — same real-looking names ("Alice Tan", "Admin Account") every other
-  // admin screen's tests already resolve against.
+  // admin screen's tests already resolve against. Shared instances (not
+  // built fresh inside AuditLogController) so a test that also navigates
+  // into AdminUserDetailScreen/IssueReportDetailScreen can hand those
+  // pushed screens the exact same seeded data via
+  // AuditLogScreen's builder-override params.
+  final userDirectoryRepository = MockAdminUserDirectoryRepository(MockAdminUserStore());
+  final issueReportRepository =
+      MockIssueReportRepository(auditLogRepository: MockAdminAuditLogRepository());
+
   AuditLogController buildController(AdminAuditLogRepository auditLogRepository) {
     return AuditLogController(
       auditLogRepository,
-      MockAdminUserDirectoryRepository(MockAdminUserStore()),
-      MockIssueReportRepository(auditLogRepository: MockAdminAuditLogRepository()),
+      userDirectoryRepository,
+      issueReportRepository,
     );
   }
 
@@ -59,11 +71,47 @@ void main() {
     repository = MockAdminAuditLogRepository();
   });
 
-  Future<void> pumpScreen(WidgetTester tester, AuditLogController controller) async {
+  Future<void> pumpScreen(
+    WidgetTester tester,
+    AuditLogController controller, {
+    bool withNavigationTargets = false,
+  }) async {
+    // withNavigationTargets wires AuditLogScreen's builder overrides so
+    // tapping into AdminUserDetailScreen/IssueReportDetailScreen resolves
+    // against this same repository, rather than the real (Phase 7/14)
+    // Supabase-backed global — see AdminDashboardScreen's
+    // userDetailScreenBuilder doc comment for why the override exists.
+    final auditLogRepositoryForDetail = MockAdminAuditLogRepository();
     await tester.pumpWidget(
       ProviderScope(
         overrides: [auditLogControllerProvider.overrideWith((ref) => controller)],
-        child: const MaterialApp(home: AuditLogScreen()),
+        child: MaterialApp(
+          home: withNavigationTargets
+              ? AuditLogScreen(
+                  userDetailScreenBuilder: (userId) => AdminUserDetailScreen(
+                    userId: userId,
+                    controller: AdminUserDetailController(
+                      userDirectoryRepository,
+                      auditLogRepositoryForDetail,
+                      MockAdminAccessAttemptLogRepository(),
+                    ),
+                    accountActionsRepository: MockAdminAccountActionsRepository(
+                      store: MockAdminUserStore(),
+                      auditLogRepository: auditLogRepositoryForDetail,
+                    ),
+                  ),
+                  issueDetailScreenBuilder: (reportId) => IssueReportDetailScreen(
+                    reportId: reportId,
+                    controller: IssueReportDetailController(
+                      issueReportRepository,
+                      userDirectoryRepository,
+                      auditLogRepositoryForDetail,
+                    ),
+                    issueReportRepositoryOverride: issueReportRepository,
+                  ),
+                )
+              : const AuditLogScreen(),
+        ),
       ),
     );
     await tester.pump(); // triggers the post-frame load callback
@@ -99,7 +147,7 @@ void main() {
         action: AdminAction.suspend,
         createdAt: DateTime.now(),
       ));
-      await pumpScreen(tester, buildController(repository));
+      await pumpScreen(tester, buildController(repository), withNavigationTargets: true);
 
       await tester.tap(find.text('Suspended'));
       await tester.pumpAndSettle();
@@ -118,7 +166,7 @@ void main() {
         action: AdminAction.issueMarkResolved,
         createdAt: DateTime.now(),
       ));
-      await pumpScreen(tester, buildController(repository));
+      await pumpScreen(tester, buildController(repository), withNavigationTargets: true);
 
       await tester.tap(find.text('Marked Resolved'));
       await tester.pumpAndSettle();
@@ -136,7 +184,7 @@ void main() {
         action: AdminAction.issueMarkResolved,
         createdAt: DateTime.now(),
       ));
-      await pumpScreen(tester, buildController(repository));
+      await pumpScreen(tester, buildController(repository), withNavigationTargets: true);
 
       await tester.tap(find.text('Marked Resolved'));
       await tester.pumpAndSettle();

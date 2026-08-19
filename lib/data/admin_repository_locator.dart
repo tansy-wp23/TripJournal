@@ -1,3 +1,5 @@
+import 'package:supabase_flutter/supabase_flutter.dart';
+
 import 'admin_access_attempt_log_repository.dart';
 import 'admin_account_actions_repository.dart';
 import 'admin_audit_log_repository.dart';
@@ -5,67 +7,58 @@ import 'admin_dashboard_repository.dart';
 import 'admin_user_directory_repository.dart';
 import 'auth_repository.dart';
 import 'issue_report_repository.dart';
-import 'mock_admin_access_attempt_log_repository.dart';
-import 'mock_admin_account_actions_repository.dart';
-import 'mock_admin_audit_log_repository.dart';
-import 'mock_admin_dashboard_repository.dart';
-import 'mock_admin_user_directory_repository.dart';
-import 'mock_admin_user_store.dart';
-import 'mock_auth_repository.dart';
-import 'mock_issue_report_repository.dart';
+import 'supabase_admin_access_attempt_log_repository.dart';
+import 'supabase_admin_account_actions_repository.dart';
+import 'supabase_admin_audit_log_repository.dart';
+import 'supabase_admin_dashboard_repository.dart';
+import 'supabase_admin_user_directory_repository.dart';
+import 'supabase_issue_report_repository.dart';
+import 'user_management_repository_locator.dart' as user_management;
 
 /// The one place the app resolves its admin repositories from — mirrors
-/// `repository_locator.dart` / `user_management_repository_locator.dart` so
-/// the Phase 7 swap to Supabase is a one-line change here.
+/// `user_management_repository_locator.dart`.
 ///
-/// All four are wired to mocks for Phases 1–6, and share a single
-/// [MockAdminUserStore] so a suspend/reactivate action taken through
-/// [adminAccountActionsRepository] is immediately reflected in
-/// [adminUserDirectoryRepository] search results and
-/// [adminDashboardRepository] counts.
-final MockAdminUserStore _adminUserStore = MockAdminUserStore();
-
-/// Sign-in for the admin flow, per Architecture Decision 2 / `PROGRESS.md`
-/// Open Decision 1: same `AuthRepository` interface and `MockAuthRepository`
-/// implementation the traveler flow uses — no new auth repository type.
+/// Phase 7/14 (`ADMIN_MODULE_IMPLEMENTATION_PLAN.md`): all repositories
+/// are wired to their real Supabase implementations. The mock
+/// implementations remain in the codebase for tests (`AdminTestHarness`,
+/// `test/support/admin_test_harness.dart`) and offline/dev-mode use, but
+/// are no longer wired by default.
 ///
-/// This is a **separate instance** of that same mock class, seeded with the
-/// admin persona's id/email (matching `MockAdminUserStore`'s `admin-001`
-/// row) rather than the traveler flow's default `user-001`. That split only
-/// exists because `MockAuthRepository` can simulate exactly one signed-in
-/// persona per instance — the real Supabase Auth backend (Phase 7) is one
-/// shared service for both flows, so this collapses back to a single
-/// `authRepository` instance then; see `docs/admin/PROGRESS.md` Phase 2.
-final AuthRepository adminAuthRepository = MockAuthRepository(
-  mockUserId: 'admin-001',
-  mockEmail: 'admin@tripjournal.dev',
-);
+/// Lazy getters (not top-level finals) so importing this file in a test
+/// never touches `Supabase.instance` — that throws unless
+/// `Supabase.initialize` has run, which widget tests don't do — mirrors
+/// `user_management_repository_locator.dart`'s own rationale.
+SupabaseClient get _supabase => Supabase.instance.client;
 
-final AdminUserDirectoryRepository adminUserDirectoryRepository =
-    MockAdminUserDirectoryRepository(_adminUserStore);
+/// Reuses the traveler-facing `authRepository` rather than a separate
+/// instance — Architecture Decision 2 (`ADMIN_MODULE_IMPLEMENTATION_PLAN.md`):
+/// no parallel admin-identity table, administrators sign in through the
+/// same `AuthRepository`/`ProfileRepository` infrastructure. The mock
+/// locator used a *separate* `MockAuthRepository` instance only because a
+/// mock can simulate exactly one signed-in persona per instance; the real
+/// Supabase Auth backend is one shared service for both flows, so this
+/// collapses back to a single instance (see `docs/admin/PROGRESS.md`
+/// Phase 2 and Phase 7).
+AuthRepository get adminAuthRepository => user_management.authRepository;
 
-final AdminDashboardRepository adminDashboardRepository =
-    MockAdminDashboardRepository(_adminUserStore);
+AdminUserDirectoryRepository get adminUserDirectoryRepository =>
+    SupabaseAdminUserDirectoryRepository(_supabase);
 
-final AdminAuditLogRepository adminAuditLogRepository =
-    MockAdminAuditLogRepository();
+AdminDashboardRepository get adminDashboardRepository =>
+    SupabaseAdminDashboardRepository(_supabase);
 
-final AdminAccountActionsRepository adminAccountActionsRepository =
-    MockAdminAccountActionsRepository(
-  store: _adminUserStore,
-  auditLogRepository: adminAuditLogRepository as MockAdminAuditLogRepository,
-);
+AdminAuditLogRepository get adminAuditLogRepository =>
+    SupabaseAdminAuditLogRepository(_supabase);
+
+AdminAccountActionsRepository get adminAccountActionsRepository =>
+    SupabaseAdminAccountActionsRepository(_supabase);
 
 /// Records rejected admin sign-in attempts (`docs/admin/PROGRESS.md`,
 /// post-Phase-3 addition) — a separate table from [adminAuditLogRepository],
 /// see [AdminAccessAttemptLog]'s doc comment for why.
-final AdminAccessAttemptLogRepository adminAccessAttemptLogRepository =
-    MockAdminAccessAttemptLogRepository();
+AdminAccessAttemptLogRepository get adminAccessAttemptLogRepository =>
+    SupabaseAdminAccessAttemptLogRepository(_supabase);
 
-/// PB-06 (submit) through PB-09 (update status) — Sprint 2. Shares
-/// [adminAuditLogRepository] so an issue's status change is recorded in the
-/// same generalized audit table Phase 8 built, alongside suspend/reactivate
-/// entries (`docs/admin/PROGRESS.md` Phase 9).
-final IssueReportRepository issueReportRepository = MockIssueReportRepository(
-  auditLogRepository: adminAuditLogRepository as MockAdminAuditLogRepository,
-);
+/// PB-06 (submit) through PB-09 (update status) — Sprint 2.
+IssueReportRepository get issueReportRepository =>
+    SupabaseIssueReportRepository(_supabase);
