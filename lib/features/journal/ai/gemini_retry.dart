@@ -1,11 +1,16 @@
 import 'package:http/http.dart' as http;
 
 /// Statuses worth trying again. `503 UNAVAILABLE` is the one that actually
-/// bites: `gemini-flash-latest` is a shared alias, and Google returns
-/// "This model is currently experiencing high demand" under load — measured
-/// at roughly a coin flip during one such spike, which turned a working
-/// feature into an intermittently broken one with no code change. The rest
-/// are the usual transient upstream failures.
+/// bites: Google returns "This model is currently experiencing high demand"
+/// under load — measured at roughly a coin flip during one such spike while
+/// [geminiModel] pointed at the busy `gemini-flash-latest` alias, which
+/// turned a working feature into an intermittently broken one with no code
+/// change. The rest are the usual transient upstream failures.
+///
+/// `429` is retried on the assumption it is a per-minute rate limit, which
+/// backing off does clear. A per-*day* quota 429 will burn all three
+/// attempts for nothing, but it fails the same way it would have anyway —
+/// the fix for that one is a different model name, not a longer wait.
 ///
 /// Deliberately excludes 400/401/403/404: a bad key, a revoked key or a
 /// retired model name fail identically on every attempt, so retrying only

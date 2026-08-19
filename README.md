@@ -69,21 +69,30 @@ design (why it's dotenv-based, the safety/tone constraints sent to the model,
 etc.).
 
 The model name is centralized in `lib/features/journal/ai/gemini_model.dart`
-(`geminiModel`, currently `gemini-flash-latest`) — both
+(`geminiModel`, currently `gemini-3.6-flash`) — both
 `GeminiDailyAdviceService` and `GeminiFoodDetectionService` read it from
 there, so there's one place to change if it ever needs to move.
 
 > ⚠️ A valid key isn't a guarantee of working calls — free-tier quota is
-> granted **per model, not per key**, and Google periodically retires model
-> versions. `gemini-2.0-flash` (the original choice) later returned 429
-> `RESOURCE_EXHAUSTED` (`limit: 0`) even with billing enabled on the project.
-> `gemini-flash-latest` is Google's maintained alias for the current
-> recommended flash model, chosen specifically so this doesn't need to be
-> re-diagnosed every time a version is deprecated — but if it ever fails
-> again, check [the models list](https://ai.google.dev/gemini-api/docs/models)
-> for current availability and swap the constant. Failures are graceful:
-> daily advice falls back to a "tap to retry" affordance, food detection
-> falls back to manual entry.
+> granted **per model name, not per key**, and Google periodically retires
+> model versions. Both failure modes have already happened here:
+>
+> - `gemini-2.0-flash` (the original choice) returned 429
+>   `RESOURCE_EXHAUSTED` (`limit: 0`) once its free tier was wound down,
+>   even with billing enabled on the project.
+> - `gemini-flash-latest` (the alias that replaced it) exhausted its
+>   **daily request cap** in ordinary use. Probing found the alias returning
+>   429 while `gemini-3.7-flash` — the model that alias resolves to —
+>   answered normally, so an alias has its own quota bucket separate from
+>   the concrete version behind it. Pinning a version is the fix.
+>
+> Note that `ListModels` still lists models you cannot call:
+> `gemini-2.5-flash` appears in it but returns 404 *"no longer available to
+> new users"*. Always confirm a candidate with a real request before pinning
+> it. If it fails again, check
+> [the models list](https://ai.google.dev/gemini-api/docs/models) and swap
+> the constant. Failures are graceful either way: daily advice falls back to
+> a "tap to retry" affordance, food detection falls back to manual entry.
 
 > ⚠️ **Real device note:** on some Android OEM skins (confirmed on an Infinix
 > running XOS), the modern Android Photo Picker silently reports
