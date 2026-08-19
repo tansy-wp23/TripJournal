@@ -4,11 +4,17 @@ import '../models/verification_code.dart';
 import 'verification_code_repository.dart';
 
 /// Real [VerificationCodeRepository] backed by the Phase 6 Edge Functions
-/// (`verification-send`, `verification-validate`, `verification-resend`).
+/// (`verification-send`, `verification-validate`).
 ///
 /// The Edge Functions handle code generation, hashing (never store
 /// plaintext), `attempt_count` lockout, `expires_at` checks, and email
 /// sending. The client only passes the purpose/code and reads the result.
+///
+/// Note: code *resend* reuses `sendCode` → `verification-send` (which
+/// invalidates prior unused codes and sends a fresh one). The separate
+/// `verification-resend` Edge Function was removed as dead code — the
+/// app's "Resend code" button goes through AccountLifecycleRepository →
+/// sendCode, never through a resend-specific function.
 class SupabaseVerificationCodeRepository implements VerificationCodeRepository {
   SupabaseVerificationCodeRepository(this._client);
 
@@ -42,13 +48,5 @@ class SupabaseVerificationCodeRepository implements VerificationCodeRepository {
       };
     }
     return CodeValidationResult.invalid;
-  }
-
-  @override
-  Future<void> resendCode(VerificationPurpose purpose) async {
-    await _client.functions.invoke(
-      'verification-resend',
-      body: {'purpose': purpose.name},
-    );
   }
 }
