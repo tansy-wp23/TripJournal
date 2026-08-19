@@ -130,6 +130,13 @@ class _CreateEditEntryScreenState extends ConsumerState<CreateEditEntryScreen> {
   late final String _draftEntryId;
   late final String _draftHealthLogId;
 
+  /// The trip this entry belongs to, resolved once in [initState].
+  ///
+  /// Photo uploads need it before the entry is saved — `journal-photos` object
+  /// paths are scoped by trip — so it cannot be worked out at save time the way
+  /// it used to be.
+  late final String _tripId;
+
   @override
   void initState() {
     super.initState();
@@ -148,6 +155,7 @@ class _CreateEditEntryScreenState extends ConsumerState<CreateEditEntryScreen> {
     _photoStorage = widget.photoStorage ?? photo_locator.photoStorage;
     _draftEntryId = entry?.id ?? const Uuid().v4();
     _draftHealthLogId = entry?.healthLog?.id ?? const Uuid().v4();
+    _tripId = entry?.tripId ?? widget.tripId ?? kMockTripId;
 
     if (!_isEditing) {
       _prefillFromHealthData();
@@ -265,7 +273,7 @@ class _CreateEditEntryScreenState extends ConsumerState<CreateEditEntryScreen> {
       // Copy out of the OS cache before storing the path — the picker's own
       // path can be evicted, which is what turns a photo into a broken-image
       // placeholder days later.
-      final stored = await _photoStorage.savePhoto(picked);
+      final stored = await _photoStorage.savePhoto(picked, tripId: _tripId);
       if (!mounted) return;
 
       setState(() {
@@ -312,7 +320,7 @@ class _CreateEditEntryScreenState extends ConsumerState<CreateEditEntryScreen> {
           oversized = true;
           continue;
         }
-        accepted.add(await _photoStorage.savePhoto(file));
+        accepted.add(await _photoStorage.savePhoto(file, tripId: _tripId));
       }
       if (!mounted) return;
 
@@ -424,7 +432,7 @@ class _CreateEditEntryScreenState extends ConsumerState<CreateEditEntryScreen> {
 
       final entry = JournalEntry(
         id: entryId,
-        tripId: existing?.tripId ?? widget.tripId ?? kMockTripId,
+        tripId: _tripId,
         title: title,
         body: body,
         mood: _mood,
@@ -700,6 +708,7 @@ class _CreateEditEntryScreenState extends ConsumerState<CreateEditEntryScreen> {
                     initialStepsFromHealth: _stepsFromHealth,
                     initialCaloriesFromHealth: _caloriesFromHealth,
                     initialShowConnectHealthNote: _showConnectHealthNote,
+                    tripId: _tripId,
                     healthDataSource: widget.healthDataSource,
                     onChanged: (data) {
                       _steps = data.steps;

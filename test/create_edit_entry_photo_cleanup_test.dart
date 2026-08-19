@@ -13,7 +13,7 @@ class _RecordingPhotoStorage implements PhotoStorage {
   final List<String?> deleted = [];
 
   @override
-  Future<String> savePhoto(XFile photo) async => photo.path;
+  Future<String> savePhoto(XFile photo, {required String tripId}) async => photo.path;
 
   @override
   Future<void> deletePhoto(String? path) async => deleted.add(path);

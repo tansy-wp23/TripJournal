@@ -6,8 +6,14 @@
 -- DECISIONS BAKED IN:
 --   * user_id references auth.users(id) directly  [SAFE DEFAULT — see note]
 --   * Entry photos: stored as a text[] array column on journal_entries (simple)
---   * Food/meal photos: NOT persisted (photo is a transient input to AI
---     detection only) — meals has no photo column
+--   * Food/meal photos: PERSISTED on meals.photo_url  [REVERSED 2026-08-19]
+--     Originally "NOT persisted (transient input to AI detection only)". The
+--     app outgrew that: Meal.photoPath keeps the user's photo whether or not
+--     detection recognised the food, the PDF export prints meal photos, and
+--     the trip slideshow has a food-photo toggle. Keeping the column is what
+--     makes those shipped features survive a restart.
+--   * Entry location: journal_entries.location jsonb (GeoTag) — added with the
+--     entry location picker, see migration 202608190001
 --   * Row Level Security (RLS) enabled on every table, with per-user policies
 --
 -- ⚠️ REVISIT AT INTEGRATION:
@@ -64,6 +70,7 @@ create table public.journal_entries (
   body         text check (char_length(body) <= 5000),
   mood         text,                                -- e.g. 'happy','tired','excited','stressed','neutral'
   photo_urls   text[] not null default '{}',        -- Storage URLs; app enforces max 5
+  location     jsonb,                               -- GeoTag; null when untagged
   entry_date   date not null,                       -- which calendar day of the trip this belongs to
   created_at   timestamptz not null default now(),  -- entry timestamp (orders multiple same-day entries)
   updated_at   timestamptz not null default now(),
@@ -78,6 +85,7 @@ create table public.journal_entries (
 
 comment on table public.journal_entries is 'Journal entries belonging to a trip; multiple per day allowed.';
 comment on column public.journal_entries.photo_urls is 'Array of Supabase Storage URLs. Actual files live in Storage, not here. App enforces max 5.';
+comment on column public.journal_entries.location is 'GeoTag as JSON: latitude, longitude, placeName, formattedAddress, placeId. Null for an entry with no location tagged.';
 comment on column public.journal_entries.entry_date is 'Calendar day within the trip range. Must fall within trips.start_date..end_date (enforced in app).';
 
 create index journal_entries_trip_id_idx on public.journal_entries (trip_id);
@@ -113,7 +121,7 @@ create index health_logs_user_id_idx on public.health_logs (user_id);
 -- ============================================================================
 -- 4. MEALS
 -- Belongs to a health log. Name required, calories >= 0 (default 0), portion.
--- Food photos are NOT persisted (photo is a transient input to AI detection).
+-- Food photos ARE persisted on photo_url (reversed 2026-08-19 — see header).
 -- ============================================================================
 create table public.meals (
   id            uuid primary key default gen_random_uuid(),
@@ -123,11 +131,13 @@ create table public.meals (
   calories      integer not null default 0 check (calories >= 0),  -- blank defaults to 0
   portion       text not null default 'regular' check (portion in ('small','regular','large')),
   meal_type     text check (meal_type in ('breakfast','lunch','dinner','snack')),
+  photo_url     text,                              -- Storage URL; null if typed by hand
   created_at    timestamptz not null default now(),
   updated_at    timestamptz not null default now()
 );
 
-comment on table public.meals is 'Meals for a health log. Food photos are NOT stored (transient detection input only).';
+comment on table public.meals is 'Meals for a health log. Food photos ARE stored as a Storage URL on photo_url.';
+comment on column public.meals.photo_url is 'Storage URL of the photo this meal was logged from. Null for a meal typed in by hand. Kept even when AI detection failed to recognise the food.';
 comment on column public.meals.portion is 'small/regular/large. Used to scale the calorie estimate (editable).';
 
 create index meals_health_log_id_idx on public.meals (health_log_id);

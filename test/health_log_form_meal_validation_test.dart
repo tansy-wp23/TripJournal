@@ -5,7 +5,7 @@ import 'package:tripjournal/features/journal/widgets/health_log_form.dart';
 
 Future<void> pumpForm(WidgetTester tester) async {
   await tester.pumpWidget(MaterialApp(
-    home: Scaffold(body: HealthLogForm(entryDate: DateTime(2026, 1, 1), onChanged: (_) {})),
+    home: Scaffold(body: HealthLogForm(tripId: 'trip-001', entryDate: DateTime(2026, 1, 1), onChanged: (_) {})),
   ));
   await tester.pumpAndSettle();
 }

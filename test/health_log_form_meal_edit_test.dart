@@ -13,6 +13,7 @@ void main() {
     await tester.pumpWidget(MaterialApp(
       home: Scaffold(
         body: HealthLogForm(
+              tripId: 'trip-001',
           entryDate: DateTime(2026, 1, 1),
           initialMeals: const [seedMeal],
           onChanged: (data) => latest = data,
@@ -39,6 +40,7 @@ void main() {
     await tester.pumpWidget(MaterialApp(
       home: Scaffold(
         body: HealthLogForm(
+              tripId: 'trip-001',
           entryDate: DateTime(2026, 1, 1),
           initialMeals: const [seedMeal],
           onChanged: (data) => latest = data,

@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:uuid/uuid.dart';
 
 import '../../../data/photo_storage.dart';
 import '../../../data/repository_locator.dart' as photo_locator;
@@ -38,6 +39,7 @@ class HealthLogForm extends StatefulWidget {
     this.initialCaloriesBurned,
     this.initialMeals = const [],
     required this.entryDate,
+    required this.tripId,
     this.initialStepsFromHealth = false,
     this.initialCaloriesFromHealth = false,
     this.initialShowConnectHealthNote = false,
@@ -48,6 +50,10 @@ class HealthLogForm extends StatefulWidget {
 
   final int initialSteps;
   final int? initialCaloriesBurned;
+
+  /// Trip the parent entry belongs to. Forwarded to [PhotoStorage.savePhoto]
+  /// for meal photos, whose `journal-photos` object paths are scoped by trip.
+  final String tripId;
   final List<Meal> initialMeals;
 
   /// The calendar day to query the health platform for — matches how
@@ -206,7 +212,10 @@ class _HealthLogFormState extends State<HealthLogForm> {
   Future<void> _addMeal() async {
     final meal = await showDialog<Meal>(
       context: context,
-      builder: (_) => _MealDialog(photoStorage: _photoStorage),
+      builder: (_) => _MealDialog(
+        photoStorage: _photoStorage,
+        tripId: widget.tripId,
+      ),
     );
     if (meal == null) return;
     setState(() => _meals = [..._meals, meal]);
@@ -219,6 +228,7 @@ class _HealthLogFormState extends State<HealthLogForm> {
       builder: (_) => _MealDialog(
         initialMeal: _meals[index],
         photoStorage: _photoStorage,
+        tripId: widget.tripId,
       ),
     );
     if (updated == null) return;
@@ -405,10 +415,15 @@ class _HealthLogFormState extends State<HealthLogForm> {
 /// fields are pre-filled and the result preserves the meal's original [id]
 /// so the caller can replace it in place rather than appending a new one.
 class _MealDialog extends StatefulWidget {
-  const _MealDialog({this.initialMeal, required this.photoStorage});
+  const _MealDialog({
+    this.initialMeal,
+    required this.photoStorage,
+    required this.tripId,
+  });
 
   final Meal? initialMeal;
   final PhotoStorage photoStorage;
+  final String tripId;
 
   bool get isEditing => initialMeal != null;
 
@@ -529,7 +544,10 @@ class _MealDialogState extends State<_MealDialog> {
 
       // Copy first, then detect from the stored copy — the picker's own path
       // lives in an evictable cache directory.
-      final stored = await widget.photoStorage.savePhoto(picked);
+      final stored = await widget.photoStorage.savePhoto(
+        picked,
+        tripId: widget.tripId,
+      );
       if (!mounted) return;
       setState(() => _photoPath = stored);
 
@@ -590,7 +608,10 @@ class _MealDialogState extends State<_MealDialog> {
     Navigator.pop(
       context,
       Meal(
-        id: widget.initialMeal?.id ?? 'meal-${DateTime.now().microsecondsSinceEpoch}',
+        // A real UUID, not 'meal-<microseconds>': `meals.id` is a uuid column,
+        // so the old format failed the insert outright with 22P02 the moment
+        // BACKEND_MODE=supabase was switched on. Editing keeps the existing id.
+        id: widget.initialMeal?.id ?? const Uuid().v4(),
         name: name,
         calories: calories,
         mealType: _mealType,

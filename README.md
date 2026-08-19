@@ -151,6 +151,32 @@ Build and test against the **mock** implementations first, then swap in the real
 data source. This keeps the app runnable in an emulator without a network or a
 physical device.
 
+### `BACKEND_MODE` — one switch for the whole app
+
+Which data sources the app uses is **one** decision, not one per repository:
+
+```bash
+flutter run                                  # mock (the default)
+flutter run --dart-define=BACKEND_MODE=supabase
+```
+
+`lib/data/backend_mode.dart` reads it once; `repository_locator.dart` and
+`trip_repository_locator.dart` both route through it, covering the journal
+repository, photo storage, trip repository, trip cover storage and the
+current-user-id provider.
+
+It is a single switch on purpose. When each locator chose independently, a
+half-migrated state was representable — real journal rows written against a mock
+trip id, or a real trip owned by `kMockUserId`, which no `auth.uid()` will ever
+match. Those states fail **silently**: the write is accepted and the row simply
+never comes back. An unrecognised value (`BACKEND_MODE=supabse`) throws rather
+than falling back to mock, for the same reason.
+
+`flutter test` passes no define, so the suite always runs on mock.
+
+**Supabase mode needs a signed-in user.** Every RLS policy gates on `auth.uid()`,
+and an anonymous session doesn't error — it reads back empty.
+
 ### State management
 
 **Riverpod.** Please stick with it — don't introduce a second state solution.

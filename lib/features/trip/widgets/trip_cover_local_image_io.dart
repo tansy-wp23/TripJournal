@@ -28,6 +28,24 @@ Widget? buildTripCoverLocalImage(
     );
   }
 
+  // Photos stored in Supabase Storage come back as public URLs rather than
+  // device paths. Mirrors TripCoverPhoto's own scheme check so entry photos,
+  // the full-screen viewer, the trip carousel and the slideshow all render a
+  // remote photo through this one shim instead of each learning about URLs.
+  final uri = Uri.tryParse(path);
+  if (uri != null &&
+      uri.hasAuthority &&
+      (uri.scheme == 'http' || uri.scheme == 'https')) {
+    return Image.network(
+      path,
+      width: width,
+      height: height,
+      cacheWidth: cacheWidth,
+      fit: fit,
+      errorBuilder: errorBuilder,
+    );
+  }
+
   final file = File(path);
   if (!file.existsSync()) return null;
   return Image.file(

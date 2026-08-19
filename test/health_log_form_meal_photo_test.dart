@@ -13,7 +13,7 @@ class _RecordingPhotoStorage implements PhotoStorage {
   final List<String?> deleted = [];
 
   @override
-  Future<String> savePhoto(XFile photo) async {
+  Future<String> savePhoto(XFile photo, {required String tripId}) async {
     saved.add(photo.path);
     return '/app/photos/copied.jpg';
   }
@@ -38,6 +38,7 @@ Widget _form({
   return MaterialApp(
     home: Scaffold(
       body: HealthLogForm(
+              tripId: 'trip-001',
         entryDate: DateTime(2026, 1, 1),
         initialMeals: initialMeals,
         photoStorage: photoStorage,

@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter/services.dart' show rootBundle;
+import 'package:http/http.dart' as http;
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
@@ -26,6 +27,18 @@ Future<pw.MemoryImage?> _loadPhoto(String path) async {
       final data = await rootBundle.load(path);
       return pw.MemoryImage(data.buffer.asUint8List());
     }
+    // Under BACKEND_MODE=supabase a photo is a Storage URL, not a device path.
+    // Without this branch every photo silently vanished from the export in that
+    // mode -- the same "omitted, never thrown" outcome as a missing file, which
+    // is precisely why it would not have been noticed.
+    final uri = Uri.tryParse(path);
+    if (uri != null &&
+        uri.hasAuthority &&
+        (uri.scheme == 'http' || uri.scheme == 'https')) {
+      final response = await http.get(uri);
+      if (response.statusCode != 200) return null;
+      return pw.MemoryImage(response.bodyBytes);
+    }
     final file = File(path);
     if (!await file.exists()) return null;
     final bytes = await file.readAsBytes();
@@ -37,10 +50,12 @@ Future<pw.MemoryImage?> _loadPhoto(String path) async {
 
 /// Meal photos for [entry], keyed by the meal's **index** in the health log.
 ///
-/// Index rather than `Meal.id` deliberately: ids are minted from
-/// `microsecondsSinceEpoch`, so two meals added in the same microsecond can
-/// collide, and a collision here would print one meal's photo beside another's
-/// name. Position is unambiguous.
+/// Index rather than `Meal.id` deliberately. Ids used to be minted from
+/// `microsecondsSinceEpoch`, so two meals added in the same microsecond could
+/// collide and print one meal's photo beside another's name. They are UUIDs
+/// now, so that specific collision is gone, but position stays the key: it is
+/// what the caller already has, and it cannot go stale against an id scheme
+/// that changes again.
 Future<Map<int, pw.MemoryImage>> _loadMealPhotos(JournalEntry entry) async {
   final meals = entry.healthLog?.meals ?? const <Meal>[];
   final images = <int, pw.MemoryImage>{};

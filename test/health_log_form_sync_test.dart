@@ -53,6 +53,7 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: HealthLogForm(
+              tripId: 'trip-001',
             entryDate: DateTime(2026, 4, 10),
             initialShowConnectHealthNote: initialShowConnectHealthNote,
             healthDataSource: healthDataSource,
