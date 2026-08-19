@@ -20,9 +20,6 @@ abstract class VerificationCodeRepository {
     required String code,
     required VerificationPurpose purpose,
   });
-
-  /// Invalidates the previous code and sends a fresh one.
-  Future<void> resendCode(VerificationPurpose purpose);
 }
 
 /// Outcome of validating a submitted code.

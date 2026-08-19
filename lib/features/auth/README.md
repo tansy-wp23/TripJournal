@@ -95,8 +95,8 @@ reactivation is server-side).
 - OTP: 6 digits (10^6 ≈ 20 bits of entropy), 10-minute TTL — see "Open issues"
   below for the entropy trade-off.
 - `attempt_count` lockout after 5 wrong attempts on `verification-validate`.
-- `verification-send` / `verification-resend` are **rate-limited** (one code per
-  user+purpose per 60s) to prevent email spamming.
+- `verification-send` is **rate-limited** (one code per user+purpose per 60s)
+  to prevent email spamming.
 
 ## Testing
 

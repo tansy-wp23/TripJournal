@@ -120,19 +120,4 @@ void main() {
       expect(result, CodeValidationResult.invalid);
     });
   });
-
-  group('resendCode', () {
-    test('invokes verification-resend with the purpose', () async {
-      final repository = _repository(
-        MockClient((request) async {
-          expect(request.method, 'POST');
-          expect(request.url.path, '/functions/v1/verification-resend');
-          expect(jsonDecode(request.body), {'purpose': 'deactivation'});
-          return _jsonResponse({'ok': true}, request: request);
-        }),
-      );
-
-      await repository.resendCode(VerificationPurpose.deactivation);
-    });
-  });
 }

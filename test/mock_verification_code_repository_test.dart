@@ -83,12 +83,13 @@ void main() {
       expect(result, CodeValidationResult.expired);
     });
 
-    test('resendCode invalidates the previous code', () async {
+    test('sendCode again (resend) invalidates the previous code', () async {
       final repo = MockVerificationCodeRepository();
       await repo.sendCode(VerificationPurpose.reactivation);
       final firstCode = repo.activeCode;
 
-      await repo.resendCode(VerificationPurpose.reactivation);
+      // Resend reuses sendCode — a fresh codeID replaces the old one.
+      await repo.sendCode(VerificationPurpose.reactivation);
 
       final secondCode = repo.activeCode;
       expect(secondCode, isNotNull);

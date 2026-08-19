@@ -12,9 +12,6 @@ verify_jwt = false
 [functions.verification-validate]
 verify_jwt = false
 
-[functions.verification-resend]
-verify_jwt = false
-
 [functions.account-deactivate-confirm]
 verify_jwt = false
 

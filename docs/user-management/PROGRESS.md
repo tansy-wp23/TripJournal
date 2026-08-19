@@ -597,6 +597,11 @@ The real backend, deployed directly to the Supabase project
   - `verification-validate` — checks a code without consuming it; returns
     `valid`/`invalid`/`expired`/`locked`/`not_found`.
   - `verification-resend` — same as send (invalidates prior + sends fresh).
+    **Later removed as dead code** (post-Phase 8): the app's "Resend code" button
+    routes through `verification-send` only (see `SupabaseVerificationCodeRepository`),
+    so `verification-resend` was never invoked. Removed from `config.toml`, the
+    function directory was deleted, and the deployed function was dropped from
+    Supabase. See "Dead code removal" below.
   - `account-deactivate-confirm` — validates the code, sets
     `status = deactivated` + `deactivated_at`, then
     `auth.admin.signOut(userId)` (Architecture Decision 3 — terminates all
@@ -616,7 +621,7 @@ The real backend, deployed directly to the Supabase project
 - `supabase/functions/_shared/email.ts` (new)
 - `supabase/functions/verification-send/index.ts` (new)
 - `supabase/functions/verification-validate/index.ts` (new)
-- `supabase/functions/verification-resend/index.ts` (new)
+- `supabase/functions/verification-resend/index.ts` (new — later deleted as dead code)
 - `supabase/functions/account-deactivate-confirm/index.ts` (new)
 - `supabase/functions/account-reactivate-confirm/index.ts` (new)
 - `supabase/config.toml` (modified — registered the 5 new functions)
@@ -732,8 +737,8 @@ changed.
   maps `Profile` model ↔ `profiles` table (camelCase ↔ snake_case), mirroring
   `trip_supabase_mapper.dart`.
 - **`SupabaseVerificationCodeRepository`** (`lib/data/supabase_verification_code_repository.dart`)
-  — calls the Phase 6 Edge Functions (`verification-send` / `verification-validate` /
-  `verification-resend`), mapping the server's `result` string to
+  — calls the Phase 6 Edge Functions (`verification-send` / `verification-validate`),
+  mapping the server's `result` string to
   `CodeValidationResult` (`valid`→valid, `expired`→expired, anything else
   including `invalid`/`locked`/`not_found`→invalid).
 - **`SupabaseAccountLifecycleRepository`**
@@ -769,7 +774,7 @@ changed.
     `connection:` key. The API drifted between Phase 6 authoring and Phase 7
     running; fixed to compile against the live version.
   - All 5 Edge Functions (`verification-send`, `verification-validate`,
-    `verification-resend`, `account-deactivate-confirm`,
+    `verification-resend` (later removed as dead code), `account-deactivate-confirm`,
     `account-reactivate-confirm`): fixed a **critical client-architecture bug**.
     Phase 6 built a single client with the service-role key *and* the user's JWT
     overriding `Authorization` — which silently defeated the RLS bypass (the
@@ -832,7 +837,7 @@ Modified:
 - `supabase/functions/_shared/email.ts` (denomailer API fix)
 - `supabase/functions/verification-send/index.ts` (user + service-role client split)
 - `supabase/functions/verification-validate/index.ts` (client split)
-- `supabase/functions/verification-resend/index.ts` (client split)
+- `supabase/functions/verification-resend/index.ts` (client split - later deleted as dead code)
 - `supabase/functions/account-deactivate-confirm/index.ts` (client split + `consumeCode`)
 - `supabase/functions/account-reactivate-confirm/index.ts` (client split + `consumeCode`)
 - `supabase/migrations/202608140001_user_management.sql` (`handle_new_user` → `SECURITY DEFINER`)
@@ -923,7 +928,7 @@ Modified:
   (Architecture Decision 7).
 - **`profiles` UPDATE policy hardened** with `is_active_user()` (defense in depth;
   reactivation is server-side, so the client flow is unaffected).
-- **Rate limiting** (`codes.ts` + `verification-send` + `verification-resend`) —
+- **Rate limiting** (`codes.ts` + `verification-send`) —
   `isRateLimited()` blocks a send per user+purpose within `RATE_LIMIT_WINDOW_SECONDS`
   (60s) -> HTTP 429. Complements the `attempt_count` lockout on `validateCode()`
   (which guards *guessing*, not *sending*). Fail-open on a read error.
@@ -940,7 +945,7 @@ Modified:
 - `supabase/functions/_shared/codes.ts` (`RATE_LIMIT_WINDOW_SECONDS`, `isRateLimited()`,
   `gt` on `QueryBuilderLike`)
 - `supabase/functions/verification-send/index.ts` (rate-limit -> 429)
-- `supabase/functions/verification-resend/index.ts` (rate-limit -> 429)
+- `supabase/functions/verification-resend/index.ts` (rate-limit -> 429 - later deleted as dead code)
 - `docs/user-management/PROGRESS.md` (this entry)
 
 > These are SQL / TypeScript / Markdown only — **no Dart changed**, so
@@ -1000,4 +1005,57 @@ Modified:
 - OTP entropy (6 digits ≈ 20 bits) is a known limitation; consider 8 digits / TOTP.
 - Auth Hook (server-side token rejection for deactivated users) is deferred.
 - `202608160001` migration + the `verification-*` function edits require
-  `supabase db push` / `supabase functions deploy` to reach the live project.
+  `supabase db push` / `supabase functions deploy` to reach the live project (now deploys 4 functions, not 5).
+
+
+---
+
+## Dead code removal: verification-resend (post-Phase 8)
+
+### What was done
+
+The `verification-resend` Edge Function and all client-side references to it
+were removed as dead code. It was never invoked by any code path:
+
+- The app's "Resend code" button (`CodeEntryScreen._resend`) routes through
+  `AccountLifecycleRepository.requestReactivation()` / `requestDeactivation()`
+  -> `VerificationCodeRepository.sendCode()` -> the `verification-send` Edge
+  Function. The `resendCode()` method (on the interface + both
+  `Supabase*`/`Mock*` implementations) that would have called
+  `verification-resend` was the only consumer, and it was never wired to the
+  UI.
+
+### Files changed
+
+- `supabase/config.toml` - removed the `[functions.verification-resend]`
+  registration block.
+- `supabase/functions/verification-resend/` - directory deleted (was:
+  `index.ts` + any bundled deps).
+- `lib/data/verification_code_repository.dart` - removed
+  `resendCode()` from the interface.
+- `lib/data/supabase_verification_code_repository.dart` - removed
+  `resendCode()`.
+- `lib/data/mock_verification_code_repository.dart` - removed
+  `resendCode()`; `sendCode()` already handles resend (invalidates prior
+  codes + sends a fresh one), so the mock comment was updated to note resend
+  reuses `sendCode()`.
+- `test/supabase_verification_code_repository_test.dart` - removed
+  `resendCode` test group.
+- `test/mock_verification_code_repository_test.dart` - replaced
+  `resendCode` test with a `sendCode again (resend)` test.
+- `lib/features/auth/README.md` - updated the "Security notes" section to
+  reference only `verification-send` (not `verification-send`/`resend`).
+- `docs/user-management/PROGRESS.md` - this file; Phase 6/7/8 entries
+  annotated with dead-code-removal notes.
+
+### Deployment
+
+- `supabase functions delete verification-resend` - dropped the deployed
+  function from the live Supabase project.
+- No new function deploy needed (the remaining 4 functions are unchanged by
+  this cleanup; their rate-limiting edits from Phase 8 are already live).
+
+### Tests
+
+- Dart: `flutter analyze` + `flutter test` - clean (the `resendCode` method
+  was only referenced in the 2 test files that were updated).
