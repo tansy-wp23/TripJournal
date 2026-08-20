@@ -5,7 +5,7 @@ import { SMTPClient } from "https://deno.land/x/denomailer/mod.ts";
 export interface SendCodeEmailInput {
   to: string;
   code: string;
-  purpose: "deactivation" | "reactivation";
+  purpose: "deactivation" | "reactivation" | "deletion";
 }
 
 export async function sendCodeEmail({
@@ -22,7 +22,9 @@ export async function sendCodeEmail({
   const subject =
     purpose === "deactivation"
       ? "Your TripJournal deactivation code"
-      : "Your TripJournal reactivation code";
+      : purpose === "reactivation"
+        ? "Your TripJournal reactivation code"
+        : "Your TripJournal account deletion code";
   const body =
     `Your TripJournal verification code is: ${code}\n\n` +
     `This code expires in 10 minutes. If you didn't request this, you can safely ignore this email.`;

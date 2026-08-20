@@ -9,13 +9,16 @@ import 'package:tripjournal/features/auth/controller/auth_controller.dart';
 
 /// Owns the mock-auth resources used by a widget test.
 final class AuthTestHarness {
-  AuthTestHarness({MockProfileState profileState = MockProfileState.active})
-    : authRepository = MockAuthRepository(),
-      profileRepository = MockProfileRepository(state: profileState),
-      verificationRepository = MockVerificationCodeRepository() {
+  AuthTestHarness({
+    MockProfileState profileState = MockProfileState.active,
+    MockVerificationCodeRepository? verificationRepository,
+  }) : authRepository = MockAuthRepository(),
+       profileRepository = MockProfileRepository(state: profileState),
+       verificationRepository =
+           verificationRepository ?? MockVerificationCodeRepository() {
     lifecycleRepository = MockAccountLifecycleRepository(
       profileRepository: profileRepository,
-      verificationCodeRepository: verificationRepository,
+      verificationCodeRepository: this.verificationRepository,
     );
     controller = AuthController(
       authRepository,

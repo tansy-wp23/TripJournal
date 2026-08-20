@@ -42,14 +42,15 @@ class _CodeEntryScreenState extends ConsumerState<CodeEntryScreen> {
 
   bool get _isReactivation =>
       widget.purpose == VerificationPurpose.reactivation;
+  bool get _isDeletion => widget.purpose == VerificationPurpose.deletion;
 
   @override
   void initState() {
     super.initState();
     // Auto-send a code when the screen opens. Reactivation already has a
     // code sent during sign-in (AuthController.signInWithGoogle), but
-    // deactivation does not — without this, entering the code would fail
-    // until the user manually presses "Resend code".
+    // deactivation and deletion do not — without this, entering the code
+    // would fail until the user manually presses "Resend code".
     if (!_isReactivation) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _sendInitialCode();
@@ -59,10 +60,22 @@ class _CodeEntryScreenState extends ConsumerState<CodeEntryScreen> {
 
   Future<void> _sendInitialCode() async {
     try {
-      await ref.read(authControllerProvider.notifier).requestDeactivation();
-    } catch (e) {
+      if (_isDeletion) {
+        await ref.read(authControllerProvider.notifier).requestDeletion();
+      } else {
+        await ref.read(authControllerProvider.notifier).requestDeactivation();
+      }
+    } on SendCodeException catch (e) {
       if (mounted) {
-        setState(() => _error = 'Failed to send code: $e');
+        setState(() => _error = _sendCodeErrorMessage(e));
+      }
+    } catch (e) {
+      // Log the raw error for debugging; never show it to the user.
+      debugPrint('Failed to send code: $e');
+      if (mounted) {
+        setState(() => _error = _sendCodeErrorMessage(
+          const SendCodeException(SendCodeFailureKind.other),
+        ));
       }
     }
   }
@@ -71,11 +84,17 @@ class _CodeEntryScreenState extends ConsumerState<CodeEntryScreen> {
   Widget build(BuildContext context) {
     final auth = ref.watch(authControllerProvider);
     final title = widget.title ??
-        (_isReactivation ? 'Reactivate Account' : 'Deactivate Account');
+        (_isReactivation
+            ? 'Reactivate Account'
+            : _isDeletion
+                ? 'Delete Account'
+                : 'Deactivate Account');
     final message = widget.message ??
         (_isReactivation
             ? 'A verification code has been sent to ${auth.session?.email ?? 'your email'}. Enter it below to reactivate your account.'
-            : 'A verification code has been sent to ${auth.session?.email ?? 'your email'}. Enter it below to confirm deactivation.');
+            : _isDeletion
+                ? 'A verification code has been sent to ${auth.session?.email ?? 'your email'}. Enter it below to permanently delete your account. This cannot be undone.'
+                : 'A verification code has been sent to ${auth.session?.email ?? 'your email'}. Enter it below to confirm deactivation.');
 
     return Scaffold(
       appBar: AppBar(
@@ -88,7 +107,11 @@ class _CodeEntryScreenState extends ConsumerState<CodeEntryScreen> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
                 Icon(
-                  _isReactivation ? Icons.lock_reset : Icons.person_off,
+                  _isReactivation
+                      ? Icons.lock_reset
+                      : _isDeletion
+                          ? Icons.delete_forever
+                          : Icons.person_off,
                   size: 64,
                   color: Theme.of(context).colorScheme.primary,
                 ),
@@ -133,7 +156,13 @@ class _CodeEntryScreenState extends ConsumerState<CodeEntryScreen> {
                           height: 18,
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
-                      : Text(_isReactivation ? 'Confirm' : 'Deactivate'),
+                      : Text(
+                          _isReactivation
+                              ? 'Confirm'
+                              : _isDeletion
+                                  ? 'Delete Account'
+                                  : 'Deactivate',
+                        ),
                 ),
                 const SizedBox(height: 12),
                 TextButton(
@@ -170,6 +199,14 @@ class _CodeEntryScreenState extends ConsumerState<CodeEntryScreen> {
             .confirmReactivation(_code);
         // On success, AuthController refreshes the profile → status becomes
         // authenticated → AuthGate routes into the app.
+      } else if (_isDeletion) {
+        await ref.read(authControllerProvider.notifier).deleteAccount(_code);
+        // On success, AuthController signs out → AuthGate swaps to
+        // LoginScreen. Pop any pushed routes (the Profile screen, this
+        // screen) so the root AuthGate's LoginScreen is actually visible.
+        if (mounted) {
+          Navigator.of(this.context).popUntil((route) => route.isFirst);
+        }
       } else {
         await ref
             .read(authControllerProvider.notifier)
@@ -195,8 +232,10 @@ class _CodeEntryScreenState extends ConsumerState<CodeEntryScreen> {
             : 'Incorrect code. Please try again.';
       });
     } catch (e) {
+      // Log the raw error for debugging; never show it to the user.
+      debugPrint('Unexpected error during confirm: $e');
       setState(() {
-        _error = 'An unexpected error occurred: $e';
+        _error = 'Something went wrong. Please try again.';
       });
     } finally {
       if (mounted) {
@@ -214,6 +253,8 @@ class _CodeEntryScreenState extends ConsumerState<CodeEntryScreen> {
     try {
       if (_isReactivation) {
         await ref.read(authControllerProvider.notifier).requestReactivation();
+      } else if (_isDeletion) {
+        await ref.read(authControllerProvider.notifier).requestDeletion();
       } else {
         await ref.read(authControllerProvider.notifier).requestDeactivation();
       }
@@ -222,9 +263,17 @@ class _CodeEntryScreenState extends ConsumerState<CodeEntryScreen> {
           const SnackBar(content: Text('A new code has been sent.')),
         );
       }
-    } catch (e) {
+    } on SendCodeException catch (e) {
       if (mounted) {
-        setState(() => _error = 'Failed to resend code: $e');
+        setState(() => _error = _sendCodeErrorMessage(e));
+      }
+    } catch (e) {
+      // Log the raw error for debugging; never show it to the user.
+      debugPrint('Failed to resend code: $e');
+      if (mounted) {
+        setState(() => _error = _sendCodeErrorMessage(
+          const SendCodeException(SendCodeFailureKind.other),
+        ));
       }
     } finally {
       if (mounted) {
@@ -240,5 +289,20 @@ class _CodeEntryScreenState extends ConsumerState<CodeEntryScreen> {
     } else {
       Navigator.of(context).pop();
     }
+  }
+
+  /// Maps a [SendCodeException] to a plain-language message so a non-technical
+  /// user gets an honest reason without seeing raw exception types.
+  String _sendCodeErrorMessage(SendCodeException e) {
+    return switch (e.kind) {
+      SendCodeFailureKind.rateLimited =>
+        "You've requested a code too recently. Please wait about a minute and try again.",
+      SendCodeFailureKind.serverError =>
+        "We couldn't send your code. Please try again in a moment.",
+      SendCodeFailureKind.networkError =>
+        "We couldn't send your code. Please check your connection and try again.",
+      SendCodeFailureKind.other =>
+        "We couldn't send your code. Please try again.",
+    };
   }
 }

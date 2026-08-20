@@ -741,6 +741,43 @@ void main() {
         expect(controller.status, AuthStatus.authenticated);
       },
     );
+
+    // Phase 9 — Account Deletion (Permanent).
+    test('requestDeletion sends a deletion code', () async {
+      await controller.requestDeletion();
+
+      expect(
+        verificationCodeRepository.activeCode?.purpose,
+        VerificationPurpose.deletion,
+      );
+    });
+
+    test('deleteAccount with valid code signs out', () async {
+      await controller.signInWithGoogle();
+      expect(controller.status, AuthStatus.authenticated);
+
+      await controller.requestDeletion();
+      await controller.deleteAccount(MockVerificationCodeRepository.mockCode);
+
+      expect(controller.status, AuthStatus.signedOut);
+      expect(controller.session, isNull);
+      expect(controller.profile, isNull);
+    });
+
+    test(
+      'deleteAccount with wrong code throws and stays signed in',
+      () async {
+        await controller.signInWithGoogle();
+
+        await controller.requestDeletion();
+
+        expect(
+          () => controller.deleteAccount('000000'),
+          throwsA(isA<CodeValidationException>()),
+        );
+        expect(controller.status, AuthStatus.authenticated);
+      },
+    );
   });
 }
 

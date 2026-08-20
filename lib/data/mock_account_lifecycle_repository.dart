@@ -82,4 +82,24 @@ class MockAccountLifecycleRepository implements AccountLifecycleRepository {
       ),
     );
   }
+
+  @override
+  Future<void> requestDeletion() async {
+    await verificationCodeRepository.sendCode(VerificationPurpose.deletion);
+  }
+
+  @override
+  Future<void> deleteAccount(String code) async {
+    final result = await verificationCodeRepository.validateCode(
+      code: code,
+      purpose: VerificationPurpose.deletion,
+    );
+    if (result != CodeValidationResult.valid) {
+      throw CodeValidationException(result, 'Invalid or expired code.');
+    }
+    // Simulate the server-side auth.users deletion. The real flow's
+    // AuthController.deleteAccount calls signOut() right after this, which
+    // clears the local session/profile — so there's nothing to mutate here;
+    // a valid code is all the mock needs to model.
+  }
 }

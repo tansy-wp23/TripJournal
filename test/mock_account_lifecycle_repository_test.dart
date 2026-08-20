@@ -134,5 +134,32 @@ void main() {
       final profile = await profileRepository.getProfile('user-001');
       expect(profile!.status, AccountStatus.suspended);
     });
+
+    // Phase 9 — Account Deletion (Permanent).
+    test('requestDeletion sends a deletion code', () async {
+      await lifecycleRepository.requestDeletion();
+
+      expect(
+        verificationCodeRepository.activeCode?.purpose,
+        VerificationPurpose.deletion,
+      );
+    });
+
+    test('deleteAccount with valid code succeeds', () async {
+      await lifecycleRepository.requestDeletion();
+
+      await lifecycleRepository.deleteAccount(
+        MockVerificationCodeRepository.mockCode,
+      );
+    });
+
+    test('deleteAccount with wrong code throws', () async {
+      await lifecycleRepository.requestDeletion();
+
+      expect(
+        () => lifecycleRepository.deleteAccount('000000'),
+        throwsA(isA<CodeValidationException>()),
+      );
+    });
   });
 }

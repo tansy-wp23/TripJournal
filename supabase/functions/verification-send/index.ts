@@ -1,7 +1,7 @@
 // verification-send — generate a 6-digit code, store its hash, and email it.
 //
 // POST /functions/v1/verification-send
-//   { "purpose": "deactivation" | "reactivation" }
+//   { "purpose": "deactivation" | "reactivation" | "deletion" }
 //
 // Requires a valid user JWT (Authorization: Bearer <access_token>).
 // Sends to the authenticated user's email from their Profile row.
@@ -63,8 +63,15 @@ Deno.serve(async (req: Request) => {
     );
 
     const { purpose } = await req.json();
-    if (purpose !== "deactivation" && purpose !== "reactivation") {
-      return json({ error: "purpose must be 'deactivation' or 'reactivation'" }, 400);
+    if (
+      purpose !== "deactivation" &&
+      purpose !== "reactivation" &&
+      purpose !== "deletion"
+    ) {
+      return json(
+        { error: "purpose must be 'deactivation', 'reactivation', or 'deletion'" },
+        400,
+      );
     }
 
     // Rate-limit: one code per user+purpose per RATE_LIMIT_WINDOW_SECONDS, to
