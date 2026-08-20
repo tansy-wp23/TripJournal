@@ -48,6 +48,82 @@ void main() {
 
       await repository.sendCode(VerificationPurpose.reactivation);
     });
+
+    test('maps a 429 response to rateLimited', () async {
+      final repository = _repository(
+        MockClient((request) async {
+          return _jsonResponse(
+            {'error': 'A code was sent too recently.'},
+            request: request,
+            statusCode: 429,
+          );
+        }),
+      );
+
+      await expectLater(
+        repository.sendCode(VerificationPurpose.reactivation),
+        throwsA(
+          isA<SendCodeException>()
+              .having((e) => e.kind, 'kind', SendCodeFailureKind.rateLimited),
+        ),
+      );
+    });
+
+    test('maps a 500 response to serverError', () async {
+      final repository = _repository(
+        MockClient((request) async {
+          return _jsonResponse(
+            {'error': 'Internal server error'},
+            request: request,
+            statusCode: 500,
+          );
+        }),
+      );
+
+      await expectLater(
+        repository.sendCode(VerificationPurpose.reactivation),
+        throwsA(
+          isA<SendCodeException>()
+              .having((e) => e.kind, 'kind', SendCodeFailureKind.serverError),
+        ),
+      );
+    });
+
+    test('maps a 400 response to other', () async {
+      final repository = _repository(
+        MockClient((request) async {
+          return _jsonResponse(
+            {'error': 'purpose must be ...'},
+            request: request,
+            statusCode: 400,
+          );
+        }),
+      );
+
+      await expectLater(
+        repository.sendCode(VerificationPurpose.reactivation),
+        throwsA(
+          isA<SendCodeException>()
+              .having((e) => e.kind, 'kind', SendCodeFailureKind.other),
+        ),
+      );
+    });
+
+    test('maps a network failure to networkError', () async {
+      final repository = _repository(
+        MockClient((request) async {
+          throw http.ClientException('Connection refused');
+        }),
+      );
+
+      await expectLater(
+        repository.sendCode(VerificationPurpose.reactivation),
+        throwsA(
+          isA<SendCodeException>()
+              .having((e) => e.kind, 'kind', SendCodeFailureKind.networkError),
+        ),
+      );
+    });
   });
 
   group('validateCode', () {

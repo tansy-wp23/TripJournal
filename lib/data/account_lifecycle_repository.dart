@@ -37,6 +37,24 @@ abstract class AccountLifecycleRepository {
   /// `AccountStatus.suspended` rather than `AccountStatus.deactivated` —
   /// see that exception's doc comment.
   Future<void> confirmReactivation(String code);
+
+  /// Requests permanent account deletion: sends a code to the user's email
+  /// for [VerificationPurpose.deletion]. The user must then call
+  /// [deleteAccount] with that code.
+  ///
+  /// Distinct from deactivation: deactivation is reversible (data intact,
+  /// "I might come back"); deletion is irreversible (right-to-erasure, "I
+  /// want this gone"). Phase 9.
+  Future<void> requestDeletion();
+
+  /// Confirms permanent account deletion with [code]. On success, the
+  /// `auth.users` row is deleted server-side, which cascades to `profiles`
+  /// and `verification_codes` (both have `on delete cascade` FKs). The
+  /// caller must then clear local app state and sign out client-side — the
+  /// local Supabase session now points at a user that no longer exists.
+  ///
+  /// Throws [CodeValidationException] if the code is invalid or expired.
+  Future<void> deleteAccount(String code);
 }
 
 /// Thrown by [AccountLifecycleRepository.confirmReactivation] when the

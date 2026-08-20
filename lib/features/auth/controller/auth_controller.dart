@@ -217,6 +217,24 @@ class AuthController extends ChangeNotifier {
     await signOut();
   }
 
+  /// Sends a permanent-deletion code to the user's email. Used by the
+  /// deletion flow (Phase 9).
+  Future<void> requestDeletion() async {
+    await _accountLifecycleRepository.requestDeletion();
+  }
+
+  /// Confirms permanent account deletion with [code]. On success, explicitly
+  /// clears local app state and signs out — the local Supabase session now
+  /// points at a user that no longer exists, so don't rely on some later API
+  /// call failing naturally to catch this; reset proactively and route to
+  /// login (Phase 9).
+  ///
+  /// Throws [CodeValidationException] if the code is wrong or expired.
+  Future<void> deleteAccount(String code) async {
+    await _accountLifecycleRepository.deleteAccount(code);
+    await signOut();
+  }
+
   /// Called when the user successfully reactivates — refreshes the local
   /// profile state so the UI can react (status becomes authenticated).
   Future<void> onReactivated() async {

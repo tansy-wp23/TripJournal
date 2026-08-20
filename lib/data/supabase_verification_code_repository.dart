@@ -1,3 +1,7 @@
+import 'dart:async';
+import 'dart:io';
+
+import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/verification_code.dart';
@@ -22,10 +26,29 @@ class SupabaseVerificationCodeRepository implements VerificationCodeRepository {
 
   @override
   Future<void> sendCode(VerificationPurpose purpose) async {
-    await _client.functions.invoke(
-      'verification-send',
-      body: {'purpose': purpose.name},
-    );
+    try {
+      await _client.functions.invoke(
+        'verification-send',
+        body: {'purpose': purpose.name},
+      );
+    } on FunctionException catch (e) {
+      // Map the server's HTTP status to a user-friendly failure kind. The
+      // raw exception is rethrown as a SendCodeException so the UI never
+      // has to know about FunctionException.
+      final kind = switch (e.status) {
+        429 => SendCodeFailureKind.rateLimited,
+        >= 500 && <= 599 => SendCodeFailureKind.serverError,
+        _ => SendCodeFailureKind.other,
+      };
+      throw SendCodeException(kind);
+    } on http.ClientException {
+      // The request never reached the server (connection refused, DNS, …).
+      throw const SendCodeException(SendCodeFailureKind.networkError);
+    } on SocketException {
+      throw const SendCodeException(SendCodeFailureKind.networkError);
+    } on TimeoutException {
+      throw const SendCodeException(SendCodeFailureKind.networkError);
+    }
   }
 
   @override

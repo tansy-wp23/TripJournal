@@ -18,6 +18,9 @@ verify_jwt = false
 [functions.account-reactivate-confirm]
 verify_jwt = false
 
+[functions.account-delete-confirm]
+verify_jwt = false
+
 [api]
 port = 55321
 

@@ -1010,6 +1010,189 @@ Modified:
 
 ---
 
+## Phase 9 — Account Deletion (Permanent) (complete)
+
+### What was built
+
+A signed-in user can now permanently delete their account, distinct from the
+existing reversible deactivation flow. Deactivation is for "I want to step
+away, might come back" (reversible, data intact); deletion is for "I want
+this gone" (irreversible, right-to-erasure). Built directly against the real
+backend (no mock-first step — Phases 0–8 were already live).
+
+- **`'deletion'` purpose** added to the `VerificationCode` infrastructure:
+  - `VerificationPurpose.deletion` enum value (`lib/models/verification_code.dart`).
+  - `verification-send` Edge Function now accepts `purpose: "deletion"`.
+  - `email.ts` sends a "Your TripJournal account deletion code" subject.
+  - Migration `202608200001_account_deletion.sql` adds `'deletion'` to the
+    `verification_codes.purpose` check constraint.
+- **New Edge Function `account-delete-confirm`**
+  (`supabase/functions/account-delete-confirm/index.ts`) — follows the exact
+  same two-client pattern as `account-deactivate-confirm` /
+  `account-reactivate-confirm`: user-scoped client (anon key + caller JWT)
+  for `auth.getUser()` identity verification only; service-role client
+  (Authorization left default) for `validateCode`, `auth.admin.deleteUser`,
+  and `consumeCode`. The code is only consumed **after** the delete succeeds,
+  so a failed delete leaves the code valid for a retry without a resend.
+  Deleting the `auth.users` row cascades to `profiles` and
+  `verification_codes` automatically (both have `on delete cascade` FKs from
+  the Phase 6 migration).
+- **Repository methods** — `requestDeletion()` and `deleteAccount(code)` on
+  `AccountLifecycleRepository`, implemented in both
+  `SupabaseAccountLifecycleRepository` (calls `account-delete-confirm`) and
+  `MockAccountLifecycleRepository` (validates the mock code; the controller's
+  `signOut()` clears local state).
+- **`AuthController`** — `requestDeletion()` and `deleteAccount(code)`. On
+  success, `deleteAccount` explicitly calls `signOut()` to clear local app
+  state — the local Supabase session now points at a user that no longer
+  exists, so we reset proactively rather than relying on a later API call
+  failing naturally.
+- **`CodeEntryScreen`** — now handles `purpose: deletion`: auto-sends a
+  deletion code on open, deletion-specific title/message/icon/button text,
+  calls `deleteAccount` on confirm, and pops to root on success.
+- **New `DeleteAccountScreen`**
+  (`lib/features/auth/screens/delete_account_screen.dart`) — the deletion
+  warning/confirmation screen with **real friction**: the user must type
+  "DELETE" into a field to unlock the "Send code" button, deliberately more
+  resistant than the deactivation flow since this can't be undone. Routes to
+  `CodeEntryScreen` with `purpose: deletion`.
+- **`ProfileViewScreen`** — added a "Delete Account" button (with explanatory
+  caption) below the deactivation button, opening `DeleteAccountScreen`.
+
+### Files touched (Phase 9)
+
+New:
+- `supabase/migrations/202608200001_account_deletion.sql`
+- `supabase/functions/account-delete-confirm/index.ts`
+- `lib/features/auth/screens/delete_account_screen.dart`
+- `test/delete_account_screen_test.dart`
+
+Modified:
+- `supabase/functions/verification-send/index.ts` (accept `deletion` purpose)
+- `supabase/functions/_shared/email.ts` (deletion subject)
+- `supabase/config.toml` (register `account-delete-confirm`)
+- `lib/models/verification_code.dart` (`VerificationPurpose.deletion`)
+- `lib/data/account_lifecycle_repository.dart` (`requestDeletion`/`deleteAccount`)
+- `lib/data/supabase_account_lifecycle_repository.dart` (deletion impl)
+- `lib/data/mock_account_lifecycle_repository.dart` (deletion impl)
+- `lib/features/auth/controller/auth_controller.dart` (`requestDeletion`/`deleteAccount`)
+- `lib/features/auth/screens/code_entry_screen.dart` (deletion handling)
+- `lib/features/profile/screens/profile_view_screen.dart` (Delete Account button)
+- `test/mock_account_lifecycle_repository_test.dart` (3 deletion tests)
+- `test/auth_controller_test.dart` (3 deletion tests)
+- `test/code_entry_screen_test.dart` (3 deletion tests)
+- `docs/user-management/PROGRESS.md` (this entry)
+
+### Deployment (completed 2026-08-20)
+
+- `supabase db push` — applied `202608200001_account_deletion.sql` (and
+  `202608190001_journal_entry_location_and_meal_photo.sql`, an un-pushed
+  migration from another module).
+- `supabase functions deploy account-delete-confirm` — deployed.
+- `supabase functions deploy verification-send` — deployed (accepts
+  `deletion` purpose).
+- `supabase functions deploy verification-validate` — deployed (accepts
+  `deletion` purpose; caught during manual review — the initial Phase 9
+  pass updated `verification-send` but missed `verification-validate`,
+  which would have returned 400 for `purpose: "deletion"`).
+- Verified via `supabase projects list` — project `wfuxyatvnztybsaajsfa`
+  (TripJournal) is linked and all four deployments succeeded.
+
+### Cross-module risk (flagged to teammates)
+
+Deletion only cascades cleanly if **every** module's tables that reference
+`auth.users.id` also specify `on delete cascade` (or an explicit
+anonymization strategy) on their own FKs. If Trip/Journal/Health Log don't,
+deleting a user could either fail outright or leave orphaned rows. This
+module can't fix that unilaterally — same category of cross-module dependency
+as the `is_active_user()` flag from Phase 8. **Flag to Trip/Journal/Trip
+Recap/Admin module owners.**
+
+### UX improvement: friendly send/resend error messages (post-manual-test)
+
+After manual testing confirmed the deletion flow works, the raw error strings
+shown on send/resend failure were replaced with plain-language messages so a
+non-technical user gets an honest reason without seeing exception types.
+
+- **`SendCodeException` + `SendCodeFailureKind`** (`lib/data/verification_code_repository.dart`)
+  — a domain exception with a `rateLimited` / `serverError` / `networkError` /
+  `other` kind, mirroring the existing `CodeValidationException` pattern.
+- **`SupabaseVerificationCodeRepository.sendCode()`** now maps:
+  - HTTP 429 → `rateLimited`
+  - HTTP 5xx → `serverError`
+  - `http.ClientException` / `SocketException` / `TimeoutException` → `networkError`
+  - anything else → `other`
+- **`CodeEntryScreen`** shows a friendly message per kind (applies to send +
+  resend, and the generic confirm catch no longer leaks `$e`):
+  - rate limited: *"You've requested a code too recently. Please wait about a minute and try again."*
+  - server error: *"We couldn't send your code. Please try again in a moment."*
+  - network error: *"We couldn't send your code. Please check your connection and try again."*
+  - other: *"We couldn't send your code. Please try again."*
+  - confirm generic: *"Something went wrong. Please try again."*
+- Raw exceptions are still logged via `debugPrint` for debugging.
+- **Tests**: 4 new unit tests in `supabase_verification_code_repository_test.dart`
+  (429/500/400/network mapping) and 4 new widget tests in
+  `code_entry_screen_test.dart` (friendly message per kind). `AuthTestHarness`
+  gained an optional `verificationRepository` parameter to inject a throwing mock.
+
+### Manual test checklist
+
+The automated tests cover the mock/unit layer; these need a real end-to-end
+run against the live backend. **Use a throwaway Google account** — this
+deletes real data.
+
+1. **Happy path** — Profile → Delete Account → verify the "type DELETE"
+   friction field (case-sensitive; `delete` must NOT enable the button) →
+   "Send code" → real email arrives with subject "Your TripJournal account
+   deletion code" → enter code → confirm → lands on login. Signing back in
+   with the same Google account creates a **fresh** account, not a restore.
+2. **"Account is gone" state (most important)** — after deleting, verify no
+   broken "authenticated but the account is gone" state; restart the app and
+   confirm it stays on login (no crash, no stale session).
+3. **Wrong / expired code** — wrong 6-digit code → "Incorrect code. Please
+   try again."; expired code → "This code has expired…".
+4. **Cancel / back** — Cancel on the DELETE screen returns to Profile with no
+   side effects; Back on the code-entry screen returns to the DELETE screen.
+5. **Cross-module cascade (flag to teammates)** — create a trip + journal
+   entry + health log on the test account, delete the account, then query
+   `trips` / `journal_entries` / `health_logs` in Supabase for that user ID.
+   Gone = cascade works; still present = orphaned rows (or the delete failed)
+   — Trip/Journal/Health Log owners need `on delete cascade` on their FKs.
+6. **Regression: deactivation + reactivation** — verify the shared
+   `CodeEntryScreen` changes didn't break the deactivate → sign out →
+   reactivate → back in flow.
+
+### Verification
+
+- `flutter analyze` — no issues found.
+- `flutter test` (mock_account_lifecycle_repository 10, auth_controller 17,
+  code_entry_screen 9, delete_account_screen 4) — all passed.
+- `flutter test test/responsive_layout_test.dart` — all passed (the new
+  "Delete Account" button doesn't overflow at any screen size).
+
+### Definition of Done
+
+- [x] `'deletion'` purpose works through send/resend/validate identically to
+      the other two purposes
+- [x] Confirmation UI has genuine friction (type "DELETE"), visibly distinct
+      from the deactivation flow's UI
+- [x] `account-delete-confirm` deletes the `auth.users` row; the code is only
+      consumed after the delete actually succeeds
+- [x] After deletion, the app lands cleanly on the login screen — no broken
+      "authenticated but the account is gone" state
+- [x] Cross-module cascade risk documented and flagged to teammates
+
+### Next phase (Phase 10) should start with
+
+In-App Activity Log + Sign-In Email Alerts: new `account_activity_log` table,
+`record-sign-in` Edge Function (updates `last_login_at`, logs the event, sends
+the confirmation email), wire `AuthController.signInWithGoogle()` to call it
+(guarded to fire only on a real interactive sign-in, not passive restoration),
+add activity-log inserts to the three confirm functions, `getActivityLog()`
+repository method, the activity screen, and "Last active" on the profile.
+
+---
+
 ## Dead code removal: verification-resend (post-Phase 8)
 
 ### What was done
