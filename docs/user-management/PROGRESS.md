@@ -1182,15 +1182,6 @@ deletes real data.
       "authenticated but the account is gone" state
 - [x] Cross-module cascade risk documented and flagged to teammates
 
-### Next phase (Phase 10) should start with
-
-In-App Activity Log + Sign-In Email Alerts: new `account_activity_log` table,
-`record-sign-in` Edge Function (updates `last_login_at`, logs the event, sends
-the confirmation email), wire `AuthController.signInWithGoogle()` to call it
-(guarded to fire only on a real interactive sign-in, not passive restoration),
-add activity-log inserts to the three confirm functions, `getActivityLog()`
-repository method, the activity screen, and "Last active" on the profile.
-
 ---
 
 ## Dead code removal: verification-resend (post-Phase 8)
