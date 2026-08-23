@@ -44,20 +44,23 @@ void main() {
       expect((await repo.getProfile('user-001'))?.displayName, 'Sang You');
     });
 
-    test('createProfileIfMissing is a no-op when a profile already exists',
+    test('createProfileIfMissing stamps last_login_at on an existing profile',
         () async {
       final repo = MockProfileRepository(state: MockProfileState.active);
 
       final existing = await repo.getProfile('user-001');
+      expect(existing!.lastLoginAt, isNull);
+
       final result = await repo.createProfileIfMissing(
         userId: 'user-001',
         email: 'other@example.com',
         displayName: 'Other',
       );
 
-      expect(result.userID, existing!.userID);
+      expect(result.userID, existing.userID);
       expect(result.email, existing.email);
       expect(result.displayName, existing.displayName);
+      expect(result.lastLoginAt, isNotNull);
     });
 
     test('getProfile returns null for an unknown user', () async {
