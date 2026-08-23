@@ -1135,6 +1135,37 @@ non-technical user gets an honest reason without seeing exception types.
   `code_entry_screen_test.dart` (friendly message per kind). `AuthTestHarness`
   gained an optional `verificationRepository` parameter to inject a throwing mock.
 
+### Post-Phase-9 fix: `last_login_at` was never written (2026-08-23)
+
+**Problem:** `last_login_at` in `public.profiles` was always `NULL`. The
+column was defined in the Phase 6 migration and mapped in the Dart code, but
+**nothing ever wrote to it** — it was planned for the Phase 10 `record-sign-in`
+Edge Function, which was removed due to time constraints.
+
+**Fix:** Stamp `last_login_at` on **every sign-in** (interactive Google
+sign-in and passive session restore) in
+`ProfileRepository.createProfileIfMissing()`, which is called from both
+sign-in paths in `AuthController`:
+
+- `SupabaseProfileRepository.createProfileIfMissing()` — for an existing
+  profile, calls `updateProfile(existing.copyWith(lastLoginAt: DateTime.now()))`;
+  for a new profile, sets `lastLoginAt: now` at creation.
+- `MockProfileRepository.createProfileIfMissing()` — mirrors the same
+  behavior so mock-mode and tests behave consistently.
+
+No backend deployment or new Edge Function was needed — `last_login_at` was
+already in `profileEditableFieldsToSupabaseRow()`, so `updateProfile` persists
+it via RLS-protected direct table access.
+
+**Tests:** updated `supabase_profile_repository_test.dart` (existing-profile
+path now issues a PATCH stamping `last_login_at`, no insert) and
+`mock_profile_repository_test.dart` (stamps `last_login_at` on an existing
+profile). `flutter analyze` clean; full `flutter test` suite passes.
+
+**Note on existing data:** this stamps `last_login_at` going forward. Rows
+that are already `NULL` are left as-is (their true last-login time is
+unknowable); the next sign-in populates the column.
+
 ### Manual test checklist
 
 The automated tests cover the mock/unit layer; these need a real end-to-end
@@ -1181,15 +1212,6 @@ deletes real data.
 - [x] After deletion, the app lands cleanly on the login screen — no broken
       "authenticated but the account is gone" state
 - [x] Cross-module cascade risk documented and flagged to teammates
-
-### Next phase (Phase 10) should start with
-
-In-App Activity Log + Sign-In Email Alerts: new `account_activity_log` table,
-`record-sign-in` Edge Function (updates `last_login_at`, logs the event, sends
-the confirmation email), wire `AuthController.signInWithGoogle()` to call it
-(guarded to fire only on a real interactive sign-in, not passive restoration),
-add activity-log inserts to the three confirm functions, `getActivityLog()`
-repository method, the activity screen, and "Last active" on the profile.
 
 ---
 

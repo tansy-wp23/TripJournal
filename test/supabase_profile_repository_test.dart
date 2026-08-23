@@ -100,15 +100,25 @@ void main() {
   });
 
   group('createProfileIfMissing', () {
-    test('returns existing profile without inserting', () async {
+    test('stamps last_login_at on an existing profile (no insert)', () async {
       var requestCount = 0;
       final repository = _repository(
         MockClient((request) async {
           requestCount++;
           if (requestCount == 1) {
+            // GET — the existing profile.
             return _jsonResponse(_profileRow(), request: request);
           }
-          return _jsonResponse([], request: request);
+          // PATCH — updateProfile stamps last_login_at.
+          expect(request.method, 'PATCH');
+          expect(request.url.path, '/rest/v1/profiles');
+          expect(request.url.queryParameters['user_id'], 'eq.$_userId');
+          final body = jsonDecode(request.body) as Map<String, dynamic>;
+          expect(body['last_login_at'], isNotNull);
+          expect(body, isNot(contains('user_id')));
+          expect(body, isNot(contains('created_at')));
+          expect(body, isNot(contains('updated_at')));
+          return _jsonResponse(_profileRow(), request: request);
         }),
       );
 
@@ -119,7 +129,7 @@ void main() {
       );
 
       expect(profile.userID, _userId);
-      expect(requestCount, 1);
+      expect(requestCount, 2);
     });
 
     test('inserts a new profile when none exists', () async {

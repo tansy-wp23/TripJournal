@@ -33,7 +33,12 @@ class SupabaseProfileRepository implements ProfileRepository {
     // this is a defensive fallback for profiles created before the trigger
     // existed or in edge cases where the trigger didn't fire.
     final existing = await getProfile(userId);
-    if (existing != null) return existing;
+    if (existing != null) {
+      // Stamp last_login_at on every sign-in (interactive or restored).
+      // Nothing else writes this column, so without this it stays NULL
+      // forever. See docs/user-management/PROGRESS.md.
+      return updateProfile(existing.copyWith(lastLoginAt: DateTime.now()));
+    }
 
     final now = DateTime.now();
     final profile = Profile(
@@ -41,6 +46,7 @@ class SupabaseProfileRepository implements ProfileRepository {
       email: email,
       displayName: displayName,
       status: AccountStatus.active,
+      lastLoginAt: now,
       createdAt: now,
       updatedAt: now,
     );
