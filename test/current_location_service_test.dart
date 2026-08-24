@@ -1,11 +1,35 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter/services.dart';
 
 import 'package:tripjournal/features/location/current_location_service.dart';
 
 void main() {
+  test('fails fast on desktop without touching the location gateway', () async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+    final gateway = _FakeCurrentLocationGateway();
+    final service = GeolocatorCurrentLocationService(gateway: gateway);
+
+    await expectLater(
+      service.locate(),
+      throwsA(
+        isA<CurrentLocationException>().having(
+          (error) => error.failure,
+          'failure',
+          CurrentLocationFailure.unsupportedPlatform,
+        ),
+      ),
+    );
+
+    expect(gateway.serviceEnabledCalls, 0);
+    expect(gateway.checkPermissionCalls, 0);
+    expect(gateway.requestPermissionCalls, 0);
+    expect(gateway.positionCalls, 0);
+  });
+
   test(
     'does not request permission while location services are disabled',
     () async {
@@ -127,11 +151,16 @@ class _FakeCurrentLocationGateway implements CurrentLocationGateway {
       CurrentLocationPermission.whileInUse;
   CurrentLocation? position;
   Object? positionError;
+  var serviceEnabledCalls = 0;
+  var checkPermissionCalls = 0;
   var requestPermissionCalls = 0;
   var positionCalls = 0;
 
   @override
-  Future<bool> isLocationServiceEnabled() async => serviceEnabled;
+  Future<bool> isLocationServiceEnabled() async {
+    serviceEnabledCalls++;
+    return serviceEnabled;
+  }
 
   @override
   Future<bool> openAppSettings() async => true;
@@ -148,7 +177,10 @@ class _FakeCurrentLocationGateway implements CurrentLocationGateway {
   }
 
   @override
-  Future<CurrentLocationPermission> checkPermission() async => permission;
+  Future<CurrentLocationPermission> checkPermission() async {
+    checkPermissionCalls++;
+    return permission;
+  }
 
   @override
   Future<CurrentLocationPermission> requestPermission() async {

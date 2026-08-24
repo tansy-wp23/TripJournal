@@ -49,8 +49,6 @@
 	<string>TripJournal accesses your photo library so you can attach an existing photo to a journal entry.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>TripJournal uses your location only when you choose to tag a journal entry with where you are.</string>
-	<key>BYPASS_PERMISSION_LOCATION_ALWAYS</key>
-	<true/>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

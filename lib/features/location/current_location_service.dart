@@ -69,6 +69,11 @@ class GeolocatorCurrentLocationService implements CurrentLocationService {
 
   @override
   Future<CurrentLocation> locate() async {
+    if (!_supportsLocationRequests) {
+      throw const CurrentLocationException(
+        CurrentLocationFailure.unsupportedPlatform,
+      );
+    }
     try {
       if (!await _gateway.isLocationServiceEnabled()) {
         throw const CurrentLocationException(
@@ -121,6 +126,8 @@ bool get _supportsNativeSettings =>
     !kIsWeb &&
     (defaultTargetPlatform == TargetPlatform.android ||
         defaultTargetPlatform == TargetPlatform.iOS);
+
+bool get _supportsLocationRequests => kIsWeb || _supportsNativeSettings;
 
 class _GeolocatorGateway implements CurrentLocationGateway {
   @override
