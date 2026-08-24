@@ -68,13 +68,15 @@ void main() {
     expect(guide, contains('Set-Content -Encoding utf8'));
   });
 
-  test('map configuration does not request device location permission', () {
+  test('map configuration requests foreground-only location permission', () {
     final android = readProjectFile('android/app/src/main/AndroidManifest.xml');
     final ios = readProjectFile('ios/Runner/Info.plist');
 
-    expect(android, isNot(contains('ACCESS_FINE_LOCATION')));
-    expect(android, isNot(contains('ACCESS_COARSE_LOCATION')));
-    expect(ios, isNot(contains('NSLocationWhenInUseUsageDescription')));
+    expect(android, contains('ACCESS_FINE_LOCATION'));
+    expect(android, contains('ACCESS_COARSE_LOCATION'));
+    expect(android, isNot(contains('ACCESS_BACKGROUND_LOCATION')));
+    expect(android, isNot(contains('FOREGROUND_SERVICE_LOCATION')));
+    expect(ios, contains('NSLocationWhenInUseUsageDescription'));
     expect(ios, isNot(contains('NSLocationAlwaysUsageDescription')));
   });
 }

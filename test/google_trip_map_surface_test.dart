@@ -17,6 +17,8 @@ void main() {
     required DateTime createdAt,
     required double latitude,
     required double longitude,
+    String? placeId,
+    String? placeName,
   }) => JournalEntry(
     id: id,
     tripId: 'trip-1',
@@ -24,7 +26,12 @@ void main() {
     body: '',
     mood: Mood.happy,
     photoPaths: const [],
-    location: GeoTag(latitude: latitude, longitude: longitude),
+    location: GeoTag(
+      latitude: latitude,
+      longitude: longitude,
+      placeId: placeId,
+      placeName: placeName,
+    ),
     createdAt: createdAt,
     updatedAt: createdAt,
   );
@@ -57,6 +64,84 @@ void main() {
     expect(selected.single.key, model.groups.single.key);
   });
 
+  test('selected-day previous context marker is visually muted', () {
+    final model = buildTripMapModel(
+      entries: [
+        entry(id: 'day-1', createdAt: tripStart, latitude: 1, longitude: 2),
+        entry(
+          id: 'day-2',
+          createdAt: tripStart.add(const Duration(days: 1)),
+          latitude: 3,
+          longitude: 4,
+        ),
+      ],
+      tripStartDate: tripStart,
+      selectedDay: 2,
+    );
+
+    final markers = googleTripMapMarkers(model: model, onSelected: (_) {});
+    final contextMarker = markers.singleWhere(
+      (marker) => marker.markerId.value.startsWith('context:'),
+    );
+    final currentMarker = markers.singleWhere(
+      (marker) => !marker.markerId.value.startsWith('context:'),
+    );
+
+    expect(contextMarker.alpha, lessThan(currentMarker.alpha));
+    expect(contextMarker.infoWindow.title, 'D1 · Previous day');
+    expect(currentMarker.infoWindow.title, 'D2');
+  });
+
+  test('connectors use stable polylines and separate near-target arrows', () {
+    final model = modelFor([
+      entry(id: 'day-1', createdAt: tripStart, latitude: 0, longitude: 0),
+      entry(
+        id: 'day-2',
+        createdAt: tripStart.add(const Duration(days: 1)),
+        latitude: 0,
+        longitude: 10,
+      ),
+    ]);
+
+    final polylines = googleTripMapPolylines(model);
+    final arrows = googleTripMapArrowMarkers(model);
+
+    expect(polylines, hasLength(1));
+    final polyline = polylines.single;
+    expect(polyline.polylineId.value, 'day-1-to-day-2');
+    expect(polyline.points, const [LatLng(0, 0), LatLng(0, 10)]);
+    expect(polyline.startCap, Cap.buttCap);
+    expect(polyline.endCap, Cap.buttCap);
+
+    expect(arrows, hasLength(1));
+    final arrow = arrows.single;
+    expect(arrow.markerId.value, 'day-1-to-day-2-arrow');
+    expect(arrow.icon, isA<BytesMapBitmap>());
+    expect(arrow.flat, isTrue);
+    expect(arrow.rotation, closeTo(90, 0.0001));
+    expect(arrow.position.latitude, closeTo(0, 0.0001));
+    expect(arrow.position.longitude, greaterThan(5));
+    expect(arrow.position.longitude, lessThan(10));
+  });
+
+  test('arrow follows the geodesic course near an antimeridian target', () {
+    final model = modelFor([
+      entry(id: 'day-1', createdAt: tripStart, latitude: 60, longitude: 170),
+      entry(
+        id: 'day-2',
+        createdAt: tripStart.add(const Duration(days: 1)),
+        latitude: 65,
+        longitude: -170,
+      ),
+    ]);
+
+    final arrow = googleTripMapArrowMarkers(model).single;
+
+    expect(arrow.position.latitude, closeTo(64.322196, 0.000001));
+    expect(arrow.position.longitude, closeTo(-174.095578, 0.000001));
+    expect(arrow.rotation, closeTo(67.015901, 0.000001));
+  });
+
   test('one group uses zoom 12 and multiple groups use model bounds', () {
     final one = modelFor([
       entry(id: 'one', createdAt: tripStart, latitude: 1, longitude: 2),
@@ -85,6 +170,29 @@ void main() {
       [
         [-2.0, -3.0],
         [4.0, 5.0],
+      ],
+      48.0,
+    ]);
+
+    final acrossDateline = modelFor([
+      entry(
+        id: 'west-of-dateline',
+        createdAt: tripStart,
+        latitude: 10,
+        longitude: 179,
+      ),
+      entry(
+        id: 'east-of-dateline',
+        createdAt: tripStart.add(const Duration(hours: 1)),
+        latitude: 11,
+        longitude: -179,
+      ),
+    ]);
+    expect(googleTripMapCameraUpdate(acrossDateline).toJson(), [
+      'newLatLngBounds',
+      [
+        [10.0, 179.0],
+        [11.0, -179.0],
       ],
       48.0,
     ]);
@@ -182,18 +290,66 @@ void main() {
   });
 
   test('platform map keeps current-location features disabled', () {
+    const groupMarker = Marker(markerId: MarkerId('group'));
+    const arrowMarker = Marker(markerId: MarkerId('arrow'));
+    const polyline = Polyline(polylineId: PolylineId('connector'));
     final map = buildGoogleTripMapPlatform(
       initialCameraPosition: const CameraPosition(
         target: LatLng(1, 2),
         zoom: 12,
       ),
-      markers: const <Marker>{},
+      markers: <Marker>{groupMarker},
+      polylines: <Polyline>{polyline},
+      arrowMarkers: <Marker>{arrowMarker},
       onMapCreated: (_) {},
     );
 
     expect(map, isA<GoogleMap>());
     expect((map as GoogleMap).myLocationEnabled, isFalse);
     expect(map.myLocationButtonEnabled, isFalse);
+    expect(map.markers.map((marker) => marker.markerId.value).toSet(), {
+      'group',
+      'arrow',
+    });
+    expect(map.polylines.single.polylineId.value, 'connector');
+  });
+
+  testWidgets('platform builder receives connector overlays', (tester) async {
+    final model = modelFor([
+      entry(id: 'day-1', createdAt: tripStart, latitude: 1, longitude: 2),
+      entry(
+        id: 'day-2',
+        createdAt: tripStart.add(const Duration(days: 1)),
+        latitude: 3,
+        longitude: 4,
+      ),
+    ]);
+    Set<Polyline>? receivedPolylines;
+    Set<Marker>? receivedArrows;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: GoogleTripMapSurface(
+          model: model,
+          onSelected: (_) {},
+          platformBuilder:
+              ({
+                required initialCameraPosition,
+                required markers,
+                required polylines,
+                required arrowMarkers,
+                required onMapCreated,
+              }) {
+                receivedPolylines = polylines;
+                receivedArrows = arrowMarkers;
+                return const SizedBox();
+              },
+        ),
+      ),
+    );
+
+    expect(receivedPolylines?.single.polylineId.value, 'day-1-to-day-2');
+    expect(receivedArrows?.single.markerId.value, 'day-1-to-day-2-arrow');
   });
 
   testWidgets('initial multi-group bounds wait for a post-layout frame', (
@@ -222,6 +378,8 @@ void main() {
                 ({
                   required initialCameraPosition,
                   required markers,
+                  required polylines,
+                  required arrowMarkers,
                   required onMapCreated,
                 }) => TextButton(
                   key: const Key('fake-multi-group-map-ready'),
@@ -241,6 +399,67 @@ void main() {
     );
 
     await tester.pump();
+    expect(controller.updates, hasLength(1));
+    final updateJson = controller.updates.single.toJson() as List<Object?>;
+    expect(updateJson.first, 'newLatLngBounds');
+  });
+
+  testWidgets('connector endpoint changes refresh camera bounds', (
+    tester,
+  ) async {
+    TripMapModel connectorModel(double finalLatitude, double finalLongitude) =>
+        modelFor([
+          entry(
+            id: 'day-1-first',
+            createdAt: tripStart,
+            latitude: 1,
+            longitude: 2,
+            placeId: 'day-1-place',
+          ),
+          entry(
+            id: 'day-1-last',
+            createdAt: tripStart.add(const Duration(hours: 2)),
+            latitude: finalLatitude,
+            longitude: finalLongitude,
+            placeId: 'day-1-place',
+          ),
+          entry(
+            id: 'day-2-first',
+            createdAt: tripStart.add(const Duration(days: 1)),
+            latitude: 3,
+            longitude: 4,
+          ),
+        ]);
+    final controller = _RecordingCameraController();
+
+    Widget platformBuilder({
+      required initialCameraPosition,
+      required markers,
+      required polylines,
+      required arrowMarkers,
+      required onMapCreated,
+    }) => TextButton(
+      key: const Key('fake-connector-map-ready'),
+      onPressed: () => onMapCreated(controller),
+      child: const Text('Map ready'),
+    );
+
+    Widget surface(TripMapModel model) => MaterialApp(
+      home: GoogleTripMapSurface(
+        model: model,
+        onSelected: (_) {},
+        platformBuilder: platformBuilder,
+      ),
+    );
+
+    await tester.pumpWidget(surface(connectorModel(10, 20)));
+    await tester.tap(find.byKey(const Key('fake-connector-map-ready')));
+    await tester.pump();
+    controller.updates.clear();
+
+    await tester.pumpWidget(surface(connectorModel(11, 21)));
+    await tester.pump();
+
     expect(controller.updates, hasLength(1));
     final updateJson = controller.updates.single.toJson() as List<Object?>;
     expect(updateJson.first, 'newLatLngBounds');
@@ -272,6 +491,8 @@ void main() {
                 ({
                   required initialCameraPosition,
                   required markers,
+                  required polylines,
+                  required arrowMarkers,
                   required onMapCreated,
                 }) {
                   platformBuilds++;

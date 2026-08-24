@@ -29,7 +29,7 @@ void main() {
   }
 
   testWidgets(
-    'Map ignores Entry filters while query, mood, and date survive switching',
+    'Map day switching leaves Entry query mood and date filters unchanged',
     (tester) async {
       final container = ProviderContainer();
       addTearDown(container.dispose);
@@ -70,6 +70,9 @@ void main() {
       expect(find.byKey(const Key('trip-view-search-toggle')), findsNothing);
       expect(find.byKey(const Key('trip-view-filter-button')), findsNothing);
       expect(find.text('3 mapped · 0 without location'), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('trip-map-day-2')));
+      await tester.pumpAndSettle();
 
       await tester.tap(find.byKey(const Key('trip-view-entries-tab')));
       await tester.pumpAndSettle();

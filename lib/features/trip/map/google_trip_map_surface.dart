@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -15,6 +17,16 @@ const String _googleMapsAndroidKey = String.fromEnvironment(
 const String _googleMapsIosKey = String.fromEnvironment('GOOGLE_MAPS_IOS_KEY');
 const String _googleMapsWebKey = String.fromEnvironment('GOOGLE_MAPS_WEB_KEY');
 
+// A transparent 48px north-facing arrow, rendered at 24 logical pixels and
+// rotated to the connector's local course by Google Maps.
+final BitmapDescriptor _tripMapArrowIcon = BitmapDescriptor.bytes(
+  base64Decode(
+    'iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAYAAABXAvmHAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAD+SURBVGhD7c9BCsJAFARRT+oBPK4XUlwI8hBtzWQ6gRTUJiH9K6fTwcG2OV+uN5/thkf8U99tntf43f2E4bv6CYPf6TebwdBP+m0dAxPdqGHYL7o1HYP+0c1pGLJEt6dgxBLdXh0DRuiN1fDwSL01HA+uoTeH4aE19fZiPDBDG/7G4Zna8jMONrQpxqGmtn3FgS1o4zA8lOpODcNS3alhWKo7NQxLdaeGYanu1DAs1Z0ahqW6U8OwVHdqGJbqTg3DUt2pYViqOzUMS3WnhmGp7tQwLNWdGoalulPDsFR3ahiW6k4Nw1LdqWFYqjs1DEt1p4Zhqe7UMCzVnYODAncGH/uLcvDJmQAAAABJRU5ErkJggg==',
+  ),
+  width: 24,
+  height: 24,
+);
+
 /// The small controller boundary used by the surface after a platform map is
 /// ready. It also keeps controller failures testable without a native map.
 abstract interface class TripMapCameraController {
@@ -26,6 +38,8 @@ typedef GoogleTripMapPlatformBuilder =
     Widget Function({
       required CameraPosition initialCameraPosition,
       required Set<Marker> markers,
+      required Set<Polyline> polylines,
+      required Set<Marker> arrowMarkers,
       required ValueChanged<TripMapCameraController> onMapCreated,
     });
 
@@ -119,17 +133,124 @@ Set<Marker> googleTripMapMarkers({
     Marker(
       markerId: MarkerId(group.key),
       position: LatLng(group.latitude, group.longitude),
-      infoWindow: InfoWindow(title: 'D${group.dayNumber}'),
+      alpha: group.isPreviousDayContext ? 0.55 : 1,
+      icon: group.isPreviousDayContext
+          ? BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure)
+          : BitmapDescriptor.defaultMarker,
+      infoWindow: InfoWindow(
+        title: group.isPreviousDayContext
+            ? 'D${group.dayNumber} · Previous day'
+            : 'D${group.dayNumber}',
+      ),
       onTap: () => onSelected(group),
     ),
 };
+
+/// Builds one plain line for every adjacent-day connector. Direction is drawn
+/// separately by [googleTripMapArrowMarkers] so platform-specific caps are not
+/// required.
+@visibleForTesting
+Set<Polyline> googleTripMapPolylines(TripMapModel model) => {
+  for (final connector in model.connectors)
+    Polyline(
+      polylineId: PolylineId(connector.id),
+      points: [
+        LatLng(connector.fromLatitude, connector.fromLongitude),
+        LatLng(connector.toLatitude, connector.toLongitude),
+      ],
+      color: const Color(0xFF5E6AD2),
+      geodesic: true,
+      width: 4,
+      zIndex: 1,
+    ),
+};
+
+/// Builds an independently rotated marker near each connector destination.
+@visibleForTesting
+Set<Marker> googleTripMapArrowMarkers(TripMapModel model) => {
+  for (final connector in model.connectors)
+    _googleTripMapArrowMarker(connector),
+};
+
+Marker _googleTripMapArrowMarker(TripMapDayConnector connector) {
+  final position = _arrowPosition(connector);
+  return Marker(
+    markerId: MarkerId('${connector.id}-arrow'),
+    position: position,
+    alpha: 0.9,
+    anchor: const Offset(0.5, 0.5),
+    flat: true,
+    icon: _tripMapArrowIcon,
+    rotation: _bearingDegrees(
+      from: position,
+      toLatitude: connector.toLatitude,
+      toLongitude: connector.toLongitude,
+    ),
+    zIndexInt: 2,
+  );
+}
+
+LatLng _arrowPosition(TripMapDayConnector connector) {
+  const progress = 0.82;
+  final fromLatitude = _radians(connector.fromLatitude);
+  final fromLongitude = _radians(connector.fromLongitude);
+  final toLatitude = _radians(connector.toLatitude);
+  final toLongitude = _radians(connector.toLongitude);
+  final from = (
+    math.cos(fromLatitude) * math.cos(fromLongitude),
+    math.cos(fromLatitude) * math.sin(fromLongitude),
+    math.sin(fromLatitude),
+  );
+  final to = (
+    math.cos(toLatitude) * math.cos(toLongitude),
+    math.cos(toLatitude) * math.sin(toLongitude),
+    math.sin(toLatitude),
+  );
+  final dot = (from.$1 * to.$1 + from.$2 * to.$2 + from.$3 * to.$3).clamp(
+    -1.0,
+    1.0,
+  );
+  final angle = math.acos(dot);
+  if (angle == 0) {
+    return LatLng(connector.toLatitude, connector.toLongitude);
+  }
+  final angleSin = math.sin(angle);
+  final fromWeight = math.sin((1 - progress) * angle) / angleSin;
+  final toWeight = math.sin(progress * angle) / angleSin;
+  final x = fromWeight * from.$1 + toWeight * to.$1;
+  final y = fromWeight * from.$2 + toWeight * to.$2;
+  final z = fromWeight * from.$3 + toWeight * to.$3;
+  return LatLng(
+    math.atan2(z, math.sqrt(x * x + y * y)) * 180 / math.pi,
+    math.atan2(y, x) * 180 / math.pi,
+  );
+}
+
+double _bearingDegrees({
+  required LatLng from,
+  required double toLatitude,
+  required double toLongitude,
+}) {
+  final fromLatitude = _radians(from.latitude);
+  final targetLatitude = _radians(toLatitude);
+  final longitudeDelta = _radians(toLongitude - from.longitude);
+  final y = math.sin(longitudeDelta) * math.cos(targetLatitude);
+  final x =
+      math.cos(fromLatitude) * math.sin(targetLatitude) -
+      math.sin(fromLatitude) *
+          math.cos(targetLatitude) *
+          math.cos(longitudeDelta);
+  return (math.atan2(y, x) * 180 / math.pi + 360) % 360;
+}
+
+double _radians(double degrees) => degrees * math.pi / 180;
 
 /// Returns the camera update applied once the platform map is ready.
 @visibleForTesting
 CameraUpdate googleTripMapCameraUpdate(TripMapModel model) {
   assert(model.groups.isNotEmpty);
   final bounds = model.bounds;
-  if (model.groups.length > 1 && bounds != null) {
+  if (bounds != null) {
     return CameraUpdate.newLatLngBounds(
       LatLngBounds(
         southwest: LatLng(bounds.southWestLatitude, bounds.southWestLongitude),
@@ -160,10 +281,13 @@ CameraPosition _initialCameraPosition(TripMapModel model) {
 Widget buildGoogleTripMapPlatform({
   required CameraPosition initialCameraPosition,
   required Set<Marker> markers,
+  required Set<Polyline> polylines,
+  required Set<Marker> arrowMarkers,
   required ValueChanged<TripMapCameraController> onMapCreated,
 }) => GoogleMap(
   initialCameraPosition: initialCameraPosition,
-  markers: markers,
+  markers: {...markers, ...arrowMarkers},
+  polylines: polylines,
   myLocationEnabled: false,
   myLocationButtonEnabled: false,
   onMapCreated: (controller) =>
@@ -240,6 +364,8 @@ class _GoogleTripMapSurfaceState extends State<GoogleTripMapSurface> {
           model: widget.model,
           onSelected: widget.onSelected,
         ),
+        polylines: googleTripMapPolylines(widget.model),
+        arrowMarkers: googleTripMapArrowMarkers(widget.model),
         onMapCreated: _onMapCreated,
       ),
     );
@@ -247,7 +373,7 @@ class _GoogleTripMapSurfaceState extends State<GoogleTripMapSurface> {
 
   void _onMapCreated(TripMapCameraController controller) {
     _controller = controller;
-    if (widget.model.groups.length > 1) {
+    if (widget.model.bounds != null) {
       _applyCameraAfterLayout(controller);
       return;
     }
@@ -290,6 +416,17 @@ bool _sameCameraTargets(TripMapModel a, TripMapModel b) {
     if (left.key != right.key ||
         left.latitude != right.latitude ||
         left.longitude != right.longitude) {
+      return false;
+    }
+  }
+  if (a.connectors.length != b.connectors.length) return false;
+  for (var index = 0; index < a.connectors.length; index++) {
+    final left = a.connectors[index];
+    final right = b.connectors[index];
+    if (left.fromLatitude != right.fromLatitude ||
+        left.fromLongitude != right.fromLongitude ||
+        left.toLatitude != right.toLatitude ||
+        left.toLongitude != right.toLongitude) {
       return false;
     }
   }
