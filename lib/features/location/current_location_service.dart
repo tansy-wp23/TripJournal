@@ -4,6 +4,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
 
+import 'web_secure_context.dart' as web_secure_context;
+
 enum CurrentLocationFailure {
   permissionDenied,
   permissionDeniedForever,
@@ -56,24 +58,52 @@ abstract interface class CurrentLocationGateway {
 }
 
 class GeolocatorCurrentLocationService implements CurrentLocationService {
-  GeolocatorCurrentLocationService({CurrentLocationGateway? gateway})
-    : _gateway = gateway ?? _GeolocatorGateway();
+  GeolocatorCurrentLocationService({
+    CurrentLocationGateway? gateway,
+    bool? isWeb,
+    bool Function()? isWebSecureContext,
+    Duration webTimeout = const Duration(seconds: 15),
+  }) : _gateway = gateway ?? _GeolocatorGateway(),
+       _isWeb = isWeb ?? kIsWeb,
+       _isWebSecureContext =
+           isWebSecureContext ?? web_secure_context.isWebSecureContext {
+    _webTimeout = webTimeout;
+  }
 
   final CurrentLocationGateway _gateway;
+  final bool _isWeb;
+  final bool Function() _isWebSecureContext;
+  late final Duration _webTimeout;
 
   @override
-  bool get supportsAppSettings => _supportsNativeSettings;
+  bool get supportsAppSettings => _supportsNativeSettings(_isWeb);
 
   @override
-  bool get supportsLocationSettings => _supportsNativeSettings;
+  bool get supportsLocationSettings => _supportsNativeSettings(_isWeb);
 
   @override
   Future<CurrentLocation> locate() async {
-    if (!_supportsLocationRequests) {
+    if (!_supportsLocationRequests(_isWeb)) {
       throw const CurrentLocationException(
         CurrentLocationFailure.unsupportedPlatform,
       );
     }
+    if (_isWeb && !_isWebSecureContext()) {
+      throw const CurrentLocationException(
+        CurrentLocationFailure.insecureOrigin,
+      );
+    }
+    try {
+      final operation = _locateSupported();
+      return _isWeb ? await operation.timeout(_webTimeout) : await operation;
+    } on CurrentLocationException {
+      rethrow;
+    } catch (error) {
+      throw _failureFor(error);
+    }
+  }
+
+  Future<CurrentLocation> _locateSupported() async {
     try {
       if (!await _gateway.isLocationServiceEnabled()) {
         throw const CurrentLocationException(
@@ -82,6 +112,15 @@ class GeolocatorCurrentLocationService implements CurrentLocationService {
       }
 
       var permission = await _gateway.checkPermission();
+      if (_isWeb) {
+        if (permission == CurrentLocationPermission.deniedForever) {
+          throw const CurrentLocationException(
+            CurrentLocationFailure.permissionDeniedForever,
+          );
+        }
+        return await _gateway.getCurrentPosition();
+      }
+
       if (permission == CurrentLocationPermission.denied) {
         permission = await _gateway.requestPermission();
       }
@@ -113,7 +152,7 @@ class GeolocatorCurrentLocationService implements CurrentLocationService {
   Future<bool> openLocationSettings() => _open(_gateway.openLocationSettings);
 
   Future<bool> _open(Future<bool> Function() action) async {
-    if (!_supportsNativeSettings) return false;
+    if (!_supportsNativeSettings(_isWeb)) return false;
     try {
       return await action();
     } catch (_) {
@@ -122,12 +161,13 @@ class GeolocatorCurrentLocationService implements CurrentLocationService {
   }
 }
 
-bool get _supportsNativeSettings =>
-    !kIsWeb &&
+bool _supportsNativeSettings(bool isWeb) =>
+    !isWeb &&
     (defaultTargetPlatform == TargetPlatform.android ||
         defaultTargetPlatform == TargetPlatform.iOS);
 
-bool get _supportsLocationRequests => kIsWeb || _supportsNativeSettings;
+bool _supportsLocationRequests(bool isWeb) =>
+    isWeb || _supportsNativeSettings(isWeb);
 
 class _GeolocatorGateway implements CurrentLocationGateway {
   @override
@@ -181,6 +221,11 @@ CurrentLocationPermission _permissionFor(LocationPermission permission) =>
 
 CurrentLocationException _failureFor(Object error) {
   if (error is CurrentLocationException) return error;
+  if (error is PermissionDeniedException) {
+    return const CurrentLocationException(
+      CurrentLocationFailure.permissionDenied,
+    );
+  }
   if (error is MissingPluginException || error is UnsupportedError) {
     return const CurrentLocationException(
       CurrentLocationFailure.unsupportedPlatform,

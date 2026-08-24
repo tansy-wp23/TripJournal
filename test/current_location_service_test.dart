@@ -1,8 +1,9 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:geolocator/geolocator.dart' show PermissionDeniedException;
 
 import 'package:tripjournal/features/location/current_location_service.dart';
 
@@ -142,6 +143,127 @@ void main() {
       ),
     );
   });
+
+  test(
+    'web prompt acquires one position without requesting permission separately',
+    () async {
+      final gateway = _FakeCurrentLocationGateway()
+        ..permission = CurrentLocationPermission.denied
+        ..position = const CurrentLocation(
+          latitude: 3.139,
+          longitude: 101.6869,
+        );
+      final service = GeolocatorCurrentLocationService(
+        gateway: gateway,
+        isWeb: true,
+        isWebSecureContext: () => true,
+      );
+
+      final location = await service.locate();
+
+      expect(gateway.requestPermissionCalls, 0);
+      expect(gateway.positionCalls, 1);
+      expect(location.latitude, 3.139);
+      expect(location.longitude, 101.6869);
+    },
+  );
+
+  test('web rejects an insecure context before touching the gateway', () async {
+    final gateway = _FakeCurrentLocationGateway();
+    final service = GeolocatorCurrentLocationService(
+      gateway: gateway,
+      isWeb: true,
+      isWebSecureContext: () => false,
+    );
+
+    await expectLater(
+      service.locate(),
+      throwsA(
+        isA<CurrentLocationException>().having(
+          (error) => error.failure,
+          'failure',
+          CurrentLocationFailure.insecureOrigin,
+        ),
+      ),
+    );
+
+    expect(gateway.serviceEnabledCalls, 0);
+    expect(gateway.checkPermissionCalls, 0);
+    expect(gateway.requestPermissionCalls, 0);
+    expect(gateway.positionCalls, 0);
+  });
+
+  test('web bounds a never-completing location operation', () async {
+    final gateway = _FakeCurrentLocationGateway()
+      ..positionCompleter = Completer<CurrentLocation>();
+    final service = GeolocatorCurrentLocationService(
+      gateway: gateway,
+      isWeb: true,
+      isWebSecureContext: () => true,
+      webTimeout: const Duration(milliseconds: 1),
+    );
+
+    await expectLater(
+      service.locate(),
+      throwsA(
+        isA<CurrentLocationException>().having(
+          (error) => error.failure,
+          'failure',
+          CurrentLocationFailure.unavailable,
+        ),
+      ),
+    );
+
+    expect(gateway.positionCalls, 1);
+  });
+
+  test(
+    'web maps prompt denial separately from an already-blocked query',
+    () async {
+      final promptGateway = _FakeCurrentLocationGateway()
+        ..permission = CurrentLocationPermission.denied
+        ..positionError = const PermissionDeniedException('denied by user');
+      final promptService = GeolocatorCurrentLocationService(
+        gateway: promptGateway,
+        isWeb: true,
+        isWebSecureContext: () => true,
+      );
+
+      await expectLater(
+        promptService.locate(),
+        throwsA(
+          isA<CurrentLocationException>().having(
+            (error) => error.failure,
+            'failure',
+            CurrentLocationFailure.permissionDenied,
+          ),
+        ),
+      );
+      expect(promptGateway.requestPermissionCalls, 0);
+      expect(promptGateway.positionCalls, 1);
+
+      final blockedGateway = _FakeCurrentLocationGateway()
+        ..permission = CurrentLocationPermission.deniedForever;
+      final blockedService = GeolocatorCurrentLocationService(
+        gateway: blockedGateway,
+        isWeb: true,
+        isWebSecureContext: () => true,
+      );
+
+      await expectLater(
+        blockedService.locate(),
+        throwsA(
+          isA<CurrentLocationException>().having(
+            (error) => error.failure,
+            'failure',
+            CurrentLocationFailure.permissionDeniedForever,
+          ),
+        ),
+      );
+      expect(blockedGateway.requestPermissionCalls, 0);
+      expect(blockedGateway.positionCalls, 0);
+    },
+  );
 }
 
 class _FakeCurrentLocationGateway implements CurrentLocationGateway {
@@ -151,6 +273,7 @@ class _FakeCurrentLocationGateway implements CurrentLocationGateway {
       CurrentLocationPermission.whileInUse;
   CurrentLocation? position;
   Object? positionError;
+  Completer<CurrentLocation>? positionCompleter;
   var serviceEnabledCalls = 0;
   var checkPermissionCalls = 0;
   var requestPermissionCalls = 0;
@@ -171,6 +294,8 @@ class _FakeCurrentLocationGateway implements CurrentLocationGateway {
   @override
   Future<CurrentLocation> getCurrentPosition() async {
     positionCalls++;
+    final completer = positionCompleter;
+    if (completer != null) return completer.future;
     final error = positionError;
     if (error != null) throw error;
     return position!;
