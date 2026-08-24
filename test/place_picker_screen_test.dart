@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 import 'package:tripjournal/features/location/google_place_picker_map.dart';
+import 'package:tripjournal/features/location/current_location_service.dart';
 import 'package:tripjournal/features/location/place_picker_screen.dart';
 import 'package:tripjournal/features/location/place_search_service.dart';
 import 'package:tripjournal/models/geo_tag.dart';
@@ -347,6 +348,189 @@ void main() {
     await tester.pumpAndSettle();
   });
 
+  testWidgets(
+    'current location places a coordinate draft before reverse geocoding',
+    (tester) async {
+      final reverseCompleter = Completer<GeoTag>();
+      final placeService = _FakePlaceSearchService()
+        ..reverseCompleter = reverseCompleter;
+      final locationService = _FakeCurrentLocationService()
+        ..location = const CurrentLocation(
+          latitude: 3.139,
+          longitude: 101.6869,
+        );
+
+      await tester.pumpWidget(
+        _picker(
+          service: placeService,
+          currentLocationService: locationService,
+          mapBuilder: _fakeMapBuilder,
+        ),
+      );
+
+      expect(locationService.locateCalls, 0);
+      await tester.ensureVisible(
+        find.byKey(const Key('place-picker-current-location')),
+      );
+      await tester.tap(find.byKey(const Key('place-picker-current-location')));
+      await tester.pump();
+
+      expect(locationService.locateCalls, 1);
+      expect(placeService.reverseCalls, [
+        (latitude: 3.139, longitude: 101.6869),
+      ]);
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('place-picker-selection')),
+          matching: find.text('3.139000, 101.686900'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        tester
+            .widget<FilledButton>(find.byKey(const Key('place-picker-confirm')))
+            .onPressed,
+        isNotNull,
+      );
+
+      reverseCompleter.complete(
+        const GeoTag(
+          latitude: 3.139,
+          longitude: 101.6869,
+          placeName: 'Merdeka Square',
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('place-picker-selection')),
+          matching: find.text('Merdeka Square'),
+        ),
+        findsOneWidget,
+      );
+    },
+  );
+
+  testWidgets('current-location request cannot be started twice', (
+    tester,
+  ) async {
+    final locationCompleter = Completer<CurrentLocation>();
+    final locationService = _FakeCurrentLocationService()
+      ..locationCompleter = locationCompleter;
+
+    await tester.pumpWidget(
+      _picker(
+        service: _FakePlaceSearchService(),
+        currentLocationService: locationService,
+      ),
+    );
+
+    await tester.ensureVisible(
+      find.byKey(const Key('place-picker-current-location')),
+    );
+    await tester.tap(find.byKey(const Key('place-picker-current-location')));
+    await tester.pump();
+    final action = tester.widget<TextButton>(
+      find.byKey(const Key('place-picker-current-location')),
+    );
+    expect(action.onPressed, isNull);
+    expect(locationService.locateCalls, 1);
+
+    locationCompleter.complete(
+      const CurrentLocation(latitude: 3.139, longitude: 101.6869),
+    );
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets(
+    'a failed current-location request keeps the previous selection',
+    (tester) async {
+      final locationService = _FakeCurrentLocationService()
+        ..error = const CurrentLocationException(
+          CurrentLocationFailure.permissionDenied,
+        );
+
+      await tester.pumpWidget(
+        _picker(
+          service: _FakePlaceSearchService(),
+          currentLocationService: locationService,
+          initialLocation: initialLocation,
+        ),
+      );
+
+      await tester.ensureVisible(
+        find.byKey(const Key('place-picker-current-location')),
+      );
+      await tester.tap(find.byKey(const Key('place-picker-current-location')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Location permission was denied.'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('place-picker-selection')),
+          matching: find.text('Gion'),
+        ),
+        findsOneWidget,
+      );
+    },
+  );
+
+  testWidgets('permanent denial offers app settings', (tester) async {
+    final locationService = _FakeCurrentLocationService()
+      ..error = const CurrentLocationException(
+        CurrentLocationFailure.permissionDeniedForever,
+      );
+
+    await tester.pumpWidget(
+      _picker(
+        service: _FakePlaceSearchService(),
+        currentLocationService: locationService,
+      ),
+    );
+    await tester.ensureVisible(
+      find.byKey(const Key('place-picker-current-location')),
+    );
+    await tester.tap(find.byKey(const Key('place-picker-current-location')));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('Location permission is permanently denied.'),
+      findsOneWidget,
+    );
+    await tester.tap(find.byKey(const Key('place-picker-open-app-settings')));
+    await tester.pumpAndSettle();
+    expect(locationService.openAppSettingsCalls, 1);
+  });
+
+  testWidgets('disabled location services offer location settings', (
+    tester,
+  ) async {
+    final locationService = _FakeCurrentLocationService()
+      ..error = const CurrentLocationException(
+        CurrentLocationFailure.serviceDisabled,
+      );
+
+    await tester.pumpWidget(
+      _picker(
+        service: _FakePlaceSearchService(),
+        currentLocationService: locationService,
+      ),
+    );
+    await tester.ensureVisible(
+      find.byKey(const Key('place-picker-current-location')),
+    );
+    await tester.tap(find.byKey(const Key('place-picker-current-location')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Location services are turned off.'), findsOneWidget);
+    await tester.tap(
+      find.byKey(const Key('place-picker-open-location-settings')),
+    );
+    await tester.pumpAndSettle();
+    expect(locationService.openLocationSettingsCalls, 1);
+  });
+
   testWidgets('production map has a deterministic no-key fallback', (
     tester,
   ) async {
@@ -432,11 +616,13 @@ void main() {
 
 Widget _picker({
   required PlaceSearchService service,
+  CurrentLocationService? currentLocationService,
   GeoTag? initialLocation,
   PlacePickerMapBuilder mapBuilder = _fakeMapBuilder,
 }) => MaterialApp(
   home: PlacePickerScreen(
     service: service,
+    currentLocationService: currentLocationService,
     initialLocation: initialLocation,
     mapBuilder: mapBuilder,
   ),
@@ -533,6 +719,43 @@ class _FakePlaceSearchService implements PlaceSearchService {
     final error = reverseError;
     if (error != null) throw error;
     return reverseResult!;
+  }
+}
+
+class _FakeCurrentLocationService implements CurrentLocationService {
+  CurrentLocation? location;
+  Object? error;
+  Completer<CurrentLocation>? locationCompleter;
+  var locateCalls = 0;
+  var openAppSettingsCalls = 0;
+  var openLocationSettingsCalls = 0;
+
+  @override
+  bool get supportsAppSettings => true;
+
+  @override
+  bool get supportsLocationSettings => true;
+
+  @override
+  Future<CurrentLocation> locate() async {
+    locateCalls++;
+    final completer = locationCompleter;
+    if (completer != null) return completer.future;
+    final currentError = error;
+    if (currentError != null) throw currentError;
+    return location!;
+  }
+
+  @override
+  Future<bool> openAppSettings() async {
+    openAppSettingsCalls++;
+    return true;
+  }
+
+  @override
+  Future<bool> openLocationSettings() async {
+    openLocationSettingsCalls++;
+    return true;
   }
 }
 
