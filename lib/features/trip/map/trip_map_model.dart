@@ -185,7 +185,11 @@ List<TripMapDayConnector> _connectorsFor({
   required List<int> availableDays,
   required int? selectedDay,
 }) {
-  final fromDays = selectedDay == null ? availableDays : <int>[selectedDay - 1];
+  final fromDays = selectedDay == null
+      ? availableDays.where((day) => day >= 1)
+      : selectedDay > 1
+      ? <int>[selectedDay - 1]
+      : const <int>[];
   final connectors = <TripMapDayConnector>[];
   for (final fromDay in fromDays) {
     final fromEntries = mappedByDay[fromDay];
@@ -226,7 +230,13 @@ bool _sameMappedLocation(GeoTag a, GeoTag b) {
     return true;
   }
   return a.latitude.toStringAsFixed(6) == b.latitude.toStringAsFixed(6) &&
-      a.longitude.toStringAsFixed(6) == b.longitude.toStringAsFixed(6);
+      _normalizedLongitude(a.longitude).toStringAsFixed(6) ==
+          _normalizedLongitude(b.longitude).toStringAsFixed(6);
+}
+
+double _normalizedLongitude(double longitude) {
+  final normalized = ((longitude + 180) % 360 + 360) % 360 - 180;
+  return normalized == 0 ? 0 : normalized;
 }
 
 String _locationLabel(GeoTag location) {

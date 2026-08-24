@@ -425,6 +425,26 @@ void main() {
     expect(missingDayModel.connectors, isEmpty);
   });
 
+  test('treats positive and negative 180 longitude as one location', () {
+    final model = buildTripMapModel(
+      entries: [
+        journalEntry(
+          id: 'day-1',
+          createdAt: tripStart,
+          location: const GeoTag(latitude: 10, longitude: 180),
+        ),
+        journalEntry(
+          id: 'day-2',
+          createdAt: tripStart.add(const Duration(days: 1)),
+          location: const GeoTag(latitude: 10, longitude: -180),
+        ),
+      ],
+      tripStartDate: tripStart,
+    );
+
+    expect(model.connectors, isEmpty);
+  });
+
   test(
     'selected day includes the previous final stop as muted context only',
     () {
@@ -525,4 +545,34 @@ void main() {
       expect(model.bounds, isNull);
     },
   );
+
+  test('pre-trip day zero never connects to day one in selected or All', () {
+    final entries = [
+      journalEntry(
+        id: 'day-0',
+        createdAt: tripStart.subtract(const Duration(days: 1)),
+        location: const GeoTag(latitude: -10, longitude: -20),
+      ),
+      journalEntry(
+        id: 'day-1',
+        createdAt: tripStart,
+        location: const GeoTag(latitude: 10, longitude: 20),
+      ),
+    ];
+
+    final selectedDayOne = buildTripMapModel(
+      entries: entries,
+      tripStartDate: tripStart,
+      selectedDay: 1,
+    );
+    expect(selectedDayOne.connectors, isEmpty);
+    expect(selectedDayOne.groups.map((group) => group.dayNumber), [1]);
+    expect(selectedDayOne.bounds, isNull);
+
+    final allDays = buildTripMapModel(
+      entries: entries,
+      tripStartDate: tripStart,
+    );
+    expect(allDays.connectors, isEmpty);
+  });
 }

@@ -142,6 +142,21 @@ void main() {
     expect(arrow.rotation, closeTo(67.015901, 0.000001));
   });
 
+  test('antimeridian-equivalent endpoints emit no connector arrow', () {
+    final model = modelFor([
+      entry(id: 'day-1', createdAt: tripStart, latitude: 10, longitude: 180),
+      entry(
+        id: 'day-2',
+        createdAt: tripStart.add(const Duration(days: 1)),
+        latitude: 10,
+        longitude: -180,
+      ),
+    ]);
+
+    expect(model.connectors, isEmpty);
+    expect(googleTripMapArrowMarkers(model), isEmpty);
+  });
+
   test('one group uses zoom 12 and multiple groups use model bounds', () {
     final one = modelFor([
       entry(id: 'one', createdAt: tripStart, latitude: 1, longitude: 2),
