@@ -6,7 +6,9 @@ begin;
 -- before RLS is evaluated. This transaction-only test disables that platform
 -- guard so it can exercise TripJournal's own object policies; rollback restores
 -- the trigger before the test connection closes.
+set local role supabase_storage_admin;
 alter table storage.objects disable trigger protect_delete;
+reset role;
 
 insert into auth.users (id)
 values
