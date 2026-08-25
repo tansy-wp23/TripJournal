@@ -68,6 +68,7 @@ jobs:
           mkdir -p .ci-supabase/supabase/migrations
           mkdir -p .ci-supabase/supabase/tests
           cp supabase/config.toml .ci-supabase/supabase/config.toml
+          cp -R supabase/functions .ci-supabase/supabase/functions
           cp tripjournal_schema.sql \
             .ci-supabase/supabase/migrations/00000000000000_tripjournal_schema.sql
           cp supabase/tests/*.sql .ci-supabase/supabase/tests/
