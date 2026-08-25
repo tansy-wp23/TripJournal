@@ -23,6 +23,7 @@ import '../../location/place_search_locator.dart' as place_locator;
 import '../../location/place_search_service.dart';
 import '../controller/journal_controller.dart';
 import '../entry_timestamp.dart';
+import '../journal_photo_compensation.dart';
 import '../mock_trip.dart';
 import '../widgets/health_log_form.dart';
 import '../widgets/mood_picker.dart';
@@ -484,7 +485,25 @@ class _CreateEditEntryScreenState extends ConsumerState<CreateEditEntryScreen> {
           ? await controller.edit(entry)
           : await controller.create(entry, trip: widget.trip);
       if (error != null) {
+        final cleaned = await cleanupPhotosAfterFailedJournalSave(
+          before: existing,
+          attempted: entry,
+          storage: _photoStorage,
+        );
         if (!mounted) return;
+        if (cleaned.isNotEmpty) {
+          setState(() {
+            _photoPaths = _photoPaths
+                .where((path) => !cleaned.contains(path))
+                .toList();
+            _meals = [
+              for (final meal in _meals)
+                cleaned.contains(meal.photoPath)
+                    ? meal.copyWith(clearPhotoPath: true)
+                    : meal,
+            ];
+          });
+        }
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text(error)));
@@ -500,6 +519,14 @@ class _CreateEditEntryScreenState extends ConsumerState<CreateEditEntryScreen> {
         _justSaved = true;
         _dirty = false;
       });
+
+      unawaited(
+        cleanupPhotosAfterSuccessfulJournalSave(
+          before: existing,
+          saved: entry,
+          storage: _photoStorage,
+        ),
+      );
 
       unawaited(_generateAdvice(entry));
     } finally {

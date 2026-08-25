@@ -1,0 +1,69 @@
+name: Quality
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  flutter:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.44.8
+          channel: stable
+          cache: true
+      - name: Create secret-free runtime configuration
+        run: cp .env.example .env
+      - run: flutter pub get --enforce-lockfile
+      - run: flutter analyze --no-pub
+      - run: flutter test --no-pub
+      - run: flutter build web --release --no-pub
+      - run: flutter build apk --debug --no-pub
+      - name: Reject committed credentials
+        shell: bash
+        run: |
+          if git grep -nE '(AIza[0-9A-Za-z_-]{20,}|sb_(secret|publishable)_[0-9A-Za-z_-]{12,}|GEMINI_API_KEY=(AQ\.|AIza)[0-9A-Za-z_.-]+)' -- ':!pubspec.lock'; then
+            echo 'A credential-like value is tracked in the repository.'
+            exit 1
+          fi
+
+  ios-simulator:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.44.8
+          channel: stable
+          cache: true
+      - run: cp .env.example .env
+      - run: flutter pub get --enforce-lockfile
+      - run: flutter build ios --simulator --no-codesign --no-pub
+
+  places-edge-function:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - run: deno test supabase/functions/places-proxy/places_proxy_test.ts
+
+  supabase-database:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 2.111.0
+      - run: supabase start
+      - run: supabase test db
+      - name: Stop local Supabase services
+        if: always()
+        run: supabase stop --no-backup

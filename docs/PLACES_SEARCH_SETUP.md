@@ -62,11 +62,15 @@ token. Run from the **repository root** so `supabase/config.toml` is honoured:
 
 ```powershell
 npx supabase link --project-ref <project-ref>
+npx supabase db push
 npx supabase secrets set GOOGLE_PLACES_SERVER_KEY=<the-server-key>
 npx supabase functions deploy places-proxy
 ```
 
-Set the secret **before** deploying, so the function is never briefly live without its key.
+Apply the database migrations **before** deploying the function. The proxy fails closed when its
+durable rate-limit RPC is unavailable, so deploying first would temporarily make every lookup return
+a service-unavailable response. Set the secret **before** deploying, so the function is never briefly
+live without its key.
 
 Two things that differ from the other functions in this repo:
 
@@ -110,6 +114,7 @@ deno test supabase/functions/places-proxy/places_proxy_test.ts --allow-env
 | *"The place service is temporarily unavailable"* | HTTP 500 from the function — most often a missing or misspelled `GOOGLE_PLACES_SERVER_KEY`. |
 | Search works, pins stay unnamed | Geocoding API not enabled. |
 | Search fails while Geocoding works | The legacy *Places API* was enabled instead of *Places API (New)*. They are adjacent entries in the console and easy to confuse. |
-| *"Too many place requests"* | Per-user rate limit, 20 requests per 60 seconds. It is held in memory per isolate, so it resets on cold start. |
+| *"Too many place requests"* | Durable per-user rate limit: 20 requests per 60 seconds. The database window survives Edge Function cold starts and multiple instances. |
+| *"Location search is temporarily unavailable"* | The durable rate-limit RPC or its database is unavailable. Requests fail closed and do not call Google. |
 
 Query length is validated at 2–120 characters; shorter input is rejected before any Google call.

@@ -63,6 +63,7 @@ void main() {
         ..position = CurrentLocationReading(
           latitude: 3.139,
           longitude: 101.6869,
+          accuracyMeters: 24,
           timestamp: requestedAt,
         );
       final service = GeolocatorCurrentLocationService(
@@ -76,6 +77,7 @@ void main() {
       expect(gateway.positionCalls, 1);
       expect(location.latitude, 3.139);
       expect(location.longitude, 101.6869);
+      expect(location.accuracyMeters, 24);
     },
   );
 
@@ -95,6 +97,7 @@ void main() {
       CurrentLocationReading(
         latitude: 37.421998,
         longitude: -122.084,
+        accuracyMeters: 500,
         timestamp: requestedAt.subtract(const Duration(minutes: 30)),
       ),
     );
@@ -102,6 +105,7 @@ void main() {
       CurrentLocationReading(
         latitude: 3.139,
         longitude: 101.6869,
+        accuracyMeters: 20,
         timestamp: requestedAt,
       ),
     );
@@ -133,6 +137,7 @@ void main() {
       CurrentLocationReading(
         latitude: 37.421998,
         longitude: -122.084,
+        accuracyMeters: 500,
         timestamp: requestedAt.subtract(const Duration(minutes: 30)),
       ),
     );
@@ -227,12 +232,14 @@ void main() {
         ..position = CurrentLocationReading(
           latitude: 3.139,
           longitude: 101.6869,
+          accuracyMeters: 30,
           timestamp: DateTime.utc(2026, 8, 25, 4),
         );
       final service = GeolocatorCurrentLocationService(
         gateway: gateway,
         isWeb: true,
         isWebSecureContext: () => true,
+        now: () => DateTime.utc(2026, 8, 25, 4),
       );
 
       final location = await service.locate();
@@ -243,6 +250,34 @@ void main() {
       expect(location.longitude, 101.6869);
     },
   );
+
+  test('web rejects a stale cached position', () async {
+    final requestedAt = DateTime.utc(2026, 8, 25, 4);
+    final gateway = _FakeCurrentLocationGateway()
+      ..position = CurrentLocationReading(
+        latitude: 37.421998,
+        longitude: -122.084,
+        accuracyMeters: 500,
+        timestamp: requestedAt.subtract(const Duration(minutes: 5)),
+      );
+    final service = GeolocatorCurrentLocationService(
+      gateway: gateway,
+      isWeb: true,
+      isWebSecureContext: () => true,
+      now: () => requestedAt,
+    );
+
+    await expectLater(
+      service.locate(),
+      throwsA(
+        isA<CurrentLocationException>().having(
+          (error) => error.failure,
+          'failure',
+          CurrentLocationFailure.unavailable,
+        ),
+      ),
+    );
+  });
 
   test('web rejects an insecure context before touching the gateway', () async {
     final gateway = _FakeCurrentLocationGateway();

@@ -19,6 +19,20 @@ void main() {
     placeId: 'gion',
   );
 
+  testWidgets('explains when location is saved and how lookup is processed', (
+    tester,
+  ) async {
+    await tester.pumpWidget(_picker(service: _FakePlaceSearchService()));
+
+    expect(
+      find.text(
+        'Location is saved only when you confirm. Place lookup is processed '
+        'securely through TripJournal.',
+      ),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('search runs only on submit and ignores a blank query', (
     tester,
   ) async {
@@ -258,6 +272,10 @@ void main() {
         findsOneWidget,
       );
       expect(find.text('Address unavailable.'), findsOneWidget);
+      await tester.ensureVisible(
+        find.byKey(const Key('place-picker-confirm'), skipOffstage: false),
+      );
+      await tester.pump();
       final confirm = tester.widget<FilledButton>(
         find.byKey(const Key('place-picker-confirm')),
       );
@@ -358,6 +376,7 @@ void main() {
         ..location = const CurrentLocation(
           latitude: 3.139,
           longitude: 101.6869,
+          accuracyMeters: 35,
         );
 
       await tester.pumpWidget(
@@ -376,6 +395,13 @@ void main() {
       await tester.pump();
 
       expect(locationService.locateCalls, 1);
+      expect(find.text('Accuracy: approximately ±35 m'), findsOneWidget);
+      expect(
+        find.text(
+          'Location accuracy is low. You can move the pin before confirming.',
+        ),
+        findsNothing,
+      );
       expect(placeService.reverseCalls, [
         (latitude: 3.139, longitude: 101.6869),
       ]);
@@ -438,9 +464,42 @@ void main() {
     expect(locationService.locateCalls, 1);
 
     locationCompleter.complete(
-      const CurrentLocation(latitude: 3.139, longitude: 101.6869),
+      const CurrentLocation(
+        latitude: 3.139,
+        longitude: 101.6869,
+        accuracyMeters: 250,
+      ),
     );
     await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find
+          .byKey(
+            const Key('place-picker-location-accuracy-warning'),
+            skipOffstage: false,
+          )
+          .first,
+      120,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pump();
+
+    expect(find.text('Accuracy: approximately ±250 m'), findsOneWidget);
+    expect(
+      find.text(
+        'Location accuracy is low. You can move the pin before confirming.',
+      ),
+      findsOneWidget,
+    );
+    await tester.ensureVisible(
+      find.byKey(const Key('place-picker-confirm'), skipOffstage: false),
+    );
+    await tester.pump();
+    expect(
+      tester
+          .widget<FilledButton>(find.byKey(const Key('place-picker-confirm')))
+          .onPressed,
+      isNotNull,
+    );
   });
 
   testWidgets(

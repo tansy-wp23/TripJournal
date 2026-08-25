@@ -97,6 +97,16 @@ class _TripMapViewState extends State<TripMapView> {
                 ),
               ),
             ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+            child: Text(
+              'Lines show journal order only — not roads or navigation.',
+              key: const Key('trip-map-route-disclaimer'),
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
           Expanded(
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),

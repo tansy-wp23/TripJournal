@@ -73,11 +73,7 @@ Meal mealFromSupabaseRow(Map<String, dynamic> row) {
     id: row['id'] as String,
     name: (row['name'] as String?) ?? '',
     calories: (row['calories'] as num?)?.toInt() ?? 0,
-    mealType: _enumFromRow(
-      row['meal_type'],
-      MealType.values,
-      MealType.snack,
-    ),
+    mealType: _enumFromRow(row['meal_type'], MealType.values, MealType.snack),
     portion: _enumFromRow(
       row['portion'],
       PortionSize.values,
@@ -178,6 +174,16 @@ GeoTag? _geoTagFromRow(Object? value) {
   // them is corrupt rather than "no location", but the entry around it is still
   // perfectly readable — so drop the tag instead of failing the whole list.
   if (json['latitude'] is! num || json['longitude'] is! num) return null;
+  final latitude = (json['latitude'] as num).toDouble();
+  final longitude = (json['longitude'] as num).toDouble();
+  if (!latitude.isFinite ||
+      !longitude.isFinite ||
+      latitude < -90 ||
+      latitude > 90 ||
+      longitude < -180 ||
+      longitude > 180) {
+    return null;
+  }
   return GeoTag.fromJson(json);
 }
 
