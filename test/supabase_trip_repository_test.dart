@@ -187,6 +187,7 @@ void main() {
               'start_date',
               'end_date',
               'notes',
+              'summary',
             });
             return _jsonResponse([], request: request);
           }),
