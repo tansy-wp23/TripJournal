@@ -28,6 +28,18 @@ class CurrentLocation {
   final double longitude;
 }
 
+class CurrentLocationReading {
+  const CurrentLocationReading({
+    required this.latitude,
+    required this.longitude,
+    required this.timestamp,
+  });
+
+  final double latitude;
+  final double longitude;
+  final DateTime timestamp;
+}
+
 enum CurrentLocationPermission { denied, deniedForever, whileInUse, always }
 
 abstract interface class CurrentLocationService {
@@ -50,7 +62,9 @@ abstract interface class CurrentLocationGateway {
 
   Future<CurrentLocationPermission> requestPermission();
 
-  Future<CurrentLocation> getCurrentPosition();
+  Future<CurrentLocationReading> getCurrentPosition();
+
+  Stream<CurrentLocationReading> getPositionStream();
 
   Future<bool> openAppSettings();
 
@@ -63,16 +77,22 @@ class GeolocatorCurrentLocationService implements CurrentLocationService {
     bool? isWeb,
     bool Function()? isWebSecureContext,
     Duration webTimeout = const Duration(seconds: 15),
+    Duration? nativeTimeout,
+    DateTime Function()? now,
   }) : _gateway = gateway ?? _GeolocatorGateway(),
        _isWeb = isWeb ?? kIsWeb,
        _isWebSecureContext =
-           isWebSecureContext ?? web_secure_context.isWebSecureContext {
+           isWebSecureContext ?? web_secure_context.isWebSecureContext,
+       _nativeTimeout = nativeTimeout ?? const Duration(seconds: 15),
+       _now = now ?? DateTime.now {
     _webTimeout = webTimeout;
   }
 
   final CurrentLocationGateway _gateway;
   final bool _isWeb;
   final bool Function() _isWebSecureContext;
+  final Duration _nativeTimeout;
+  final DateTime Function() _now;
   late final Duration _webTimeout;
 
   @override
@@ -118,7 +138,7 @@ class GeolocatorCurrentLocationService implements CurrentLocationService {
             CurrentLocationFailure.permissionDeniedForever,
           );
         }
-        return await _gateway.getCurrentPosition();
+        return _toCurrentLocation(await _gateway.getCurrentPosition());
       }
 
       if (permission == CurrentLocationPermission.denied) {
@@ -136,13 +156,23 @@ class GeolocatorCurrentLocationService implements CurrentLocationService {
           );
         case CurrentLocationPermission.whileInUse ||
             CurrentLocationPermission.always:
-          return await _gateway.getCurrentPosition();
+          return await _getFreshNativePosition();
       }
     } on CurrentLocationException {
       rethrow;
     } catch (error) {
       throw _failureFor(error);
     }
+  }
+
+  Future<CurrentLocation> _getFreshNativePosition() async {
+    final requestedAt = _now().toUtc();
+    final reading = await _gateway
+        .getPositionStream()
+        .where((position) => !position.timestamp.toUtc().isBefore(requestedAt))
+        .first
+        .timeout(_nativeTimeout);
+    return _toCurrentLocation(reading);
   }
 
   @override
@@ -183,7 +213,7 @@ class _GeolocatorGateway implements CurrentLocationGateway {
       _permissionFor(await Geolocator.requestPermission());
 
   @override
-  Future<CurrentLocation> getCurrentPosition() async {
+  Future<CurrentLocationReading> getCurrentPosition() async {
     try {
       final position = await Geolocator.getCurrentPosition(
         locationSettings: const LocationSettings(
@@ -191,10 +221,7 @@ class _GeolocatorGateway implements CurrentLocationGateway {
           timeLimit: Duration(seconds: 15),
         ),
       );
-      return CurrentLocation(
-        latitude: position.latitude,
-        longitude: position.longitude,
-      );
+      return _toCurrentLocationReading(position);
     } on TimeoutException {
       throw const CurrentLocationException(CurrentLocationFailure.unavailable);
     } catch (error) {
@@ -203,11 +230,30 @@ class _GeolocatorGateway implements CurrentLocationGateway {
   }
 
   @override
+  Stream<CurrentLocationReading> getPositionStream() =>
+      Geolocator.getPositionStream(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          distanceFilter: 0,
+        ),
+      ).map(_toCurrentLocationReading);
+
+  @override
   Future<bool> openAppSettings() => Geolocator.openAppSettings();
 
   @override
   Future<bool> openLocationSettings() => Geolocator.openLocationSettings();
 }
+
+CurrentLocation _toCurrentLocation(CurrentLocationReading reading) =>
+    CurrentLocation(latitude: reading.latitude, longitude: reading.longitude);
+
+CurrentLocationReading _toCurrentLocationReading(Position position) =>
+    CurrentLocationReading(
+      latitude: position.latitude,
+      longitude: position.longitude,
+      timestamp: position.timestamp,
+    );
 
 CurrentLocationPermission _permissionFor(LocationPermission permission) =>
     switch (permission) {

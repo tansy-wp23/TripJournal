@@ -56,14 +56,19 @@ void main() {
   test(
     'requests foreground permission after the user starts locating',
     () async {
+      final requestedAt = DateTime.utc(2026, 8, 25, 4);
       final gateway = _FakeCurrentLocationGateway()
         ..permission = CurrentLocationPermission.denied
         ..requestedPermission = CurrentLocationPermission.whileInUse
-        ..position = const CurrentLocation(
+        ..position = CurrentLocationReading(
           latitude: 3.139,
           longitude: 101.6869,
+          timestamp: requestedAt,
         );
-      final service = GeolocatorCurrentLocationService(gateway: gateway);
+      final service = GeolocatorCurrentLocationService(
+        gateway: gateway,
+        now: () => requestedAt,
+      );
 
       final location = await service.locate();
 
@@ -73,6 +78,76 @@ void main() {
       expect(location.longitude, 101.6869);
     },
   );
+
+  test('native location ignores a reading cached before the request', () async {
+    final requestedAt = DateTime.utc(2026, 8, 25, 4);
+    final positions = StreamController<CurrentLocationReading>();
+    addTearDown(positions.close);
+    final gateway = _FakeCurrentLocationGateway()
+      ..positionStream = positions.stream;
+    final service = GeolocatorCurrentLocationService(
+      gateway: gateway,
+      now: () => requestedAt,
+    );
+
+    final result = service.locate();
+    positions.add(
+      CurrentLocationReading(
+        latitude: 37.421998,
+        longitude: -122.084,
+        timestamp: requestedAt.subtract(const Duration(minutes: 30)),
+      ),
+    );
+    positions.add(
+      CurrentLocationReading(
+        latitude: 3.139,
+        longitude: 101.6869,
+        timestamp: requestedAt,
+      ),
+    );
+
+    await expectLater(
+      result,
+      completion(
+        isA<CurrentLocation>()
+            .having((value) => value.latitude, 'latitude', 3.139)
+            .having((value) => value.longitude, 'longitude', 101.6869),
+      ),
+    );
+  });
+
+  test('native location times out when no fresh reading arrives', () async {
+    final requestedAt = DateTime.utc(2026, 8, 25, 4);
+    final positions = StreamController<CurrentLocationReading>();
+    addTearDown(positions.close);
+    final gateway = _FakeCurrentLocationGateway()
+      ..positionStream = positions.stream;
+    final service = GeolocatorCurrentLocationService(
+      gateway: gateway,
+      now: () => requestedAt,
+      nativeTimeout: const Duration(milliseconds: 1),
+    );
+
+    final result = service.locate();
+    positions.add(
+      CurrentLocationReading(
+        latitude: 37.421998,
+        longitude: -122.084,
+        timestamp: requestedAt.subtract(const Duration(minutes: 30)),
+      ),
+    );
+
+    await expectLater(
+      result,
+      throwsA(
+        isA<CurrentLocationException>().having(
+          (error) => error.failure,
+          'failure',
+          CurrentLocationFailure.unavailable,
+        ),
+      ),
+    );
+  });
 
   test('reports permanently denied permission distinctly', () async {
     final gateway = _FakeCurrentLocationGateway()
@@ -149,9 +224,10 @@ void main() {
     () async {
       final gateway = _FakeCurrentLocationGateway()
         ..permission = CurrentLocationPermission.denied
-        ..position = const CurrentLocation(
+        ..position = CurrentLocationReading(
           latitude: 3.139,
           longitude: 101.6869,
+          timestamp: DateTime.utc(2026, 8, 25, 4),
         );
       final service = GeolocatorCurrentLocationService(
         gateway: gateway,
@@ -195,7 +271,7 @@ void main() {
 
   test('web bounds a never-completing location operation', () async {
     final gateway = _FakeCurrentLocationGateway()
-      ..positionCompleter = Completer<CurrentLocation>();
+      ..positionCompleter = Completer<CurrentLocationReading>();
     final service = GeolocatorCurrentLocationService(
       gateway: gateway,
       isWeb: true,
@@ -271,9 +347,10 @@ class _FakeCurrentLocationGateway implements CurrentLocationGateway {
   CurrentLocationPermission permission = CurrentLocationPermission.whileInUse;
   CurrentLocationPermission requestedPermission =
       CurrentLocationPermission.whileInUse;
-  CurrentLocation? position;
+  CurrentLocationReading? position;
   Object? positionError;
-  Completer<CurrentLocation>? positionCompleter;
+  Completer<CurrentLocationReading>? positionCompleter;
+  Stream<CurrentLocationReading>? positionStream;
   var serviceEnabledCalls = 0;
   var checkPermissionCalls = 0;
   var requestPermissionCalls = 0;
@@ -292,13 +369,20 @@ class _FakeCurrentLocationGateway implements CurrentLocationGateway {
   Future<bool> openLocationSettings() async => true;
 
   @override
-  Future<CurrentLocation> getCurrentPosition() async {
+  Future<CurrentLocationReading> getCurrentPosition() async {
     positionCalls++;
     final completer = positionCompleter;
     if (completer != null) return completer.future;
     final error = positionError;
     if (error != null) throw error;
     return position!;
+  }
+
+  @override
+  Stream<CurrentLocationReading> getPositionStream() {
+    final stream = positionStream;
+    if (stream != null) return stream;
+    return Stream.fromFuture(getCurrentPosition());
   }
 
   @override
