@@ -262,6 +262,14 @@ Future<Uint8List> buildTripPdf(Trip trip, List<JournalEntry> entries) async {
             ),
             pw.Text(trip.notes!),
           ],
+          if (trip.summary != null && trip.summary!.trim().isNotEmpty) ...[
+            pw.SizedBox(height: 12),
+            pw.Text(
+              'Trip Summary',
+              style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+            ),
+            pw.Text(trip.summary!),
+          ],
           pw.SizedBox(height: 12),
           pw.Text(
             dayGroups.isEmpty
