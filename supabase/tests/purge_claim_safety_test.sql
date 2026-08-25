@@ -2,6 +2,12 @@
 
 begin;
 
+-- Current Supabase images prevent every direct SQL delete from storage.objects
+-- before RLS is evaluated. This transaction-only test disables that platform
+-- guard so it can exercise TripJournal's own object policies; rollback restores
+-- the trigger before the test connection closes.
+alter table storage.objects disable trigger protect_delete;
+
 insert into auth.users (id)
 values
   ('00000000-0000-0000-0000-000000000001'),
