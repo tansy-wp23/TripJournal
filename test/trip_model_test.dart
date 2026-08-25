@@ -150,6 +150,7 @@ void main() {
         startDate: DateTime(2026, 4, 10),
         endDate: DateTime(2026, 4, 12),
         notes: 'Pack rain jacket',
+        summary: 'A memorable Kyoto visit.',
         createdAt: DateTime(2026, 4, 1),
         updatedAt: DateTime(2026, 4, 1),
         deletedAt: DateTime.utc(2026, 4, 2, 6),
@@ -163,6 +164,7 @@ void main() {
       expect(restored.endDate, trip.endDate);
       expect(restored.notes, trip.notes);
       expect(restored.deletedAt, trip.deletedAt);
+      expect(restored.summary, trip.summary);
     });
 
     test('round-trips with null coverPhotoPath and null notes', () {
@@ -178,6 +180,7 @@ void main() {
       final restored = Trip.fromJson(trip.toJson());
       expect(restored.coverPhotoPath, isNull);
       expect(restored.notes, isNull);
+      expect(restored.summary, isNull);
     });
 
     test('copyWith overrides only given fields', () {
@@ -190,8 +193,12 @@ void main() {
         createdAt: DateTime(2026, 4, 1),
         updatedAt: DateTime(2026, 4, 1),
       );
-      final updated = trip.copyWith(title: 'Renamed');
+      final updated = trip.copyWith(
+        title: 'Renamed',
+        summary: 'Edited summary',
+      );
       expect(updated.title, 'Renamed');
+      expect(updated.summary, 'Edited summary');
       expect(updated.startDate, trip.startDate);
       expect(updated.id, trip.id);
     });

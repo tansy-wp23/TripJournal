@@ -8,6 +8,8 @@ import 'photo_storage.dart';
 import 'supabase_journal_repository.dart';
 import 'supabase_photo_storage.dart';
 import 'trip_repository_locator.dart';
+import '../features/journal/location/location_tag_service.dart';
+import '../features/journal/location/nominatim_location_tag_service.dart';
 
 /// The one place the app resolves its [JournalRepository] from.
 ///
@@ -38,3 +40,5 @@ PhotoStorage get photoStorage => _photoStorage ??= switch (backendMode) {
     currentUserIdProvider,
   ),
 };
+
+final LocationTagService locationTagService = NominatimLocationTagService();

@@ -4,6 +4,7 @@ class GeoTag {
   final String? placeName;
   final String? formattedAddress;
   final String? placeId;
+  final String? locationTag;
 
   const GeoTag({
     required this.latitude,
@@ -11,6 +12,7 @@ class GeoTag {
     this.placeName,
     this.formattedAddress,
     this.placeId,
+    this.locationTag,
   });
 
   factory GeoTag.fromJson(Map<String, dynamic> json) {
@@ -20,6 +22,7 @@ class GeoTag {
       placeName: json['placeName'] as String?,
       formattedAddress: json['formattedAddress'] as String?,
       placeId: json['placeId'] as String?,
+      locationTag: json['locationTag'] as String?,
     );
   }
 
@@ -30,6 +33,7 @@ class GeoTag {
       'placeName': placeName,
       'formattedAddress': formattedAddress,
       'placeId': placeId,
+      'locationTag': locationTag,
     };
   }
 
@@ -39,6 +43,7 @@ class GeoTag {
     String? placeName,
     String? formattedAddress,
     String? placeId,
+    String? locationTag,
   }) {
     return GeoTag(
       latitude: latitude ?? this.latitude,
@@ -46,6 +51,7 @@ class GeoTag {
       placeName: placeName ?? this.placeName,
       formattedAddress: formattedAddress ?? this.formattedAddress,
       placeId: placeId ?? this.placeId,
+      locationTag: locationTag ?? this.locationTag,
     );
   }
 }

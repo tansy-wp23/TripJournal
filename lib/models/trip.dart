@@ -16,6 +16,9 @@ class Trip {
   final DateTime startDate;
   final DateTime endDate;
   final String? notes;
+
+  /// The generated summary, optionally edited by the user.
+  final String? summary;
   final DateTime createdAt;
   final DateTime updatedAt;
   final DateTime? deletedAt;
@@ -29,6 +32,7 @@ class Trip {
     required this.startDate,
     required this.endDate,
     this.notes,
+    this.summary,
     required this.createdAt,
     required this.updatedAt,
     this.deletedAt,
@@ -90,6 +94,7 @@ class Trip {
       startDate: DateTime.parse(json['startDate'] as String),
       endDate: DateTime.parse(json['endDate'] as String),
       notes: json['notes'] as String?,
+      summary: json['summary'] as String?,
       createdAt: DateTime.parse(json['createdAt'] as String),
       updatedAt: DateTime.parse(json['updatedAt'] as String),
       deletedAt: json['deletedAt'] == null
@@ -108,6 +113,7 @@ class Trip {
       'startDate': startDate.toIso8601String(),
       'endDate': endDate.toIso8601String(),
       'notes': notes,
+      'summary': summary,
       'createdAt': createdAt.toIso8601String(),
       'updatedAt': updatedAt.toIso8601String(),
       'deletedAt': deletedAt?.toIso8601String(),
@@ -123,6 +129,7 @@ class Trip {
     DateTime? startDate,
     DateTime? endDate,
     String? notes,
+    String? summary,
     DateTime? createdAt,
     DateTime? updatedAt,
     DateTime? deletedAt,
@@ -137,6 +144,7 @@ class Trip {
       startDate: startDate ?? this.startDate,
       endDate: endDate ?? this.endDate,
       notes: notes ?? this.notes,
+      summary: summary ?? this.summary,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       deletedAt: clearDeletedAt ? null : deletedAt ?? this.deletedAt,
