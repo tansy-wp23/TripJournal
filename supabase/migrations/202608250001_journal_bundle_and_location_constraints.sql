@@ -70,6 +70,22 @@ $$;
 alter table public.journal_entries
   validate constraint journal_entries_location_geo_tag_check;
 
+-- The storage policies already target this bucket. Creating it here is
+-- idempotent and makes fresh/test projects match configured production ones.
+insert into storage.buckets (
+  id, name, public, file_size_limit, allowed_mime_types
+) values (
+  'journal-photos',
+  'journal-photos',
+  true,
+  33554432,
+  array['image/jpeg', 'image/png', 'image/webp']
+)
+on conflict (id) do update set
+  public = excluded.public,
+  file_size_limit = excluded.file_size_limit,
+  allowed_mime_types = excluded.allowed_mime_types;
+
 grant select, delete on table public.journal_entries to authenticated;
 revoke insert, update on table public.journal_entries from authenticated;
 grant select on table public.health_logs to authenticated;

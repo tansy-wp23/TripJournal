@@ -72,8 +72,17 @@ jobs:
           cp tripjournal_schema.sql \
             .ci-supabase/supabase/migrations/00000000000000_tripjournal_schema.sql
           cp supabase/tests/*.sql .ci-supabase/supabase/tests/
-      - run: supabase --workdir .ci-supabase start
-      - run: supabase --workdir .ci-supabase test db
+      - name: Start isolated Supabase database
+        run: supabase --workdir .ci-supabase start >/tmp/supabase-start.log
+      - name: Run database SQL tests
+        shell: bash
+        run: |
+          for test_file in .ci-supabase/supabase/tests/*.sql; do
+            echo "Running $(basename "$test_file")"
+            psql "postgresql://postgres:postgres@127.0.0.1:55322/postgres" \
+              --set ON_ERROR_STOP=on \
+              --file "$test_file" >/dev/null
+          done
       - name: Stop local Supabase services
         if: always()
         run: supabase --workdir .ci-supabase stop --no-backup

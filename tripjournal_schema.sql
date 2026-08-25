@@ -25,9 +25,8 @@
 --
 -- 📸 PHOTOS: actual image files are NOT stored in these tables. They go in a
 --   Supabase STORAGE bucket; only the resulting URL strings are saved here
---   (journal_entries.photo_urls). Create the bucket separately in the
---   dashboard (Storage → New bucket, e.g. "journal-photos") and set its access
---   policies. That is a dashboard step, not part of this SQL.
+--   (journal_entries.photo_urls). The trip-covers and journal-photos buckets
+--   and their access policies are configured below.
 -- ============================================================================
 
 
@@ -358,6 +357,24 @@ insert into storage.buckets (
 ) values (
   'trip-covers',
   'trip-covers',
+  true,
+  33554432,
+  array['image/jpeg', 'image/png', 'image/webp']
+)
+on conflict (id) do update set
+  public = excluded.public,
+  file_size_limit = excluded.file_size_limit,
+  allowed_mime_types = excluded.allowed_mime_types;
+
+insert into storage.buckets (
+  id,
+  name,
+  public,
+  file_size_limit,
+  allowed_mime_types
+) values (
+  'journal-photos',
+  'journal-photos',
   true,
   33554432,
   array['image/jpeg', 'image/png', 'image/webp']
@@ -1140,8 +1157,6 @@ grant execute on function public.consume_places_rate_limit()
 
 -- ============================================================================
 -- END. Next steps (NOT SQL):
---   1. Storage → create a separate bucket (e.g. "journal-photos") for entry
---      images. The trip-covers bucket and policies are configured above.
---   2. Android: add INTERNET permission to the manifest.
---   3. Confirm Data API exposes the public schema tables (default privileges).
+--   1. Android: add INTERNET permission to the manifest.
+--   2. Confirm Data API exposes the public schema tables (default privileges).
 -- ============================================================================
