@@ -8,6 +8,7 @@ import 'package:tripjournal/features/admin/screens/admin_login_screen.dart';
 import 'package:tripjournal/features/admin/screens/admin_user_detail_screen.dart';
 import 'package:tripjournal/features/admin/screens/admin_user_list_screen.dart';
 import 'package:tripjournal/features/admin/screens/audit_log_screen.dart';
+import 'package:tripjournal/features/admin/screens/system_monitoring_screen.dart';
 import 'package:tripjournal/models/admin_access_attempt_log.dart';
 
 import 'support/admin_test_harness.dart';
@@ -184,6 +185,21 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byType(AuditLogScreen), findsOneWidget);
+    });
+
+    testWidgets('tapping the Monitoring action opens the monitoring hub',
+        (tester) async {
+      final harness = AdminTestHarness();
+      addTearDown(harness.dispose);
+
+      await tester.pumpWidget(harness.wrap(const AdminDashboardScreen()));
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('admin-monitoring')));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(SystemMonitoringScreen), findsOneWidget);
     });
 
     testWidgets('tapping an access attempt with a matching profile opens '

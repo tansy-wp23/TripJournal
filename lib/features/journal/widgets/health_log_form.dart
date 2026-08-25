@@ -569,7 +569,7 @@ class _MealDialogState extends State<_MealDialog> {
       if (!mounted) return;
       setState(() => _photoPath = stored);
 
-      final detected = await foodDetectionService.detectFromImage(stored);
+      final detected = await loggedFoodDetectionService.detectFromImage(stored);
       if (!mounted) return;
 
       if (detected == null) {

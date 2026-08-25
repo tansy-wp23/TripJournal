@@ -11,6 +11,7 @@ import 'admin_issue_report_list_screen.dart';
 import 'admin_user_detail_screen.dart';
 import 'admin_user_list_screen.dart';
 import 'audit_log_screen.dart';
+import 'system_monitoring_screen.dart';
 
 /// PB-02: View Admin Dashboard. Loads `AdminDashboardStats` on first build
 /// and renders it as a grid of tappable cards, organized into "Overview"
@@ -105,6 +106,14 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
             icon: const Icon(Icons.history),
             onPressed: () => Navigator.of(context).push(
               MaterialPageRoute(builder: (_) => const AuditLogScreen()),
+            ),
+          ),
+          IconButton(
+            key: const Key('admin-monitoring'),
+            tooltip: 'Monitoring',
+            icon: const Icon(Icons.monitor_heart_outlined),
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const SystemMonitoringScreen()),
             ),
           ),
           IconButton(

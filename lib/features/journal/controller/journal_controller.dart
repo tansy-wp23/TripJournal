@@ -243,7 +243,7 @@ class JournalController extends ChangeNotifier {
 final journalControllerProvider = ChangeNotifierProvider<JournalController>(
   (ref) => JournalController(
     journalRepository,
-    dailyAdviceService,
+    loggedDailyAdviceService,
     locationTagService: locationTagService,
   ),
 );
