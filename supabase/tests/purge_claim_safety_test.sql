@@ -2,13 +2,10 @@
 
 begin;
 
--- Current Supabase images prevent every direct SQL delete from storage.objects
--- before RLS is evaluated. This transaction-only test disables that platform
--- guard so it can exercise TripJournal's own object policies; rollback restores
--- the trigger before the test connection closes.
-set local role supabase_storage_admin;
-alter table storage.objects disable trigger protect_delete;
-reset role;
+-- Current Supabase images prevent direct SQL deletion from storage.objects
+-- unless this transaction-scoped test flag is enabled. No real object files
+-- exist here; the flag only lets this SQL fixture exercise TripJournal's RLS.
+set local storage.allow_delete_query = 'true';
 
 insert into auth.users (id)
 values
