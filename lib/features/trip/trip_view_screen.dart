@@ -258,6 +258,14 @@ class _TripViewScreenState extends ConsumerState<TripViewScreen>
         entries: entries,
       );
       if (!mounted) return;
+      final error = await ref
+          .read(tripControllerProvider.notifier)
+          .editTrip(trip.copyWith(summary: summary, updatedAt: DateTime.now()));
+      if (!mounted) return;
+      if (error != null) {
+        setState(() => _summaryError = error);
+        return;
+      }
       setState(() => _tripSummary = summary);
     } catch (_) {
       if (!mounted) return;
