@@ -22,21 +22,28 @@ class CurrentLocationException implements Exception {
 }
 
 class CurrentLocation {
-  const CurrentLocation({required this.latitude, required this.longitude});
+  const CurrentLocation({
+    required this.latitude,
+    required this.longitude,
+    required this.accuracyMeters,
+  });
 
   final double latitude;
   final double longitude;
+  final double accuracyMeters;
 }
 
 class CurrentLocationReading {
   const CurrentLocationReading({
     required this.latitude,
     required this.longitude,
+    required this.accuracyMeters,
     required this.timestamp,
   });
 
   final double latitude;
   final double longitude;
+  final double accuracyMeters;
   final DateTime timestamp;
 }
 
@@ -92,6 +99,7 @@ class GeolocatorCurrentLocationService implements CurrentLocationService {
   final bool _isWeb;
   final bool Function() _isWebSecureContext;
   final Duration _nativeTimeout;
+  static const _maxWebPositionAge = Duration(seconds: 30);
   final DateTime Function() _now;
   late final Duration _webTimeout;
 
@@ -138,7 +146,14 @@ class GeolocatorCurrentLocationService implements CurrentLocationService {
             CurrentLocationFailure.permissionDeniedForever,
           );
         }
-        return _toCurrentLocation(await _gateway.getCurrentPosition());
+        final reading = await _gateway.getCurrentPosition();
+        final oldestAccepted = _now().toUtc().subtract(_maxWebPositionAge);
+        if (reading.timestamp.toUtc().isBefore(oldestAccepted)) {
+          throw const CurrentLocationException(
+            CurrentLocationFailure.unavailable,
+          );
+        }
+        return _toCurrentLocation(reading);
       }
 
       if (permission == CurrentLocationPermission.denied) {
@@ -246,12 +261,17 @@ class _GeolocatorGateway implements CurrentLocationGateway {
 }
 
 CurrentLocation _toCurrentLocation(CurrentLocationReading reading) =>
-    CurrentLocation(latitude: reading.latitude, longitude: reading.longitude);
+    CurrentLocation(
+      latitude: reading.latitude,
+      longitude: reading.longitude,
+      accuracyMeters: reading.accuracyMeters,
+    );
 
 CurrentLocationReading _toCurrentLocationReading(Position position) =>
     CurrentLocationReading(
       latitude: position.latitude,
       longitude: position.longitude,
+      accuracyMeters: position.accuracy,
       timestamp: position.timestamp,
     );
 

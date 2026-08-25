@@ -91,6 +91,10 @@ void main() {
     );
 
     expect(find.text('2 mapped · 1 without location'), findsOneWidget);
+    expect(
+      find.text('Lines show journal order only — not roads or navigation.'),
+      findsOneWidget,
+    );
     expect(find.byKey(const Key('trip-map-day-all')), findsOneWidget);
     expect(find.byKey(const Key('trip-map-day-1')), findsOneWidget);
     expect(find.byKey(const Key('trip-map-day-2')), findsOneWidget);
@@ -178,6 +182,10 @@ void main() {
     );
 
     expect(find.text('Map unavailable'), findsOneWidget);
+    expect(
+      find.text('Lines show journal order only — not roads or navigation.'),
+      findsOneWidget,
+    );
     await tester.tap(
       find.byKey(const Key('trip-map-fallback-coord:1.000000,2.000000')),
     );

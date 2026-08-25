@@ -12,6 +12,7 @@ const expectedMessages = {
   unauthorized: "Authentication is required.",
   invalid_request: "The request is invalid.",
   rate_limited: "Too many requests. Please try again shortly.",
+  rate_limit_unavailable: "Location search is temporarily unavailable. Please try again.",
   timeout: "The location provider timed out. Please try again.",
   provider_error: "The location provider is unavailable. Please try again.",
   internal_error: "The request could not be completed.",
@@ -91,10 +92,11 @@ function handlerFor(
       authorization: string | null,
     ) => Promise<{ id: string } | null>;
     env?: Record<string, string | undefined>;
-    now?: () => number;
     scheduleTimeout?: (callback: () => void, delayMs: number) => number;
     cancelTimeout?: (handle: unknown) => void;
-    rateLimit?: { maxRequests: number; windowMs: number };
+    consumeRateLimit?: (
+      authorization: string,
+    ) => Promise<{ allowed: boolean; remaining: number; retryAfterSeconds: number }>;
     providerTimeoutMs?: number;
   } = {},
 ) {
@@ -113,10 +115,10 @@ function handlerFor(
       return Promise.resolve({ id: authorization.slice("Bearer ".length) });
     }),
     readEnv: (name: string) => env[name],
-    now: options.now ?? (() => 1_000),
     scheduleTimeout: options.scheduleTimeout,
     cancelTimeout: options.cancelTimeout,
-    rateLimit: options.rateLimit,
+    consumeRateLimit: options.consumeRateLimit ?? (() =>
+      Promise.resolve({ allowed: true, remaining: 19, retryAfterSeconds: 0 })),
     providerTimeoutMs: options.providerTimeoutMs,
   });
 }
@@ -160,6 +162,21 @@ Deno.test("the production authenticator verifies bearer tokens through Supabase 
       }
       return Promise.resolve(jsonResponse({ id: "verified-user" }));
     }
+    if (url === "https://tripjournal.supabase.co/rest/v1/rpc/consume_places_rate_limit") {
+      const headers = new Headers(init?.headers);
+      if (
+        init?.method !== "POST" ||
+        headers.get("authorization") !== "Bearer verified-token" ||
+        headers.get("apikey") !== "public-anon-key"
+      ) {
+        return Promise.resolve(jsonResponse({ message: "bad limiter request" }, 401));
+      }
+      return Promise.resolve(jsonResponse({
+        allowed: true,
+        remaining: 19,
+        retry_after_seconds: 0,
+      }));
+    }
     if (url === "https://places.googleapis.com/v1/places:searchText") {
       return Promise.resolve(jsonResponse({ places: [] }));
     }
@@ -175,7 +192,6 @@ Deno.test("the production authenticator verifies bearer tokens through Supabase 
   const handler = createPlacesProxyHandler({
     fetch: fetchImpl,
     readEnv: (name: string) => env[name],
-    now: () => 1_000,
   });
 
   const response = await handler(
@@ -427,11 +443,17 @@ Deno.test("search treats an omitted places field as no matches and rejects malfo
   await assertError(malformed, 502, "provider_error");
 });
 
-Deno.test("the short-window limiter is isolated per user and expires", async () => {
-  let now = 10_000;
+Deno.test("the durable limiter decision is enforced before calling Google", async () => {
+  let calls = 0;
   const handler = handlerFor({
-    now: () => now,
-    rateLimit: { maxRequests: 2, windowMs: 1_000 },
+    consumeRateLimit: () => {
+      calls += 1;
+      return Promise.resolve({
+        allowed: calls <= 2,
+        remaining: Math.max(0, 2 - calls),
+        retryAfterSeconds: calls <= 2 ? 0 : 30,
+      });
+    },
   });
 
   const first = await handler(
@@ -443,19 +465,26 @@ Deno.test("the short-window limiter is isolated per user and expires", async () 
   const limited = await handler(
     post({ action: "search", query: "KL" }, { token: "user-one" }),
   );
-  const otherUser = await handler(
-    post({ action: "search", query: "KL" }, { token: "user-two" }),
-  );
-  now = 11_001;
-  const afterWindow = await handler(
-    post({ action: "search", query: "KL" }, { token: "user-one" }),
-  );
-
-  for (const response of [first, second, otherUser, afterWindow]) {
+  for (const response of [first, second]) {
     assertEquals(response.status, 200);
     assertCors(response);
   }
   await assertError(limited, 429, "rate_limited");
+  assertEquals(calls, 3);
+});
+
+Deno.test("a limiter database failure fails closed without calling Google", async () => {
+  let providerCalls = 0;
+  const response = await handlerFor({
+    consumeRateLimit: () => Promise.reject(new Error("database offline")),
+    fetch: () => {
+      providerCalls += 1;
+      return Promise.resolve(jsonResponse({ places: [] }));
+    },
+  })(post({ action: "search", query: "private query" }));
+
+  await assertError(response, 503, "rate_limit_unavailable");
+  assertEquals(providerCalls, 0);
 });
 
 Deno.test("provider failures are sanitized and never expose upstream details or the server key", async () => {

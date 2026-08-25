@@ -2,6 +2,11 @@
 
 begin;
 
+-- Current Supabase images prevent direct SQL deletion from storage.objects
+-- unless this transaction-scoped test flag is enabled. No real object files
+-- exist here; the flag only lets this SQL fixture exercise TripJournal's RLS.
+set local storage.allow_delete_query = 'true';
+
 insert into auth.users (id)
 values
   ('00000000-0000-0000-0000-000000000001'),
@@ -213,6 +218,9 @@ set local role authenticated;
 
 -- Journal ownership must be derived from the parent trip, not merely from a
 -- client-supplied journal_entries.user_id value.
+-- Seed the owned row as the database owner: app writes now go through the
+-- atomic bundle RPC, so authenticated callers deliberately lack direct INSERT.
+reset role;
 insert into public.journal_entries (
   id,
   trip_id,
@@ -228,6 +236,9 @@ insert into public.journal_entries (
   '{}',
   date '2026-09-01'
 );
+
+set local role authenticated;
+set local "request.jwt.claim.sub" = '00000000-0000-0000-0000-000000000001';
 
 do $$
 begin
@@ -249,7 +260,7 @@ begin
     );
     raise exception 'cross-owner journal INSERT succeeded';
   exception
-    when foreign_key_violation then null;
+    when foreign_key_violation or insufficient_privilege then null;
   end;
 
   begin
@@ -258,7 +269,7 @@ begin
     where id = '44444444-4444-4444-8444-444444444444';
     raise exception 'cross-owner journal reassignment succeeded';
   exception
-    when foreign_key_violation then null;
+    when foreign_key_violation or insufficient_privilege then null;
   end;
 end;
 $$;

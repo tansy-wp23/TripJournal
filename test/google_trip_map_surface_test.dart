@@ -64,6 +64,65 @@ void main() {
     expect(selected.single.key, model.groups.single.key);
   });
 
+  test('clustering starts only above twenty entry marker groups', () {
+    TripMapModel groups(int count) => modelFor([
+      for (var index = 0; index < count; index++)
+        entry(
+          id: 'entry-$index',
+          createdAt: tripStart.add(Duration(minutes: index)),
+          latitude: 1 + index / 100,
+          longitude: 2 + index / 100,
+          placeId: 'place-$index',
+        ),
+    ]);
+
+    final twenty = groups(20);
+    final twentyOne = groups(21);
+
+    expect(
+      googleTripMapMarkers(
+        model: twenty,
+        onSelected: (_) {},
+      ).every((marker) => marker.clusterManagerId == null),
+      isTrue,
+    );
+    expect(googleTripMapClusterManagers(twenty, onClusterTap: (_) {}), isEmpty);
+
+    final clusteredMarkers = googleTripMapMarkers(
+      model: twentyOne,
+      onSelected: (_) {},
+    );
+    expect(
+      clusteredMarkers.every((marker) => marker.clusterManagerId != null),
+      isTrue,
+    );
+    expect(
+      googleTripMapClusterManagers(twentyOne, onClusterTap: (_) {}),
+      hasLength(1),
+    );
+  });
+
+  test('direction arrows never join the entry marker cluster', () {
+    final model = modelFor([
+      for (var index = 0; index < 21; index++)
+        entry(
+          id: 'day-${index + 1}',
+          createdAt: tripStart.add(Duration(days: index)),
+          latitude: index.toDouble(),
+          longitude: index.toDouble(),
+          placeId: 'day-place-$index',
+        ),
+    ]);
+
+    expect(model.groups, hasLength(21));
+    expect(
+      googleTripMapArrowMarkers(
+        model,
+      ).every((marker) => marker.clusterManagerId == null),
+      isTrue,
+    );
+  });
+
   test('selected-day previous context marker is visually muted', () {
     final model = buildTripMapModel(
       entries: [
@@ -316,6 +375,7 @@ void main() {
       markers: <Marker>{groupMarker},
       polylines: <Polyline>{polyline},
       arrowMarkers: <Marker>{arrowMarker},
+      clusterManagers: const <ClusterManager>{},
       onMapCreated: (_) {},
     );
 
@@ -353,6 +413,7 @@ void main() {
                 required markers,
                 required polylines,
                 required arrowMarkers,
+                required clusterManagers,
                 required onMapCreated,
               }) {
                 receivedPolylines = polylines;
@@ -365,6 +426,69 @@ void main() {
 
     expect(receivedPolylines?.single.polylineId.value, 'day-1-to-day-2');
     expect(receivedArrows?.single.markerId.value, 'day-1-to-day-2-arrow');
+  });
+
+  testWidgets('tapping a native cluster zooms to its bounds', (tester) async {
+    final model = modelFor([
+      for (var index = 0; index < 21; index++)
+        entry(
+          id: 'cluster-$index',
+          createdAt: tripStart.add(Duration(minutes: index)),
+          latitude: 1 + index / 100,
+          longitude: 2 + index / 100,
+          placeId: 'cluster-place-$index',
+        ),
+    ]);
+    final controller = _RecordingCameraController();
+    Set<ClusterManager>? receivedManagers;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: GoogleTripMapSurface(
+          model: model,
+          onSelected: (_) {},
+          platformBuilder:
+              ({
+                required initialCameraPosition,
+                required markers,
+                required polylines,
+                required arrowMarkers,
+                required clusterManagers,
+                required onMapCreated,
+              }) {
+                receivedManagers = clusterManagers;
+                return TextButton(
+                  key: const Key('cluster-map-ready'),
+                  onPressed: () => onMapCreated(controller),
+                  child: const Text('Map ready'),
+                );
+              },
+        ),
+      ),
+    );
+    await tester.tap(find.byKey(const Key('cluster-map-ready')));
+    await tester.pump();
+    controller.updates.clear();
+
+    final manager = receivedManagers!.single;
+    manager.onClusterTap!(
+      Cluster(
+        manager.clusterManagerId,
+        const [MarkerId('a'), MarkerId('b')],
+        position: const LatLng(1.1, 2.1),
+        bounds: LatLngBounds(
+          southwest: const LatLng(1, 2),
+          northeast: const LatLng(1.2, 2.2),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(controller.updates, hasLength(1));
+    expect(
+      (controller.updates.single.toJson() as List<Object?>).first,
+      'newLatLngBounds',
+    );
   });
 
   testWidgets('initial multi-group bounds wait for a post-layout frame', (
@@ -395,6 +519,7 @@ void main() {
                   required markers,
                   required polylines,
                   required arrowMarkers,
+                  required clusterManagers,
                   required onMapCreated,
                 }) => TextButton(
                   key: const Key('fake-multi-group-map-ready'),
@@ -452,6 +577,7 @@ void main() {
       required markers,
       required polylines,
       required arrowMarkers,
+      required clusterManagers,
       required onMapCreated,
     }) => TextButton(
       key: const Key('fake-connector-map-ready'),
@@ -508,6 +634,7 @@ void main() {
                   required markers,
                   required polylines,
                   required arrowMarkers,
+                  required clusterManagers,
                   required onMapCreated,
                 }) {
                   platformBuilds++;

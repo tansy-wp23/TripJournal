@@ -236,17 +236,20 @@ void main() {
       expect(log.meals.single.photoPath, 'https://cdn.example/ramen.jpg');
     });
 
-    test('an entry with no health log maps to a null log, not a crash', () async {
-      final repository = _repository(
-        MockClient(
-          (request) async => _jsonResponse([
-            _entryRow(healthLogs: <Object>[]),
-          ], request: request),
-        ),
-      );
+    test(
+      'an entry with no health log maps to a null log, not a crash',
+      () async {
+        final repository = _repository(
+          MockClient(
+            (request) async => _jsonResponse([
+              _entryRow(healthLogs: <Object>[]),
+            ], request: request),
+          ),
+        );
 
-      expect((await repository.getEntries(_tripId)).single.healthLog, isNull);
-    });
+        expect((await repository.getEntries(_tripId)).single.healthLog, isNull);
+      },
+    );
 
     test('the location jsonb blob round-trips into a GeoTag', () async {
       final repository = _repository(
@@ -274,13 +277,31 @@ void main() {
       expect(location.placeId, 'ChIJabc');
     });
 
-    test('a location blob missing coordinates drops the tag, keeping the entry', () async {
-      // Latitude/longitude are the only non-optional parts of a GeoTag. Losing
-      // the pin is recoverable; losing the whole day's writing is not.
+    test(
+      'a location blob missing coordinates drops the tag, keeping the entry',
+      () async {
+        // Latitude/longitude are the only non-optional parts of a GeoTag. Losing
+        // the pin is recoverable; losing the whole day's writing is not.
+        final repository = _repository(
+          MockClient(
+            (request) async => _jsonResponse([
+              _entryRow(location: {'placeName': 'Somewhere'}),
+            ], request: request),
+          ),
+        );
+
+        final entry = (await repository.getEntries(_tripId)).single;
+
+        expect(entry.location, isNull);
+        expect(entry.title, 'Kek Lok Si');
+      },
+    );
+
+    test('an out-of-range location drops the tag, keeping the entry', () async {
       final repository = _repository(
         MockClient(
           (request) async => _jsonResponse([
-            _entryRow(location: {'placeName': 'Somewhere'}),
+            _entryRow(location: {'latitude': 91, 'longitude': 100}),
           ], request: request),
         ),
       );
@@ -341,7 +362,7 @@ void main() {
   });
 
   group('addEntry', () {
-    test('inserts a snake_case row carrying the signed-in user id', () async {
+    test('saves entry, health log, and meals through one atomic RPC', () async {
       final recorder = _Recorder();
       final repository = _repository(recorder.client());
 
@@ -352,97 +373,51 @@ void main() {
         ),
       );
 
+      expect(recorder.requests, hasLength(1));
       expect(recorder.at(0).method, 'POST');
-      expect(recorder.at(0).url.path, '/rest/v1/journal_entries');
+      expect(recorder.at(0).url.path, '/rest/v1/rpc/save_journal_entry_bundle');
       final body = recorder.bodyAt(0);
-      expect(body['id'], _entryId);
-      // JournalEntry has no userId field -- ownership comes from the provider,
-      // and without it every RLS policy on these three tables rejects the write.
-      expect(body['user_id'], _userId);
-      expect(body['trip_id'], _tripId);
-      expect(body['mood'], 'happy');
-      expect(body['photo_urls'], ['https://cdn.example/a.jpg']);
-      expect(body['location'], {
+      final entryBody = body['p_entry'] as Map<String, dynamic>;
+      expect(entryBody['id'], _entryId);
+      expect(entryBody['trip_id'], _tripId);
+      expect(entryBody['mood'], 'happy');
+      expect(entryBody['photo_urls'], ['https://cdn.example/a.jpg']);
+      expect(entryBody, isNot(contains('user_id')));
+      expect(entryBody['location'], {
         'latitude': 5.4,
         'longitude': 100.3,
         'placeName': null,
         'formattedAddress': null,
         'placeId': null,
+        'locationTag': null,
       });
-      expect(body['entry_date'], '2026-08-06');
-      expect(body, isNot(contains('tripId')));
-      expect(body, isNot(contains('photoPaths')));
-      expect(body, isNot(contains('healthLog')));
-    });
+      expect(entryBody['entry_date'], '2026-08-06');
 
-    test('writes the log and its meals after the entry row', () async {
-      final recorder = _Recorder();
-      final repository = _repository(recorder.client());
-
-      await repository.addEntry(_entry(healthLog: _log(meals: [_meal()])));
-
-      expect(recorder.summary, [
-        'POST /rest/v1/journal_entries',
-        // Meals are cleared before the log is written so a meal the user
-        // removed cannot survive the save.
-        'DELETE /rest/v1/meals',
-        'DELETE /rest/v1/health_logs',
-        'POST /rest/v1/health_logs',
-        'POST /rest/v1/meals',
-      ]);
-
-      final logBody = recorder.bodyAt(3);
+      final logBody = body['p_health_log'] as Map<String, dynamic>;
       expect(logBody['id'], _logId);
-      expect(logBody['user_id'], _userId);
       expect(logBody['entry_id'], _entryId);
       expect(logBody['calories_burned'], 430);
+      expect(logBody, isNot(contains('user_id')));
 
-      final mealBody = recorder.bodyListAt(4).single as Map<String, dynamic>;
+      final mealBody =
+          (body['p_meals'] as List<dynamic>).single as Map<String, dynamic>;
       expect(mealBody['health_log_id'], _logId);
-      expect(mealBody['user_id'], _userId);
       expect(mealBody['meal_type'], 'lunch');
       expect(mealBody['portion'], 'large');
       expect(mealBody['photo_url'], 'https://cdn.example/ramen.jpg');
+      expect(mealBody, isNot(contains('user_id')));
     });
 
-    test('skips the meal insert when the log has no meals', () async {
+    test('sends null health data without extra requests', () async {
       final recorder = _Recorder();
       final repository = _repository(recorder.client());
 
-      await repository.addEntry(_entry(healthLog: _log()));
-
-      expect(
-        recorder.summary,
-        isNot(contains('POST /rest/v1/meals')),
-      );
-    });
-
-    test('an entry with no health log clears any log left behind', () async {
-      final recorder = _Recorder();
-      final repository = _repository(
-        recorder.client(
-          respond: (request) =>
-              request.url.path == '/rest/v1/health_logs' &&
-                  request.method == 'GET'
-              ? [
-                  {'id': _logId},
-                ]
-              : <Object>[],
-        ),
-      );
-
       await repository.addEntry(_entry());
 
-      expect(recorder.summary, [
-        'POST /rest/v1/journal_entries',
-        'GET /rest/v1/health_logs',
-        'DELETE /rest/v1/meals',
-        'DELETE /rest/v1/health_logs',
-      ]);
-      expect(
-        recorder.at(2).url.queryParameters['health_log_id'],
-        'in.("$_logId")',
-      );
+      expect(recorder.requests, hasLength(1));
+      final body = recorder.bodyAt(0);
+      expect(body['p_health_log'], isNull);
+      expect(body['p_meals'], isEmpty);
     });
 
     test('throws before writing anything when nobody is signed in', () async {
@@ -460,58 +435,24 @@ void main() {
   });
 
   group('updateEntry', () {
-    test('patches only the editable columns', () async {
-      final recorder = _Recorder();
-      final repository = _repository(recorder.client());
-
-      await repository.updateEntry(_entry(healthLog: _log()));
-
-      expect(recorder.at(0).method, 'PATCH');
-      expect(recorder.at(0).url.queryParameters['id'], 'eq.$_entryId');
-
-      final body = recorder.bodyAt(0);
-      expect(body['title'], 'Kek Lok Si');
-      expect(body['updated_at'], '2026-08-06T05:06:07.000Z');
-      // An entry never changes owner or trip, and created_at is the entry's
-      // own timestamp for day-grouping -- rewriting it would silently move
-      // backfilled entries to the day they were edited.
-      expect(body, isNot(contains('user_id')));
-      expect(body, isNot(contains('trip_id')));
-      expect(body, isNot(contains('created_at')));
-      expect(body, isNot(contains('id')));
-    });
-
-    test('replaces meals wholesale rather than diffing them', () async {
+    test('uses the same atomic bundle RPC as create', () async {
       final recorder = _Recorder();
       final repository = _repository(recorder.client());
 
       await repository.updateEntry(_entry(healthLog: _log(meals: [_meal()])));
 
-      expect(recorder.summary, [
-        'PATCH /rest/v1/journal_entries',
-        'DELETE /rest/v1/meals',
-        'DELETE /rest/v1/health_logs',
-        'POST /rest/v1/health_logs',
-        'POST /rest/v1/meals',
-      ]);
-      expect(
-        recorder.at(1).url.queryParameters['health_log_id'],
-        'eq.$_logId',
-      );
-    });
+      expect(recorder.requests, hasLength(1));
+      expect(recorder.at(0).method, 'POST');
+      expect(recorder.at(0).url.path, '/rest/v1/rpc/save_journal_entry_bundle');
 
-    test('clears a stale log whose id no longer matches the entry', () async {
-      // The edit screen mints a fresh log id when an entry had none. Leaving
-      // the old row behind would make the embedded read pick one at random.
-      final recorder = _Recorder();
-      final repository = _repository(recorder.client());
-
-      await repository.updateEntry(_entry(healthLog: _log()));
-
-      final staleDelete = recorder.at(2);
-      expect(staleDelete.url.path, '/rest/v1/health_logs');
-      expect(staleDelete.url.queryParameters['entry_id'], 'eq.$_entryId');
-      expect(staleDelete.url.queryParameters['id'], 'neq.$_logId');
+      final body = recorder.bodyAt(0);
+      final entryBody = body['p_entry'] as Map<String, dynamic>;
+      expect(entryBody['id'], _entryId);
+      expect(entryBody['trip_id'], _tripId);
+      expect(entryBody['created_at'], '2026-08-06T02:03:04.000Z');
+      expect(entryBody['updated_at'], '2026-08-06T05:06:07.000Z');
+      expect(body['p_health_log'], isA<Map<String, dynamic>>());
+      expect(body['p_meals'], hasLength(1));
     });
   });
 

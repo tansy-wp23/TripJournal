@@ -27,6 +27,11 @@ final BitmapDescriptor _tripMapArrowIcon = BitmapDescriptor.bytes(
   height: 24,
 );
 
+const int tripMapClusterThreshold = 20;
+const ClusterManagerId _tripEntryClusterManagerId = ClusterManagerId(
+  'trip-entry-markers',
+);
+
 /// The small controller boundary used by the surface after a platform map is
 /// ready. It also keeps controller failures testable without a native map.
 abstract interface class TripMapCameraController {
@@ -40,6 +45,7 @@ typedef GoogleTripMapPlatformBuilder =
       required Set<Marker> markers,
       required Set<Polyline> polylines,
       required Set<Marker> arrowMarkers,
+      required Set<ClusterManager> clusterManagers,
       required ValueChanged<TripMapCameraController> onMapCreated,
     });
 
@@ -128,23 +134,42 @@ class _ConfiguredTripMapSurfaceState extends State<_ConfiguredTripMapSurface> {
 Set<Marker> googleTripMapMarkers({
   required TripMapModel model,
   required ValueChanged<TripMapMarkerGroup> onSelected,
-}) => {
-  for (final group in model.groups)
-    Marker(
-      markerId: MarkerId(group.key),
-      position: LatLng(group.latitude, group.longitude),
-      alpha: group.isPreviousDayContext ? 0.55 : 1,
-      icon: group.isPreviousDayContext
-          ? BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure)
-          : BitmapDescriptor.defaultMarker,
-      infoWindow: InfoWindow(
-        title: group.isPreviousDayContext
-            ? 'D${group.dayNumber} · Previous day'
-            : 'D${group.dayNumber}',
+}) {
+  final clusterManagerId = model.groups.length > tripMapClusterThreshold
+      ? _tripEntryClusterManagerId
+      : null;
+  return {
+    for (final group in model.groups)
+      Marker(
+        markerId: MarkerId(group.key),
+        position: LatLng(group.latitude, group.longitude),
+        clusterManagerId: clusterManagerId,
+        alpha: group.isPreviousDayContext ? 0.55 : 1,
+        icon: group.isPreviousDayContext
+            ? BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure)
+            : BitmapDescriptor.defaultMarker,
+        infoWindow: InfoWindow(
+          title: group.isPreviousDayContext
+              ? 'D${group.dayNumber} · Previous day'
+              : 'D${group.dayNumber}',
+        ),
+        onTap: () => onSelected(group),
       ),
-      onTap: () => onSelected(group),
-    ),
-};
+  };
+}
+
+@visibleForTesting
+Set<ClusterManager> googleTripMapClusterManagers(
+  TripMapModel model, {
+  required ValueChanged<Cluster> onClusterTap,
+}) => model.groups.length > tripMapClusterThreshold
+    ? {
+        ClusterManager(
+          clusterManagerId: _tripEntryClusterManagerId,
+          onClusterTap: onClusterTap,
+        ),
+      }
+    : const {};
 
 /// Builds one plain line for every adjacent-day connector. Direction is drawn
 /// separately by [googleTripMapArrowMarkers] so platform-specific caps are not
@@ -283,11 +308,13 @@ Widget buildGoogleTripMapPlatform({
   required Set<Marker> markers,
   required Set<Polyline> polylines,
   required Set<Marker> arrowMarkers,
+  required Set<ClusterManager> clusterManagers,
   required ValueChanged<TripMapCameraController> onMapCreated,
 }) => GoogleMap(
   initialCameraPosition: initialCameraPosition,
   markers: {...markers, ...arrowMarkers},
   polylines: polylines,
+  clusterManagers: clusterManagers,
   myLocationEnabled: false,
   myLocationButtonEnabled: false,
   onMapCreated: (controller) =>
@@ -366,6 +393,10 @@ class _GoogleTripMapSurfaceState extends State<GoogleTripMapSurface> {
         ),
         polylines: googleTripMapPolylines(widget.model),
         arrowMarkers: googleTripMapArrowMarkers(widget.model),
+        clusterManagers: googleTripMapClusterManagers(
+          widget.model,
+          onClusterTap: _onClusterTap,
+        ),
         onMapCreated: _onMapCreated,
       ),
     );
@@ -378,6 +409,20 @@ class _GoogleTripMapSurfaceState extends State<GoogleTripMapSurface> {
       return;
     }
     unawaited(_applyCamera(controller));
+  }
+
+  void _onClusterTap(Cluster cluster) {
+    final controller = _controller;
+    if (controller == null || _cameraFailed) return;
+    unawaited(
+      controller
+          .animateCamera(CameraUpdate.newLatLngBounds(cluster.bounds, 48))
+          .catchError((Object _) {
+            if (mounted && identical(controller, _controller)) {
+              setState(() => _cameraFailed = true);
+            }
+          }),
+    );
   }
 
   void _applyCameraAfterLayout(TripMapCameraController controller) {

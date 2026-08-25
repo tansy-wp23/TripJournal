@@ -10,9 +10,9 @@ import 'journal_supabase_mapper.dart';
 ///
 /// One [JournalEntry] spans three tables: `journal_entries`, the single
 /// `health_logs` row hanging off it, and that log's `meals`. Reads collapse all
-/// three into one request with an embedded select; writes cannot, because
-/// PostgREST has no multi-table transaction — see [_writeHealthLog] for how
-/// that is kept consistent without one.
+/// three into one request with an embedded select; writes use the
+/// `save_journal_entry_bundle` database function so all three tables commit or
+/// roll back together.
 ///
 /// Every method assumes a signed-in user. That is not defensiveness about
 /// nulls: each of the three tables has RLS gating on `auth.uid()`, so an
@@ -59,21 +59,12 @@ class SupabaseJournalRepository implements JournalRepository {
 
   @override
   Future<void> addEntry(JournalEntry entry) async {
-    final userId = _userIdProvider.requireUserId();
-    await _client
-        .from('journal_entries')
-        .insert(journalEntryToSupabaseRow(entry, userId: userId));
-    await _writeHealthLog(entry, userId: userId);
+    await _saveBundle(entry);
   }
 
   @override
   Future<void> updateEntry(JournalEntry entry) async {
-    final userId = _userIdProvider.requireUserId();
-    await _client
-        .from('journal_entries')
-        .update(journalEntryEditableFieldsToSupabaseRow(entry))
-        .eq('id', entry.id);
-    await _writeHealthLog(entry, userId: userId);
+    await _saveBundle(entry);
   }
 
   @override
@@ -81,62 +72,29 @@ class SupabaseJournalRepository implements JournalRepository {
     await _client.from('journal_entries').delete().eq('id', id);
   }
 
-  /// Replaces the entry's health log and meals wholesale.
-  ///
-  /// Replace rather than diff: meals are owned entirely by their log and
-  /// nothing else references them, so working out which rows changed would buy
-  /// nothing but a chance to get it wrong. The delete runs before the insert so
-  /// a meal the user removed cannot survive the save.
-  ///
-  /// The stale-log delete before the upsert is load-bearing, not belt and
-  /// braces: `tripjournal_schema.sql` declares `health_logs.entry_id` **unique**
-  /// on top of its cascade, so upserting a log under a new id while the old row
-  /// still exists violates that constraint outright rather than leaving a
-  /// duplicate behind.
-  Future<void> _writeHealthLog(
-    JournalEntry entry, {
-    required String userId,
-  }) async {
+  Future<void> _saveBundle(JournalEntry entry) async {
+    final userId = _userIdProvider.requireUserId();
+    final entryRow = journalEntryToSupabaseRow(entry, userId: userId)
+      ..remove('user_id');
     final log = entry.healthLog;
+    final logRow = log == null
+        ? null
+        : (healthLogToSupabaseRow(log, userId: userId)..remove('user_id'));
+    final mealRows = log == null
+        ? const <Map<String, dynamic>>[]
+        : [
+            for (final meal in log.meals)
+              (mealToSupabaseRow(meal, userId: userId, healthLogId: log.id)
+                ..remove('user_id')),
+          ];
 
-    if (log == null) {
-      await _deleteMealsForEntry(entry.id);
-      await _client.from('health_logs').delete().eq('entry_id', entry.id);
-      return;
-    }
-
-    await _client.from('meals').delete().eq('health_log_id', log.id);
-
-    // A log whose id changed (the entry previously had none, so the edit screen
-    // minted a fresh one) would otherwise leave the old row behind, and the
-    // embedded read picks the first of whatever comes back — making which log
-    // wins a coin toss.
-    await _client
-        .from('health_logs')
-        .delete()
-        .eq('entry_id', entry.id)
-        .neq('id', log.id);
-
-    await _client
-        .from('health_logs')
-        .upsert(healthLogToSupabaseRow(log, userId: userId));
-
-    if (log.meals.isEmpty) return;
-    await _client.from('meals').insert([
-      for (final meal in log.meals)
-        mealToSupabaseRow(meal, userId: userId, healthLogId: log.id),
-    ]);
-  }
-
-  /// Meals reachable only through the entry's log(s) — used on the path where
-  /// the log itself is going away, so there is no single log id to filter on.
-  Future<void> _deleteMealsForEntry(String entryId) async {
-    final logRows = await _client
-        .from('health_logs')
-        .select('id')
-        .eq('entry_id', entryId);
-    final logIds = logRows.map((row) => row['id'] as String).toList();
-    if (logIds.isEmpty) return;
-    await _client.from('meals').delete().inFilter('health_log_id', logIds);
+    await _client.rpc(
+      'save_journal_entry_bundle',
+      params: {
+        'p_entry': entryRow,
+        'p_health_log': logRow,
+        'p_meals': mealRows,
+      },
+    );
   }
 }

@@ -36,6 +36,7 @@ class _PlacePickerScreenState extends State<PlacePickerScreen> {
   Future<void> Function()? _settingsAction;
   String? _settingsLabel;
   Key? _settingsKey;
+  double? _accuracyMeters;
   int _operationGeneration = 0;
 
   @override
@@ -91,6 +92,7 @@ class _PlacePickerScreenState extends State<PlacePickerScreen> {
       if (!mounted || generation != _operationGeneration) return;
       setState(() {
         _selected = location;
+        _accuracyMeters = null;
         _busy = false;
       });
     } catch (error) {
@@ -111,7 +113,10 @@ class _PlacePickerScreenState extends State<PlacePickerScreen> {
       longitude: longitude,
       placeName: _coordinateLabel(latitude, longitude),
     );
-    setState(() => _selected = coordinate);
+    setState(() {
+      _selected = coordinate;
+      _accuracyMeters = null;
+    });
     unawaited(_reverseGeocode(latitude: latitude, longitude: longitude));
   }
 
@@ -168,6 +173,7 @@ class _PlacePickerScreenState extends State<PlacePickerScreen> {
           longitude: location.longitude,
           placeName: _coordinateLabel(location.latitude, location.longitude),
         );
+        _accuracyMeters = location.accuracyMeters;
       });
       await _reverseGeocode(
         latitude: location.latitude,
@@ -267,6 +273,13 @@ class _PlacePickerScreenState extends State<PlacePickerScreen> {
                 ),
               ),
             ),
+            const SizedBox(height: 8),
+            Text(
+              'Location is saved only when you confirm. Place lookup is '
+              'processed securely through TripJournal.',
+              key: const Key('place-picker-privacy-note'),
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
             if (_busy) ...[
               const SizedBox(height: 8),
               const LinearProgressIndicator(key: Key('place-picker-loading')),
@@ -335,6 +348,25 @@ class _PlacePickerScreenState extends State<PlacePickerScreen> {
             ),
             const SizedBox(height: 12),
             _SelectionCard(selected: selected),
+            if (_accuracyMeters != null) ...[
+              const SizedBox(height: 8),
+              Text(
+                'Accuracy: approximately ±${_accuracyMeters!.round()} m',
+                key: const Key('place-picker-location-accuracy'),
+              ),
+              if (_accuracyMeters! > 200)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text(
+                    'Location accuracy is low. You can move the pin before '
+                    'confirming.',
+                    key: const Key('place-picker-location-accuracy-warning'),
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.error,
+                    ),
+                  ),
+                ),
+            ],
             const SizedBox(height: 16),
             FilledButton.icon(
               key: const Key('place-picker-confirm'),
