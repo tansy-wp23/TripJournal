@@ -2,7 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:tripjournal/data/repository_locator.dart';
 import 'package:tripjournal/features/home/home_screen.dart';
+import 'package:tripjournal/models/journal_entry.dart';
+import 'package:tripjournal/models/mood.dart';
 
 Widget _wrapped() =>
     const ProviderScope(child: MaterialApp(home: HomeScreen()));
@@ -43,6 +46,41 @@ void main() {
     // Seeded entries are all dated April 2026, so today's entry is missing.
     expect(find.text("You haven't written today's entry yet."), findsOneWidget);
     expect(find.byKey(const Key('write-today-entry-button')), findsOneWidget);
+  });
+
+  testWidgets('refreshes trip entry counts after returning from Trip View', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1200, 2600);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final before = await journalRepository.getEntries('trip-001');
+    final createdAt = DateTime.now();
+    final added = JournalEntry(
+      id: 'home-return-count-refresh',
+      tripId: 'trip-001',
+      title: 'Added while viewing trip',
+      body: '',
+      mood: Mood.neutral,
+      photoPaths: const [],
+      createdAt: createdAt,
+      updatedAt: createdAt,
+    );
+    addTearDown(() => journalRepository.deleteEntry(added.id));
+
+    await tester.pumpWidget(_wrapped());
+    await tester.pumpAndSettle();
+    expect(find.text('${before.length} entries'), findsOneWidget);
+
+    await tester.tap(find.text('Kyoto Trip').last);
+    await tester.pumpAndSettle();
+    await journalRepository.addEntry(added);
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+
+    expect(find.text('${before.length + 1} entries'), findsOneWidget);
   });
 
   // Runs last: mutates the shared mock repository singleton (adds a real

@@ -121,7 +121,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   Future<void> _openTripView(Trip trip) async {
-    final movedToTrash = await Navigator.push<bool>(
+    await Navigator.push<bool>(
       context,
       MaterialPageRoute(
         builder: (_) => TripViewScreen(
@@ -130,9 +130,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         ),
       ),
     );
-    if (movedToTrash == true) {
-      await _loadDashboardData();
-    }
+    if (!mounted) return;
+    await _loadDashboardData();
   }
 
   Future<void> _openCreateTrip() async {
@@ -193,7 +192,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       appBar: AppBar(
         title: const Text('TripJournal'),
         actions: [
-          ReportIssueButton(page: 'HomeScreen', userIdProvider: widget.userIdProvider),
+          ReportIssueButton(
+            page: 'HomeScreen',
+            userIdProvider: widget.userIdProvider,
+          ),
           PopupMenuButton<String>(
             onSelected: _onProfileMenuSelected,
             itemBuilder: (context) => const [
@@ -285,12 +287,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         const SizedBox(height: 8),
         if (orderedTrips.isEmpty)
           TripListNoMatchesState(
-            onClearFilter: () =>
-                setState(() {
-                  _statusFilter = TripStatusFilter.all;
-                  _tripQuery = '';
-                  _tripSearchVisible = false;
-                }),
+            onClearFilter: () => setState(() {
+              _statusFilter = TripStatusFilter.all;
+              _tripQuery = '';
+              _tripSearchVisible = false;
+            }),
           )
         else
           for (final trip in orderedTrips)
