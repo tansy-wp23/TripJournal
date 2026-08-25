@@ -10,12 +10,14 @@ import 'package:tripjournal/models/mood.dart';
 
 void main() {
   late RecordingLocationTagService locationTagService;
+  late MockJournalRepository repository;
   late JournalController controller;
 
   setUp(() {
     locationTagService = RecordingLocationTagService();
+    repository = MockJournalRepository();
     controller = JournalController(
-      MockJournalRepository(),
+      repository,
       MockDailyAdviceService(),
       locationTagService: locationTagService,
     );
@@ -43,10 +45,11 @@ void main() {
 
     expect(error, isNull);
     expect(locationTagService.calls, 1);
-    expect(controller.entries.single.location?.latitude, 35.0116);
-    expect(controller.entries.single.location?.longitude, 135.7681);
-    expect(controller.entries.single.location?.placeName, 'Kyoto');
-    expect(controller.entries.single.location?.locationTag, '#Kyoto');
+    final saved = await repository.getEntry('location-tag-entry');
+    expect(saved?.location?.latitude, 35.0116);
+    expect(saved?.location?.longitude, 135.7681);
+    expect(saved?.location?.placeName, 'Kyoto');
+    expect(saved?.location?.locationTag, '#Kyoto');
   });
 
   test('does not call the geocoder when GPS location is absent', () async {
@@ -54,7 +57,7 @@ void main() {
 
     expect(error, isNull);
     expect(locationTagService.calls, 0);
-    expect(controller.entries.single.location, isNull);
+    expect((await repository.getEntry('location-tag-entry'))?.location, isNull);
   });
 }
 

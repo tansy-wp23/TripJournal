@@ -389,6 +389,7 @@ void main() {
         'placeName': null,
         'formattedAddress': null,
         'placeId': null,
+        'locationTag': null,
       });
       expect(entryBody['entry_date'], '2026-08-06');
 

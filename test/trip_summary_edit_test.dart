@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:tripjournal/data/trip_repository_locator.dart';
-import 'package:tripjournal/main.dart';
+import 'package:tripjournal/features/home/home_screen.dart';
 
 void main() {
   Future<void> openKyotoTrip(WidgetTester tester) async {
@@ -11,7 +12,9 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
 
-    await tester.pumpWidget(const TripJournalApp());
+    await tester.pumpWidget(
+      const ProviderScope(child: MaterialApp(home: HomeScreen())),
+    );
     await tester.pumpAndSettle();
     await tester.tap(find.text('Kyoto Trip').last);
     await tester.pumpAndSettle();
