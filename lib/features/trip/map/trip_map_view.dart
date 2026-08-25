@@ -24,6 +24,7 @@ class TripMapView extends StatefulWidget {
     super.key,
     required this.entries,
     required this.tripStartDate,
+    required this.tripEndDate,
     required this.mapBuilder,
     required this.onOpenEntry,
     required this.onAddLocation,
@@ -31,6 +32,7 @@ class TripMapView extends StatefulWidget {
 
   final List<JournalEntry> entries;
   final DateTime tripStartDate;
+  final DateTime tripEndDate;
   final TripMapBuilder mapBuilder;
   final ValueChanged<JournalEntry> onOpenEntry;
   final VoidCallback onAddLocation;
@@ -51,6 +53,7 @@ class _TripMapViewState extends State<TripMapView> {
     final updatedDays = buildTripMapModel(
       entries: widget.entries,
       tripStartDate: widget.tripStartDate,
+      tripEndDate: widget.tripEndDate,
     ).availableDays;
     if (!updatedDays.contains(selectedDay)) {
       _selectedDay = null;
@@ -63,6 +66,7 @@ class _TripMapViewState extends State<TripMapView> {
     final model = buildTripMapModel(
       entries: widget.entries,
       tripStartDate: widget.tripStartDate,
+      tripEndDate: widget.tripEndDate,
       selectedDay: _selectedDay,
     );
     final selectedGroup = _visibleSelectedGroup(model);

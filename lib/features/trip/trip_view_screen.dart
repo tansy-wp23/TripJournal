@@ -22,6 +22,7 @@ import 'map/trip_map_view.dart';
 import 'screens/trip_photo_slideshow_screen.dart';
 import 'screens/trip_wellness_screen.dart';
 import 'trip_day_groups.dart';
+import 'trip_entry_date_range.dart';
 import 'trip_photos.dart';
 import 'trip_form_screen.dart';
 import 'trip_notes_editor_screen.dart';
@@ -258,6 +259,14 @@ class _TripViewScreenState extends ConsumerState<TripViewScreen>
         entries: entries,
       );
       if (!mounted) return;
+      final error = await ref
+          .read(tripControllerProvider.notifier)
+          .editTrip(trip.copyWith(summary: summary, updatedAt: DateTime.now()));
+      if (!mounted) return;
+      if (error != null) {
+        setState(() => _summaryError = error);
+        return;
+      }
       setState(() => _tripSummary = summary);
     } catch (_) {
       if (!mounted) return;
@@ -343,11 +352,12 @@ class _TripViewScreenState extends ConsumerState<TripViewScreen>
       return const Scaffold(body: Center(child: Text('Trip not found.')));
     }
 
+    final tripEntries = entriesWithinTrip(trip, journalController.entries);
     final stats = computeTripStats(
-      entries: journalController.entries,
+      entries: tripEntries,
       totalDays: trip.durationDays,
     );
-    final dayGroups = buildDayGroups(trip, journalController.entries);
+    final dayGroups = buildDayGroups(trip, tripEntries);
 
     // Deliberately built from the UNFILTERED entries, and built once here so
     // the header and every day tile share one list. A day tile that derived
@@ -355,13 +365,14 @@ class _TripViewScreenState extends ConsumerState<TripViewScreen>
     // line up with the slideshow's, opening the wrong photo whenever a filter
     // is active. It is also what makes "entering a day shows the whole trip"
     // work: the day strip is a view onto this list, not a list of its own.
-    final tripPhotos = buildTripPhotos(trip, journalController.entries);
+    final tripPhotos = buildTripPhotos(trip, tripEntries);
 
     final filter = journalController.filter;
+    final filteredTripEntries = filterJournalEntries(tripEntries, filter);
     final displayDayGroups = filter.isActive
         ? buildDayGroups(
             trip,
-            journalController.filteredEntries,
+            filteredTripEntries,
           ).where((g) => !g.isEmpty).toList()
         : dayGroups;
 
@@ -384,7 +395,7 @@ class _TripViewScreenState extends ConsumerState<TripViewScreen>
             key: const Key('trip-view-export-pdf-button'),
             icon: const Icon(Icons.picture_as_pdf_outlined),
             tooltip: 'Export trip as PDF',
-            onPressed: () => _exportTripPdf(trip, journalController.entries),
+            onPressed: () => _exportTripPdf(trip, tripEntries),
           ),
           if (_selectedTabIndex == 0) ...[
             IconButton(
@@ -453,7 +464,7 @@ class _TripViewScreenState extends ConsumerState<TripViewScreen>
                             context,
                             trip,
                             stats,
-                            journalController.entries,
+                            tripEntries,
                             tripPhotos,
                           ),
                           _NoMatchingEntriesState(
@@ -474,7 +485,7 @@ class _TripViewScreenState extends ConsumerState<TripViewScreen>
                               context,
                               trip,
                               stats,
-                              journalController.entries,
+                              tripEntries,
                               tripPhotos,
                             );
                           }
@@ -489,8 +500,9 @@ class _TripViewScreenState extends ConsumerState<TripViewScreen>
             ],
           ),
           TripMapView(
-            entries: journalController.entries,
+            entries: tripEntries,
             tripStartDate: trip.startDate,
+            tripEndDate: trip.endDate,
             mapBuilder: buildConfiguredTripMapSurface,
             onOpenEntry: (entry) => Navigator.push(
               context,

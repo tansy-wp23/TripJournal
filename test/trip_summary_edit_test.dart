@@ -77,4 +77,25 @@ void main() {
       'Saved summary.',
     );
   });
+
+  testWidgets('generated summary is persisted before it is shown', (
+    tester,
+  ) async {
+    final original = await tripRepository.getTrip('trip-001');
+    addTearDown(() => tripRepository.updateTrip(original!));
+
+    await openKyotoTrip(tester);
+    await tester.tap(find.byKey(const Key('generate-trip-summary-button')));
+    await tester.pumpAndSettle();
+
+    final persisted = await tripRepository.getTrip('trip-001');
+    expect(persisted!.summary, isNotNull);
+    expect(persisted.summary, isNotEmpty);
+
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Kyoto Trip').last);
+    await tester.pumpAndSettle();
+    expect(find.text(persisted.summary!), findsOneWidget);
+  });
 }
