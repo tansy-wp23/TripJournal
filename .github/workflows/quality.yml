@@ -62,8 +62,17 @@ jobs:
       - uses: supabase/setup-cli@v1
         with:
           version: 2.111.0
-      - run: supabase start
-      - run: supabase test db
+      - name: Prepare isolated schema test project
+        shell: bash
+        run: |
+          mkdir -p .ci-supabase/supabase/migrations
+          mkdir -p .ci-supabase/supabase/tests
+          cp supabase/config.toml .ci-supabase/supabase/config.toml
+          cp tripjournal_schema.sql \
+            .ci-supabase/supabase/migrations/00000000000000_tripjournal_schema.sql
+          cp supabase/tests/*.sql .ci-supabase/supabase/tests/
+      - run: supabase --workdir .ci-supabase start
+      - run: supabase --workdir .ci-supabase test db
       - name: Stop local Supabase services
         if: always()
-        run: supabase stop --no-backup
+        run: supabase --workdir .ci-supabase stop --no-backup
