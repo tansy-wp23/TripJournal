@@ -5,8 +5,10 @@ current platform has its own restricted rendering key. With no key, the app
 uses the navigable **Map unavailable** list; the default checkout, tests, and
 web release build therefore work without Google credentials.
 
-The map shows saved entry coordinates only. It does not request GPS/current
-location, background location, or any Android/iOS location permission.
+The Trip Map shows saved entry coordinates only. The Place Picker can request a
+single foreground location after the user taps **Use my location**. It does not
+request background location, subscribe to continuous GPS, or keep location
+history.
 
 This guide covers map **rendering** only. Searching for a place, and resolving a
 dropped pin to a place name, go through a Supabase Edge Function with its own
@@ -42,13 +44,23 @@ installed by users with the app-signing certificate. For an APK distributed
 directly or through another store, register the SHA-1 of the certificate that
 signs that installed APK. Never use the debug certificate for production.
 
-**Current state of this repository:** `android/app/build.gradle.kts` still has
-`release { signingConfig = signingConfigs.getByName("debug") }` with a TODO
-beside it, so release builds are presently signed with the debug certificate.
-One registered debug fingerprint therefore covers both debug and release today.
-Whoever replaces that with a real release signing config must register the new
-certificate's SHA-1 as well, or the map will go blank in release builds only —
-a failure that will not reproduce while testing in debug.
+**Current state of this repository:** Release builds read the project-specific
+keystore from `.local/tripjournal-release.jks` through
+`.local/android-signing.properties`. Both files are ignored by Git. A Release
+build fails clearly when that configuration is missing instead of falling back
+to the debug certificate. These two files must be backed up together; losing
+the private key prevents future APK updates from being installed over an older
+course-distribution build.
+
+The Release certificate SHA-1 must be registered alongside every developer's
+debug SHA-1 for package `com.tripjournal.tripjournal`. Until the Maps key owner
+adds it, Debug map tiles can work while the signed Release APK remains blank.
+Read the fingerprint from the finished APK without exposing a password:
+
+```powershell
+D:\Download\Android\Sdk\build-tools\36.0.0\apksigner.bat verify `
+  --print-certs build\app\outputs\flutter-apk\app-release.apk
+```
 
 ### iOS key
 
@@ -134,6 +146,38 @@ The path is resolved against the run configuration's working directory, so that
 must be the repository root. A `Did not find the file passed to
 "--dart-define-from-file"` error with the file plainly present usually means the
 working directory is wrong.
+
+### Production-like Android acceptance run
+
+The repository's real Android acceptance configuration keeps its private map
+file under `D:\Download\TripJournal\.local\maps_defines.json`. Copy the tracked
+blank template there if it does not exist, then add only the restricted Android
+key locally:
+
+```powershell
+New-Item -ItemType Directory -Force .local
+Copy-Item maps.local.example.json .local\maps_defines.json
+```
+
+Use both arguments together so the app cannot render real map tiles while
+silently saving Trips only to the in-memory backend:
+
+```powershell
+$env:PUB_CACHE='D:\FlutterCache\pub-cache'
+$env:TEMP='D:\FlutterCache\temp'
+$env:TMP='D:\FlutterCache\temp'
+$env:GRADLE_USER_HOME='D:\FlutterCache\gradle'
+D:\Download\flutter-sdk\bin\flutter.bat run `
+  --dart-define=BACKEND_MODE=supabase `
+  --dart-define-from-file=.local/maps_defines.json
+```
+
+In VS Code choose **TripJournal (Supabase + Android Maps)**. In Android Studio,
+create a Flutter run configuration named the same way, use `lib/main.dart` as
+the entrypoint, keep the repository root as the working directory, and paste
+the two `--dart-define` arguments above into **Additional run args**. Fully stop
+and relaunch after changing either value; hot reload cannot change build-time
+defines.
 
 ### Adding another developer
 

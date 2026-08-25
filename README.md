@@ -160,6 +160,20 @@ flutter run                                  # mock (the default)
 flutter run --dart-define=BACKEND_MODE=supabase
 ```
 
+For Android acceptance testing with real persistence and map tiles, use the
+workspace launch configuration **TripJournal (Supabase + Android Maps)**. Its
+two build flags are deliberately kept together:
+
+```powershell
+D:\Download\flutter-sdk\bin\flutter.bat run `
+  --dart-define=BACKEND_MODE=supabase `
+  --dart-define-from-file=.local/maps_defines.json
+```
+
+The local map file and `.env` are both untracked. A run without
+`BACKEND_MODE=supabase` uses the in-memory demo backend, so Trip and Journal
+changes from that run do not survive an app restart.
+
 `lib/data/backend_mode.dart` reads it once; `repository_locator.dart` and
 `trip_repository_locator.dart` both route through it, covering the journal
 repository, photo storage, trip repository, trip cover storage and the

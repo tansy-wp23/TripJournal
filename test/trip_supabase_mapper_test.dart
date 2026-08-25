@@ -15,6 +15,7 @@ void main() {
         'start_date': '2026-08-05',
         'end_date': '2026-08-07',
         'notes': 'Try the char kway teow.',
+        'summary': 'A food-filled weekend in Penang.',
         'created_at': '2026-07-01T02:03:04.000Z',
         'updated_at': '2026-07-02T03:04:05.000Z',
         'deleted_at': '2026-08-10T04:05:06.000Z',
@@ -28,6 +29,7 @@ void main() {
       expect(trip.startDate, DateTime(2026, 8, 5));
       expect(trip.endDate, DateTime(2026, 8, 7));
       expect(trip.notes, 'Try the char kway teow.');
+      expect(trip.summary, 'A food-filled weekend in Penang.');
       expect(trip.createdAt, DateTime.utc(2026, 7, 1, 2, 3, 4));
       expect(trip.updatedAt, DateTime.utc(2026, 7, 2, 3, 4, 5));
       expect(trip.deletedAt, DateTime.utc(2026, 8, 10, 4, 5, 6));
@@ -46,6 +48,7 @@ void main() {
           startDate: DateTime(2026, 8, 5, 15, 30),
           endDate: DateTime(2026, 8, 7, 23, 59),
           notes: 'Try the char kway teow.',
+          summary: 'A food-filled weekend in Penang.',
           createdAt: DateTime.utc(2026, 7, 1, 2, 3, 4),
           updatedAt: DateTime.utc(2026, 7, 2, 3, 4, 5),
         ),
@@ -60,6 +63,7 @@ void main() {
         'start_date': '2026-08-05',
         'end_date': '2026-08-07',
         'notes': 'Try the char kway teow.',
+        'summary': 'A food-filled weekend in Penang.',
         'created_at': '2026-07-01T02:03:04.000Z',
         'updated_at': '2026-07-02T03:04:05.000Z',
         'deleted_at': null,
@@ -82,6 +86,7 @@ void main() {
         startDate: DateTime(2026, 8, 5),
         endDate: DateTime(2026, 8, 7),
         notes: 'Try the char kway teow.',
+        summary: 'A food-filled weekend in Penang.',
         createdAt: DateTime.utc(2026, 7, 1),
         updatedAt: DateTime.utc(2026, 7, 2),
         deletedAt: DateTime.utc(2026, 8, 10),
@@ -95,6 +100,25 @@ void main() {
       'start_date': '2026-08-05',
       'end_date': '2026-08-07',
       'notes': 'Try the char kway teow.',
+      'summary': 'A food-filled weekend in Penang.',
     });
+  });
+
+  test('missing summary remains compatible with legacy rows', () {
+    final trip = tripFromSupabaseRow({
+      'id': 'trip-legacy',
+      'user_id': 'user-456',
+      'title': 'Legacy Trip',
+      'destination': null,
+      'cover_photo_url': null,
+      'start_date': '2026-08-05',
+      'end_date': '2026-08-07',
+      'notes': null,
+      'created_at': '2026-07-01T02:03:04.000Z',
+      'updated_at': '2026-07-02T03:04:05.000Z',
+      'deleted_at': null,
+    });
+
+    expect(trip.summary, isNull);
   });
 }

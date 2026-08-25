@@ -27,6 +27,7 @@ Map<String, dynamic> _tripRow({
     'start_date': '2026-08-05',
     'end_date': '2026-08-07',
     'notes': 'Try the char kway teow.',
+    'summary': 'A food-filled weekend in Penang.',
     'created_at': '2026-07-01T02:03:04.000Z',
     'updated_at': '2026-07-02T03:04:05.000Z',
     'deleted_at': deletedAt,
@@ -43,6 +44,7 @@ Trip _trip() {
     startDate: DateTime(2026, 8, 5),
     endDate: DateTime(2026, 8, 7),
     notes: 'Try the char kway teow.',
+    summary: 'A food-filled weekend in Penang.',
     createdAt: DateTime.utc(2026, 7, 1, 2, 3, 4),
     updatedAt: DateTime.utc(2026, 7, 2, 3, 4, 5),
   );
@@ -161,6 +163,7 @@ void main() {
           expect(body['cover_photo_url'], 'trip-covers/penang.jpg');
           expect(body['start_date'], '2026-08-05');
           expect(body['end_date'], '2026-08-07');
+          expect(body['summary'], 'A food-filled weekend in Penang.');
           expect(body, isNot(contains('userId')));
           expect(body, isNot(contains('startDate')));
           return _jsonResponse([], request: request);
@@ -187,7 +190,9 @@ void main() {
               'start_date',
               'end_date',
               'notes',
+              'summary',
             });
+            expect(body['summary'], 'A food-filled weekend in Penang.');
             return _jsonResponse([], request: request);
           }),
         );

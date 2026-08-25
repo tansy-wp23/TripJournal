@@ -557,7 +557,15 @@ create trigger journal_entries_guard_purge_claim
   for each row execute function public.guard_claimed_journal_mutation();
 
 revoke update on table public.trips from authenticated;
-grant update (title, destination, cover_photo_url, start_date, end_date, notes)
+grant update (
+  title,
+  destination,
+  cover_photo_url,
+  start_date,
+  end_date,
+  notes,
+  summary
+)
   on table public.trips to authenticated;
 
 drop policy "trips_insert_own" on public.trips;

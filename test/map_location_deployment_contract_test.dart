@@ -66,6 +66,13 @@ void main() {
     expect(guide, contains('omitting the port matches any port'));
     expect(guide, isNot(contains('localhost:*')));
     expect(guide, contains('Set-Content -Encoding utf8'));
+    expect(guide, contains('android-signing.properties'));
+    expect(guide, contains('tripjournal-release.jks'));
+    expect(guide, contains('must be backed up'));
+    expect(
+      guide,
+      isNot(contains('release builds are presently signed with the debug')),
+    );
   });
 
   test('map configuration requests foreground-only location permission', () {
@@ -78,5 +85,30 @@ void main() {
     expect(android, isNot(contains('FOREGROUND_SERVICE_LOCATION')));
     expect(ios, contains('NSLocationWhenInUseUsageDescription'));
     expect(ios, isNot(contains('NSLocationAlwaysUsageDescription')));
+  });
+
+  test('workspace exposes an explicit Supabase Android Maps launch', () {
+    final launch = readProjectFile('.vscode/launch.json');
+
+    expect(launch, contains('TripJournal (Supabase + Android Maps)'));
+    expect(launch, contains('--dart-define=BACKEND_MODE=supabase'));
+    expect(
+      launch,
+      contains('--dart-define-from-file=.local/maps_defines.json'),
+    );
+  });
+
+  test('Android release signing never falls back to the debug certificate', () {
+    final gradle = readProjectFile('android/app/build.gradle.kts');
+    final gitignore = readProjectFile('.gitignore');
+
+    expect(gradle, contains('android-signing.properties'));
+    expect(gradle, contains('signingConfigs.create("release")'));
+    expect(gradle, contains('signingConfigs.getByName("release")'));
+    expect(
+      gradle,
+      isNot(contains('signingConfig = signingConfigs.getByName("debug")')),
+    );
+    expect(gitignore, contains('/.local/'));
   });
 }
