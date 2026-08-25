@@ -8,6 +8,7 @@ import 'package:tripjournal/models/mood.dart';
 
 void main() {
   final tripStart = DateTime(2026, 8, 15);
+  final tripEnd = tripStart.add(const Duration(days: 30));
 
   JournalEntry entry({
     required String id,
@@ -44,6 +45,7 @@ void main() {
       body: TripMapView(
         entries: entries,
         tripStartDate: tripStart,
+        tripEndDate: tripEnd,
         mapBuilder: mapBuilder ?? _fakeMapSurface,
         onOpenEntry: onOpenEntry ?? (_) {},
         onAddLocation: onAddLocation ?? () {},

@@ -11,6 +11,7 @@ import 'package:tripjournal/models/mood.dart';
 
 void main() {
   final tripStart = DateTime(2026, 8, 15);
+  final tripEnd = tripStart.add(const Duration(days: 30));
 
   JournalEntry entry({
     required String id,
@@ -36,8 +37,11 @@ void main() {
     updatedAt: createdAt,
   );
 
-  TripMapModel modelFor(List<JournalEntry> entries) =>
-      buildTripMapModel(entries: entries, tripStartDate: tripStart);
+  TripMapModel modelFor(List<JournalEntry> entries) => buildTripMapModel(
+    entries: entries,
+    tripStartDate: tripStart,
+    tripEndDate: tripEnd,
+  );
 
   test('markers show their day label and select the matching group', () {
     final model = modelFor([
@@ -135,6 +139,7 @@ void main() {
         ),
       ],
       tripStartDate: tripStart,
+      tripEndDate: tripEnd,
       selectedDay: 2,
     );
 
