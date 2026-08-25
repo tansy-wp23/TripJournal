@@ -24,11 +24,44 @@ JournalEntry journalEntry({
 
 void main() {
   final tripStart = DateTime(2026, 8, 15);
+  final tripEnd = DateTime(2026, 9, 30);
+
+  test('excludes mapped entries outside the inclusive trip dates', () {
+    final day1 = journalEntry(
+      id: 'day-1',
+      createdAt: DateTime(2026, 8, 11, 9),
+      location: const GeoTag(latitude: 1, longitude: 1),
+    );
+    final day2 = journalEntry(
+      id: 'day-2',
+      createdAt: DateTime(2026, 8, 12, 9),
+      location: const GeoTag(latitude: 2, longitude: 2),
+    );
+    final day15 = journalEntry(
+      id: 'day-15',
+      createdAt: DateTime(2026, 8, 25, 9),
+      location: const GeoTag(latitude: 15, longitude: 15),
+    );
+
+    final model = buildTripMapModel(
+      entries: [day1, day2, day15],
+      tripStartDate: DateTime(2026, 8, 11),
+      tripEndDate: DateTime(2026, 8, 18),
+    );
+
+    expect(model.availableDays, [1, 2]);
+    expect(model.mappedEntryCount, 2);
+    expect(
+      model.groups.expand((group) => group.entries),
+      isNot(contains(day15)),
+    );
+  });
 
   test('returns an empty model for entries without coordinates', () {
     final model = buildTripMapModel(
       entries: [journalEntry(id: 'unmapped', createdAt: tripStart)],
       tripStartDate: tripStart,
+      tripEndDate: tripEnd,
     );
 
     expect(model.groups, isEmpty);
@@ -91,6 +124,7 @@ void main() {
           ),
         ],
         tripStartDate: tripStart,
+        tripEndDate: tripEnd,
       );
 
       expect(model.groups, hasLength(1));
@@ -120,6 +154,7 @@ void main() {
         ),
       ],
       tripStartDate: tripStart,
+      tripEndDate: tripEnd,
     );
 
     expect(model.groups, hasLength(1));
@@ -144,6 +179,7 @@ void main() {
           ),
         ],
         tripStartDate: tripStart,
+        tripEndDate: tripEnd,
         selectedDay: 2,
       );
 
@@ -167,6 +203,7 @@ void main() {
         ),
       ],
       tripStartDate: tripStart,
+      tripEndDate: tripEnd,
     );
 
     expect(model.groups.single.dayNumber, 2);
@@ -195,6 +232,7 @@ void main() {
           ),
         ],
         tripStartDate: tripStart,
+        tripEndDate: tripEnd,
       );
 
       expect(model.groups.map((group) => group.entries.first.id), [
@@ -220,6 +258,7 @@ void main() {
         ),
       ],
       tripStartDate: tripStart,
+      tripEndDate: tripEnd,
     );
 
     expect(model.bounds?.southWestLatitude, -2);
@@ -236,6 +275,7 @@ void main() {
         ),
       ],
       tripStartDate: tripStart,
+      tripEndDate: tripEnd,
     );
     expect(selected.bounds, isNull);
   });
@@ -270,6 +310,7 @@ void main() {
           ),
         ],
         tripStartDate: tripStart,
+        tripEndDate: tripEnd,
       );
 
       expect(model.bounds?.southWestLatitude, -10);
@@ -292,6 +333,7 @@ void main() {
         ),
       ],
       tripStartDate: tripStart,
+      tripEndDate: tripEnd,
     );
 
     expect(model.bounds?.southWestLongitude, 179);
@@ -339,6 +381,7 @@ void main() {
           ),
         ],
         tripStartDate: tripStart,
+        tripEndDate: tripEnd,
       );
 
       expect(model.connectors, hasLength(1));
@@ -379,6 +422,7 @@ void main() {
         ),
       ],
       tripStartDate: tripStart,
+      tripEndDate: tripEnd,
     );
     expect(sameCoordinateModel.connectors, isEmpty);
 
@@ -404,6 +448,7 @@ void main() {
         ),
       ],
       tripStartDate: tripStart,
+      tripEndDate: tripEnd,
     );
     expect(samePlaceModel.connectors, isEmpty);
 
@@ -421,6 +466,7 @@ void main() {
         ),
       ],
       tripStartDate: tripStart,
+      tripEndDate: tripEnd,
     );
     expect(missingDayModel.connectors, isEmpty);
   });
@@ -440,6 +486,7 @@ void main() {
         ),
       ],
       tripStartDate: tripStart,
+      tripEndDate: tripEnd,
     );
 
     expect(model.connectors, isEmpty);
@@ -477,6 +524,7 @@ void main() {
           ),
         ],
         tripStartDate: tripStart,
+        tripEndDate: tripEnd,
         selectedDay: 2,
       );
 
@@ -514,6 +562,7 @@ void main() {
           ),
         ],
         tripStartDate: tripStart,
+        tripEndDate: tripEnd,
         selectedDay: 3,
       );
 
@@ -536,6 +585,7 @@ void main() {
           ),
         ],
         tripStartDate: tripStart,
+        tripEndDate: tripEnd,
         selectedDay: 2,
       );
 
@@ -563,6 +613,7 @@ void main() {
     final selectedDayOne = buildTripMapModel(
       entries: entries,
       tripStartDate: tripStart,
+      tripEndDate: tripEnd,
       selectedDay: 1,
     );
     expect(selectedDayOne.connectors, isEmpty);
@@ -572,6 +623,7 @@ void main() {
     final allDays = buildTripMapModel(
       entries: entries,
       tripStartDate: tripStart,
+      tripEndDate: tripEnd,
     );
     expect(allDays.connectors, isEmpty);
   });

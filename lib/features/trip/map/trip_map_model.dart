@@ -93,9 +93,16 @@ class TripMapModel {
 TripMapModel buildTripMapModel({
   required List<JournalEntry> entries,
   required DateTime tripStartDate,
+  required DateTime tripEndDate,
   int? selectedDay,
 }) {
-  final mapped = entries.where((entry) => entry.location != null).toList();
+  final tripStartDay = _dateOnly(tripStartDate);
+  final tripEndDay = _dateOnly(tripEndDate);
+  final tripEntries = entries.where((entry) {
+    final entryDay = _dateOnly(entry.createdAt);
+    return !entryDay.isBefore(tripStartDay) && !entryDay.isAfter(tripEndDay);
+  }).toList();
+  final mapped = tripEntries.where((entry) => entry.location != null).toList();
   final availableDays =
       mapped
           .map((entry) => _dayNumber(entry.createdAt, tripStartDate))
@@ -174,7 +181,7 @@ TripMapModel buildTripMapModel({
     connectors: List.unmodifiable(connectors),
     availableDays: List.unmodifiable(availableDays),
     mappedEntryCount: mapped.length,
-    unmappedEntryCount: entries.length - mapped.length,
+    unmappedEntryCount: tripEntries.length - mapped.length,
     bounds: _boundsFor(groups, connectors),
     previousDayHasNoMappedEntry: previousDayHasNoMappedEntry,
   );
