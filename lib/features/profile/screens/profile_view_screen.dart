@@ -116,6 +116,24 @@ class _ProfileViewScreenState extends ConsumerState<ProfileViewScreen> {
                     value: _formatDate(profile.lastLoginAt!),
                   ),
                 ],
+                if (profile.dateOfBirth != null) ...[
+                  const Divider(),
+                  _InfoRow(
+                    label: 'Date of birth',
+                    value: _formatDate(profile.dateOfBirth!),
+                  ),
+                ],
+                if (profile.country != null) ...[
+                  const Divider(),
+                  _InfoRow(label: 'Country', value: profile.country!),
+                ],
+                if (profile.travelInterests.isNotEmpty) ...[
+                  const Divider(),
+                  _InfoRow(
+                    label: 'Interests',
+                    value: profile.travelInterests.join(', '),
+                  ),
+                ],
               ],
             ),
           ),

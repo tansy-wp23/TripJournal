@@ -85,6 +85,68 @@ void main() {
       expect(updated.portion, PortionSize.small);
       expect(updated.calories, meal.calories);
     });
+
+    test('rating defaults to null (not rated)', () {
+      expect(meal.rating, isNull);
+    });
+
+    test('constructor rejects a rating outside 1-5', () {
+      expect(
+        () => Meal(
+          id: 'meal-bad',
+          name: 'Bad rating',
+          calories: 100,
+          mealType: MealType.snack,
+          rating: 6,
+        ),
+        throwsA(isA<AssertionError>()),
+      );
+      expect(
+        () => Meal(
+          id: 'meal-bad',
+          name: 'Bad rating',
+          calories: 100,
+          mealType: MealType.snack,
+          rating: 0,
+        ),
+        throwsA(isA<AssertionError>()),
+      );
+    });
+
+    test('toJson/fromJson round-trip preserves rating', () {
+      const rated = Meal(
+        id: 'meal-5',
+        name: 'Char kway teow',
+        calories: 550,
+        mealType: MealType.dinner,
+        rating: 5,
+      );
+      final restored = Meal.fromJson(rated.toJson());
+      expect(restored.rating, 5);
+    });
+
+    test('fromJson tolerates a missing rating (meals saved before ratings existed)', () {
+      final json = meal.toJson()..remove('rating');
+      expect(Meal.fromJson(json).rating, isNull);
+    });
+
+    test('copyWith keeps an existing rating unless clearRating is set', () {
+      const rated = Meal(
+        id: 'meal-6',
+        name: 'Ramen',
+        calories: 650,
+        mealType: MealType.lunch,
+        rating: 3,
+      );
+      expect(rated.copyWith(calories: 700).rating, 3);
+      expect(rated.copyWith(clearRating: true).rating, isNull);
+    });
+
+    test('copyWith overrides rating', () {
+      final updated = meal.copyWith(rating: 4);
+      expect(updated.rating, 4);
+      expect(updated.calories, meal.calories);
+    });
   });
 
   group('PortionSize calorieMultiplier', () {

@@ -80,6 +80,7 @@ Meal mealFromSupabaseRow(Map<String, dynamic> row) {
       PortionSize.regular,
     ),
     photoPath: row['photo_url'] as String?,
+    rating: (row['rating'] as num?)?.toInt(),
   );
 }
 
@@ -153,6 +154,7 @@ Map<String, dynamic> mealToSupabaseRow(
     'meal_type': meal.mealType.name,
     'portion': meal.portion.name,
     'photo_url': meal.photoPath,
+    'rating': meal.rating,
   };
 }
 

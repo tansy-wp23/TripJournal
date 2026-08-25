@@ -57,6 +57,7 @@ dependencies:
   flutter_timezone: ^5.1.0
   google_maps_flutter: ^2.18.0
   geolocator: ^14.0.2
+  share_plus: ^10.0.0
 
 dev_dependencies:
   flutter_test:

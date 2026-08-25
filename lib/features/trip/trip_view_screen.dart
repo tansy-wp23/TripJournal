@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:printing/printing.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../../data/current_user_id_provider.dart';
 import '../../data/trip_repository_locator.dart';
 import '../../models/journal_entry.dart';
 import '../../models/trip.dart';
 import '../admin/widgets/report_issue_button.dart';
+import '../auth/controller/auth_controller.dart';
 import '../journal/controller/journal_controller.dart';
 import '../journal/journal_filter.dart';
 import '../journal/pdf/journal_pdf_export.dart';
@@ -19,6 +21,7 @@ import '../settings/settings_providers.dart';
 import 'controller/trip_controller.dart';
 import 'map/google_trip_map_surface.dart';
 import 'map/trip_map_view.dart';
+import 'screens/food_showcase_screen.dart';
 import 'screens/trip_photo_slideshow_screen.dart';
 import 'screens/trip_wellness_screen.dart';
 import 'trip_day_groups.dart';
@@ -206,6 +209,69 @@ class _TripViewScreenState extends ConsumerState<TripViewScreen>
     Navigator.pop(context, true);
   }
 
+  Future<void> _publishTrip(Trip trip) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Publish to Community?'),
+        content: const Text(
+          'This trip will be visible to all TripJournal users, '
+          'including your journal entries, health data, and photos. '
+          'You can unpublish it at any time.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Publish'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    final profile = ref.read(authControllerProvider).profile;
+    final error = await ref
+        .read(tripControllerProvider.notifier)
+        .publishTrip(
+          trip,
+          publisherDisplayName: profile?.displayName ?? 'Unknown',
+          publisherAvatarUrl: profile?.avatarUrl,
+        );
+    if (!mounted) return;
+    if (error != null) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error)));
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Trip published to Community!')),
+      );
+    }
+  }
+
+  Future<void> _unpublishTrip(Trip trip) async {
+    final error = await ref
+        .read(tripControllerProvider.notifier)
+        .unpublishTrip(trip);
+    if (!mounted) return;
+    if (error != null) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error)));
+    } else {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Trip unpublished.')));
+    }
+  }
+
+  void _shareTripLink(Trip trip) {
+    final shareText =
+        'Check out my trip "${trip.title}" on TripJournal!\n\n'
+        'Open the app → Community → Search by ID:\n${trip.id}';
+    Share.share(shareText, subject: 'TripJournal: ${trip.title}');
+  }
+
   Future<void> _openEditTrip(Trip trip) async {
     final movedToTrash = await Navigator.push<bool>(
       context,
@@ -391,11 +457,83 @@ class _TripViewScreenState extends ConsumerState<TripViewScreen>
             page: 'TripViewScreen',
             userIdProvider: widget.userIdProvider,
           ),
-          IconButton(
-            key: const Key('trip-view-export-pdf-button'),
-            icon: const Icon(Icons.picture_as_pdf_outlined),
-            tooltip: 'Export trip as PDF',
-            onPressed: () => _exportTripPdf(trip, tripEntries),
+          // A single overflow menu for Export/Food showcase — kept out of
+          // separate always-visible IconButtons so the action row's icon
+          // count stays exactly what it was before Food showcase was added.
+          // One more standalone icon overflowed the AppBar at the 320px
+          // "small phone" breakpoint responsive_layout_test.dart checks;
+          // folding it in keeps the net count unchanged (Export PDF's own
+          // icon is replaced by this menu's icon, not added to).
+          PopupMenuButton<_TripViewMenuAction>(
+            key: const Key('trip-view-more-menu'),
+            icon: const Icon(Icons.more_vert),
+            onSelected: (action) {
+              switch (action) {
+                case _TripViewMenuAction.exportPdf:
+                  _exportTripPdf(trip, tripEntries);
+                case _TripViewMenuAction.foodShowcase:
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => FoodShowcaseScreen(
+                        photos: tripPhotos
+                            .where((photo) => photo.kind == TripPhotoKind.meal)
+                            .toList(),
+                      ),
+                    ),
+                  );
+                case _TripViewMenuAction.publish:
+                  _publishTrip(trip);
+                case _TripViewMenuAction.unpublish:
+                  _unpublishTrip(trip);
+                case _TripViewMenuAction.shareLink:
+                  _shareTripLink(trip);
+              }
+            },
+            itemBuilder: (context) => [
+              const PopupMenuItem(
+                key: Key('trip-view-export-pdf-button'),
+                value: _TripViewMenuAction.exportPdf,
+                child: ListTile(
+                  leading: Icon(Icons.picture_as_pdf_outlined),
+                  title: Text('Export trip as PDF'),
+                ),
+              ),
+              const PopupMenuItem(
+                key: Key('trip-view-food-showcase-button'),
+                value: _TripViewMenuAction.foodShowcase,
+                child: ListTile(
+                  leading: Icon(Icons.restaurant_outlined),
+                  title: Text('Food showcase'),
+                ),
+              ),
+              if (trip.isPublic) ...[
+                const PopupMenuItem(
+                  key: Key('trip-view-unpublish-button'),
+                  value: _TripViewMenuAction.unpublish,
+                  child: ListTile(
+                    leading: Icon(Icons.public_off_outlined),
+                    title: Text('Unpublish'),
+                  ),
+                ),
+                const PopupMenuItem(
+                  key: Key('trip-view-share-link-button'),
+                  value: _TripViewMenuAction.shareLink,
+                  child: ListTile(
+                    leading: Icon(Icons.share_outlined),
+                    title: Text('Share Link'),
+                  ),
+                ),
+              ] else
+                const PopupMenuItem(
+                  key: Key('trip-view-publish-button'),
+                  value: _TripViewMenuAction.publish,
+                  child: ListTile(
+                    leading: Icon(Icons.public_outlined),
+                    title: Text('Publish to Community'),
+                  ),
+                ),
+            ],
           ),
           if (_selectedTabIndex == 0) ...[
             IconButton(
@@ -576,6 +714,16 @@ class _TripViewScreenState extends ConsumerState<TripViewScreen>
                 trip.title,
                 style: Theme.of(context).textTheme.headlineMedium,
               ),
+              if (trip.isPublic)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Chip(
+                    key: const Key('trip-view-public-chip'),
+                    avatar: const Icon(Icons.public, size: 14),
+                    label: const Text('Public'),
+                    visualDensity: VisualDensity.compact,
+                  ),
+                ),
               const SizedBox(height: 4),
               Text(
                 '${formatDate(trip.startDate)} - ${formatDate(trip.endDate)}',
@@ -1152,4 +1300,12 @@ class _NoMatchingEntriesState extends StatelessWidget {
       ),
     );
   }
+}
+
+enum _TripViewMenuAction {
+  exportPdf,
+  foodShowcase,
+  publish,
+  unpublish,
+  shareLink,
 }

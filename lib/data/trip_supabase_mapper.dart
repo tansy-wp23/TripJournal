@@ -16,6 +16,12 @@ Trip tripFromSupabaseRow(Map<String, dynamic> row) {
     deletedAt: row['deleted_at'] == null
         ? null
         : DateTime.parse(row['deleted_at'] as String),
+    isPublic: row['is_public'] as bool? ?? false,
+    publishedAt: row['published_at'] == null
+        ? null
+        : DateTime.parse(row['published_at'] as String),
+    publisherDisplayName: row['publisher_display_name'] as String?,
+    publisherAvatarUrl: row['publisher_avatar_url'] as String?,
   );
 }
 
@@ -33,6 +39,10 @@ Map<String, dynamic> tripToSupabaseRow(Trip trip) {
     'created_at': trip.createdAt.toIso8601String(),
     'updated_at': trip.updatedAt.toIso8601String(),
     'deleted_at': trip.deletedAt?.toIso8601String(),
+    'is_public': trip.isPublic,
+    'published_at': trip.publishedAt?.toIso8601String(),
+    'publisher_display_name': trip.publisherDisplayName,
+    'publisher_avatar_url': trip.publisherAvatarUrl,
   };
 }
 
@@ -45,6 +55,10 @@ Map<String, dynamic> tripEditableFieldsToSupabaseRow(Trip trip) {
     'end_date': _formatDateOnly(trip.endDate),
     'notes': trip.notes,
     'summary': trip.summary,
+    'is_public': trip.isPublic,
+    'published_at': trip.publishedAt?.toIso8601String(),
+    'publisher_display_name': trip.publisherDisplayName,
+    'publisher_avatar_url': trip.publisherAvatarUrl,
   };
 }
 

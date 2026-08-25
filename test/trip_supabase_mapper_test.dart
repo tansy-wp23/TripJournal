@@ -67,6 +67,10 @@ void main() {
         'created_at': '2026-07-01T02:03:04.000Z',
         'updated_at': '2026-07-02T03:04:05.000Z',
         'deleted_at': null,
+        'is_public': false,
+        'published_at': null,
+        'publisher_display_name': null,
+        'publisher_avatar_url': null,
       });
       expect(row['start_date'], '2026-08-05');
       expect(row['end_date'], '2026-08-07');
@@ -102,6 +106,10 @@ void main() {
       'end_date': '2026-08-07',
       'notes': 'Try the char kway teow.',
       'summary': 'A short Penang recap.',
+      'is_public': false,
+      'published_at': null,
+      'publisher_display_name': null,
+      'publisher_avatar_url': null,
     });
   });
 

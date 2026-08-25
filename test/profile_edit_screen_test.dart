@@ -11,6 +11,21 @@ import 'package:tripjournal/features/auth/controller/auth_controller.dart';
 import 'package:tripjournal/features/profile/controller/profile_controller.dart';
 import 'package:tripjournal/features/profile/screens/profile_edit_screen.dart';
 
+/// The edit screen's `ListView` is sliver-backed and lazily builds only
+/// what's near the viewport — fields further down (travel interests,
+/// country) aren't mounted until scrolled into range. Mirrors
+/// `place_picker_screen_test.dart`'s `scrollUntilVisible` use.
+Future<Finder> _scrollToKey(WidgetTester tester, String key) async {
+  final finder = find.byKey(Key(key), skipOffstage: false).first;
+  await tester.scrollUntilVisible(
+    finder,
+    120,
+    scrollable: find.byType(Scrollable).first,
+  );
+  await tester.pumpAndSettle();
+  return find.byKey(Key(key));
+}
+
 void main() {
   testWidgets(
     'avatar picker offers camera and gallery, matching the trip cover photo flow',
@@ -68,6 +83,80 @@ void main() {
         findsNothing,
       );
       expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'editing travel interests and country saves through updateTravelDetails '
+    '(Profile Onboarding feature — same widgets as onboarding)',
+    (tester) async {
+      final profileRepository = MockProfileRepository(
+        state: MockProfileState.active,
+      );
+      final verificationCodeRepository = MockVerificationCodeRepository();
+      final authController = AuthController(
+        MockAuthRepository(),
+        profileRepository,
+        MockAccountLifecycleRepository(
+          profileRepository: profileRepository,
+          verificationCodeRepository: verificationCodeRepository,
+        ),
+      );
+      await authController.signInWithGoogle();
+      final controller = ProfileController(
+        profileRepository,
+        authController,
+        MockProfileAvatarStorage(),
+      );
+      await controller.loadProfile();
+      addTearDown(authController.dispose);
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            profileControllerProvider.overrideWith((ref) => controller),
+          ],
+          child: const MaterialApp(home: ProfileEditScreen()),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final interestChip = await _scrollToKey(
+        tester,
+        'travel-interest-chip-History',
+      );
+      await tester.tap(interestChip);
+      await tester.pumpAndSettle();
+
+      final countrySelector = await _scrollToKey(
+        tester,
+        'country-selector-field',
+      );
+      await tester.tap(countrySelector);
+      await tester.pumpAndSettle();
+
+      // Filter first — the sheet's list is lazily built, and 'Japan'
+      // (unfiltered, alphabetically) sits far enough down that it may not be
+      // mounted without scrolling. Narrowing to one match sidesteps that.
+      await tester.enterText(
+        find.byKey(const Key('country-search-field')),
+        'Japan',
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('country-option-Japan')));
+      await tester.pumpAndSettle();
+
+      final saveButton = find.byKey(const Key('profile-save-button'));
+      await tester.ensureVisible(saveButton);
+      await tester.pumpAndSettle();
+      await tester.tap(saveButton);
+      await tester.pumpAndSettle();
+
+      expect(controller.profile!.travelInterests, ['History']);
+      expect(controller.profile!.country, 'Japan');
+      // Editing an already-active profile must never flip this back to
+      // needing onboarding.
+      expect(controller.profile!.profileCompleted, isTrue);
     },
   );
 }

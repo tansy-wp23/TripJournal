@@ -288,7 +288,10 @@ CameraUpdate googleTripMapCameraUpdate(TripMapModel model) {
   final group = model.groups.first;
   return CameraUpdate.newLatLngZoom(
     LatLng(group.latitude, group.longitude),
-    12,
+    // 12 (city-level) was too far out for Google's default style to reliably
+    // label landmarks/POIs at a single stop — 15 is street-level, where they
+    // consistently render.
+    15,
   );
 }
 
@@ -296,7 +299,7 @@ CameraPosition _initialCameraPosition(TripMapModel model) {
   final group = model.groups.first;
   return CameraPosition(
     target: LatLng(group.latitude, group.longitude),
-    zoom: 12,
+    zoom: 15,
   );
 }
 

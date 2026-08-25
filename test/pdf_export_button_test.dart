@@ -97,6 +97,8 @@ void main() {
     (tester) async {
       await pumpApp(tester);
 
+      await tester.tap(find.byKey(const Key('trip-view-more-menu')));
+      await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('trip-view-export-pdf-button')));
       await tester.pump();
       expect(find.byType(CircularProgressIndicator), findsOneWidget);
@@ -113,6 +115,8 @@ void main() {
       // taking the screen with it instead of just the dialog.
       await pumpApp(tester);
 
+      await tester.tap(find.byKey(const Key('trip-view-more-menu')));
+      await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('trip-view-export-pdf-button')));
       await tester.pump();
       expect(find.byType(CircularProgressIndicator), findsOneWidget);

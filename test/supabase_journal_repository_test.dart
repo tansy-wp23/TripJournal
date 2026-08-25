@@ -71,6 +71,7 @@ Map<String, dynamic> _healthLogRow({Object? meals}) {
 Map<String, dynamic> _mealRow({
   String mealType = 'lunch',
   String portion = 'large',
+  int? rating = 4,
 }) {
   return {
     'id': _mealId,
@@ -81,6 +82,7 @@ Map<String, dynamic> _mealRow({
     'meal_type': mealType,
     'portion': portion,
     'photo_url': 'https://cdn.example/ramen.jpg',
+    'rating': rating,
   };
 }
 
@@ -119,6 +121,7 @@ Meal _meal() {
     mealType: MealType.lunch,
     portion: PortionSize.large,
     photoPath: 'https://cdn.example/ramen.jpg',
+    rating: 4,
   );
 }
 
@@ -234,6 +237,7 @@ void main() {
       expect(log.meals.single.mealType, MealType.lunch);
       expect(log.meals.single.portion, PortionSize.large);
       expect(log.meals.single.photoPath, 'https://cdn.example/ramen.jpg');
+      expect(log.meals.single.rating, 4);
     });
 
     test(
@@ -405,6 +409,7 @@ void main() {
       expect(mealBody['meal_type'], 'lunch');
       expect(mealBody['portion'], 'large');
       expect(mealBody['photo_url'], 'https://cdn.example/ramen.jpg');
+      expect(mealBody['rating'], 4);
       expect(mealBody, isNot(contains('user_id')));
     });
 

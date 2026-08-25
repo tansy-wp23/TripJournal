@@ -1264,3 +1264,98 @@ were removed as dead code. It was never invoked by any code path:
 
 - Dart: `flutter analyze` + `flutter test` - clean (the `resendCode` method
   was only referenced in the 2 test files that were updated).
+
+---
+
+## Profile Onboarding (post-registration)
+
+Built against `IMPLEMENTATION_PLAN_PROFILE_ONBOARDING.md` (repo root), with
+module-owner sign-off obtained before starting per that plan's "Prerequisites
+& Coordination" section. A first-login welcome screen collecting avatar,
+name, travel interests, date of birth, and country, wired through the
+existing `profiles` table / `ProfileRepository` / `AuthController` rather
+than a parallel mechanism.
+
+### What was done
+
+- **Schema** (`supabase/migrations/202608250002_profile_onboarding.sql`):
+  additive columns on `public.profiles` - `date_of_birth date`,
+  `country text`, `travel_interests text[] not null default '{}'`,
+  `profile_completed boolean not null default false`. No RLS change needed
+  (the existing `auth.uid() = user_id` policies aren't column-scoped).
+  Backfilled `profile_completed = true` for every row that existed before
+  this migration - onboarding is for genuinely new signups only, not a
+  retroactive nag for users already using the app.
+- **First-login routing**: `AuthController.status` gained
+  `AuthStatus.needsOnboarding`, checked after suspended/deactivated but
+  before authenticated. `AuthGate` routes it to the new
+  `ProfileOnboardingScreen`. A new `AuthController.refreshProfile()` (renamed
+  out of the former `onReactivated()` body, which now just calls it) lets
+  `ProfileController` - which saves through its own `ProfileRepository`
+  reference, not through `AuthController` - tell `AuthController` its cached
+  profile is stale once onboarding finishes or is skipped, so `AuthGate`
+  actually swaps the screen out.
+- **`Profile.profileCompleted` defaults to `true` in the Dart model**
+  (deliberately the opposite of the DB column's own `false` default) so
+  every pre-existing call site constructing a `Profile` - test fixtures,
+  `MockProfileRepository`'s active/deactivated seeds - keeps reading as
+  "already onboarded" without being touched. Only the two `createProfileIfMissing`
+  "no profile yet" branches (mock + Supabase) pass `profileCompleted: false`
+  explicitly, since those are the only two places a genuinely new account is
+  created.
+- **Onboarding screen** (`lib/features/profile/screens/profile_onboarding_screen.dart`):
+  pre-fills the Google-derived display name, then avatar / name / interests
+  (chip multi-select) / date of birth / country, all optional except name -
+  and even name is bypassed by "Skip for now". Skipping never loses data the
+  user already had; it only flips `profile_completed`.
+- **Reused, not duplicated**, onto the profile edit screen too
+  (`ProfileEditScreen` gained the same three fields via the same widgets -
+  `TravelInterestSelector`, `DateOfBirthField`, `CountrySelector` - through a
+  new `ProfileController.updateTravelDetails`, kept separate from
+  `completeOnboarding` since editing an already-onboarded profile must never
+  touch `profileCompleted`).
+- **Country list**: a plain static `lib/data/countries.dart` (~195 names),
+  not a new package dependency - the column is free-text, so a
+  flags/ISO-codes package would be more than this needed.
+- Checked `kMockUserDisplayName` (flagged in the plan as a homepage
+  hardcoded name to replace) - confirmed still dead code, referenced nowhere
+  outside its own declaration (`lib/features/trip/mock_user.dart`). Nothing
+  to change there.
+- Travel interests are currently write-only (stored, shown on the profile
+  view screen, not yet consumed by any recommendation/summary feature) - the
+  plan flagged this as acceptable for now; noting it again here rather than
+  building a consumer that wasn't asked for.
+
+### Files changed
+
+- New: the migration above; `lib/data/countries.dart`;
+  `lib/features/profile/widgets/{travel_interest_selector,date_of_birth_field,country_selector}.dart`;
+  `lib/features/profile/screens/profile_onboarding_screen.dart`;
+  `test/profile_onboarding_screen_test.dart`.
+- Modified: `lib/models/profile.dart`, `lib/data/profile_supabase_mapper.dart`,
+  `lib/data/{mock,supabase}_profile_repository.dart`,
+  `lib/validation/profile_validation.dart`,
+  `lib/features/auth/controller/auth_controller.dart`,
+  `lib/features/auth/auth_gate.dart`,
+  `lib/features/profile/controller/profile_controller.dart`,
+  `lib/features/profile/screens/{profile_view_screen,profile_edit_screen}.dart`.
+- Tests extended: `profile_supabase_mapper_test.dart`,
+  `mock_profile_repository_test.dart`, `supabase_profile_repository_test.dart`,
+  `profile_validation_test.dart`, `auth_controller_test.dart`,
+  `profile_controller_test.dart`, `profile_edit_screen_test.dart`.
+
+### Tests
+
+- `flutter analyze` - clean. `flutter test` - all passing (1060 tests,
+  up from 1038 before this feature).
+- The one deliberately-changed pre-existing expectation:
+  `auth_controller_test.dart`'s "first-time user gets a profile created on
+  sign-in" now expects `AuthStatus.needsOnboarding`, not `authenticated` -
+  that is the actual new behaviour, not a regression.
+- New widget tests found and required a fix unrelated to this feature's
+  logic: the onboarding/edit screens' `ListView` is sliver-backed, so fields
+  below the fold (country selector, Continue button) aren't mounted until
+  scrolled into range under `flutter test`'s fixed viewport. Fixed with
+  `tester.scrollUntilVisible`, matching the existing pattern in
+  `place_picker_screen_test.dart` - not a bug in the shipped screens
+  themselves, real devices scroll normally.

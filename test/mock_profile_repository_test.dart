@@ -14,6 +14,9 @@ void main() {
       expect(profile!.status, AccountStatus.active);
       expect(profile.isActive, isTrue);
       expect(profile.email, 'sangyou@example.com');
+      // An already-existing seeded user, not a brand-new signup — must not
+      // be routed to onboarding.
+      expect(profile.profileCompleted, isTrue);
     });
 
     test('deactivated state seeds a deactivated profile', () async {
@@ -42,6 +45,8 @@ void main() {
       expect(created.status, AccountStatus.active);
       expect(created.userID, 'user-001');
       expect((await repo.getProfile('user-001'))?.displayName, 'Sang You');
+      // Genuinely new profile — routes through onboarding once.
+      expect(created.profileCompleted, isFalse);
     });
 
     test('createProfileIfMissing stamps last_login_at on an existing profile',

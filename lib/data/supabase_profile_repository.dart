@@ -49,6 +49,10 @@ class SupabaseProfileRepository implements ProfileRepository {
       lastLoginAt: now,
       createdAt: now,
       updatedAt: now,
+      // Genuinely new account (this is the defensive fallback path — the
+      // handle_new_user trigger is primary and relies on the column's own
+      // `false` default instead). Routes through onboarding once.
+      profileCompleted: false,
     );
 
     final row = await _client

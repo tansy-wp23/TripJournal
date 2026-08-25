@@ -221,7 +221,7 @@ void main() {
     expect(googleTripMapArrowMarkers(model), isEmpty);
   });
 
-  test('one group uses zoom 12 and multiple groups use model bounds', () {
+  test('one group uses zoom 15 and multiple groups use model bounds', () {
     final one = modelFor([
       entry(id: 'one', createdAt: tripStart, latitude: 1, longitude: 2),
     ]);
@@ -230,7 +230,7 @@ void main() {
     expect(oneUpdate.toJson(), [
       'newLatLngZoom',
       [1.0, 2.0],
-      12.0,
+      15.0,
     ]);
 
     final many = modelFor([

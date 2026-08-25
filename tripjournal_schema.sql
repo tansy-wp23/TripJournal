@@ -149,6 +149,7 @@ create table public.meals (
   portion       text not null default 'regular' check (portion in ('small','regular','large')),
   meal_type     text check (meal_type in ('breakfast','lunch','dinner','snack')),
   photo_url     text,                              -- Storage URL; null if typed by hand
+  rating        smallint check (rating is null or (rating between 1 and 5)),  -- 1-5 stars; null = not rated
   created_at    timestamptz not null default now(),
   updated_at    timestamptz not null default now()
 );
@@ -1163,6 +1164,66 @@ revoke execute on function public.consume_places_rate_limit()
   from public, anon;
 grant execute on function public.consume_places_rate_limit()
   to authenticated;
+
+-- ============================================================================
+-- Public trip publishing: adds is_public visibility, publisher identity
+-- snapshot, and cross-user SELECT policies for trips + child tables.
+-- ============================================================================
+
+alter table public.trips
+  add column if not exists is_public              boolean      not null default false,
+  add column if not exists published_at           timestamptz,
+  add column if not exists publisher_display_name text,
+  add column if not exists publisher_avatar_url   text;
+
+create index if not exists trips_public_published_idx
+  on public.trips (published_at desc)
+  where is_public = true and deleted_at is null;
+
+grant update (is_public, published_at, publisher_display_name, publisher_avatar_url)
+  on table public.trips to authenticated;
+
+grant update (summary) on table public.trips to authenticated;
+
+drop policy if exists "trips_select_public" on public.trips;
+create policy "trips_select_public" on public.trips
+  for select to authenticated
+  using (is_public = true and deleted_at is null);
+
+drop policy if exists "entries_select_public" on public.journal_entries;
+create policy "entries_select_public" on public.journal_entries
+  for select to authenticated
+  using (
+    exists (
+      select 1 from public.trips as t
+      where t.id = trip_id and t.is_public = true and t.deleted_at is null
+    )
+  );
+
+drop policy if exists "health_logs_select_public" on public.health_logs;
+create policy "health_logs_select_public" on public.health_logs
+  for select to authenticated
+  using (
+    exists (
+      select 1
+      from public.journal_entries as e
+      join public.trips as t on t.id = e.trip_id
+      where e.id = entry_id and t.is_public = true and t.deleted_at is null
+    )
+  );
+
+drop policy if exists "meals_select_public" on public.meals;
+create policy "meals_select_public" on public.meals
+  for select to authenticated
+  using (
+    exists (
+      select 1
+      from public.health_logs as hl
+      join public.journal_entries as e on e.id = hl.entry_id
+      join public.trips as t on t.id = e.trip_id
+      where hl.id = health_log_id and t.is_public = true and t.deleted_at is null
+    )
+  );
 
 -- ============================================================================
 -- END. Next steps (NOT SQL):

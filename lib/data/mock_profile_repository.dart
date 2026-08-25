@@ -87,6 +87,12 @@ class MockProfileRepository implements ProfileRepository {
       lastLoginAt: now,
       createdAt: now,
       updatedAt: now,
+      // Genuinely new account — route through onboarding once (Profile
+      // Onboarding feature). Every other Profile() construction in this
+      // class (the active/deactivated seeds above) leaves this at its
+      // default `true`, since those represent users who were already using
+      // the app.
+      profileCompleted: false,
     );
     return _profile!;
   }

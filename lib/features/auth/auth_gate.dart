@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../widgets/app_splash.dart';
 import '../home/home_screen.dart';
+import '../profile/screens/profile_onboarding_screen.dart';
 import 'controller/auth_controller.dart';
 import 'screens/login_screen.dart';
 import 'screens/reactivation_screen.dart';
@@ -24,6 +25,8 @@ class AuthGate extends ConsumerWidget {
         return const AppSplash();
       case AuthStatus.authenticated:
         return const HomeScreen();
+      case AuthStatus.needsOnboarding:
+        return const ProfileOnboardingScreen();
       case AuthStatus.deactivated:
         return const ReactivationScreen();
       case AuthStatus.suspended:

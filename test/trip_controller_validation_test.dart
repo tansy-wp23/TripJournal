@@ -36,6 +36,9 @@ class _RecordingTripRepository implements TripRepository {
     updateCount++;
     await _delegate.updateTrip(trip);
   }
+
+  @override
+  Future<List<Trip>> getPublicTrips() => _delegate.getPublicTrips();
 }
 
 class _RecordingCoverStorage implements TripCoverStorage {

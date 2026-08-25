@@ -149,6 +149,30 @@ void main() {
 
       expect(result?.id, trip.id);
     });
+
+    test(
+      'getPublicTrips filters by is_public, excludes deleted, orders by published_at desc',
+      () async {
+        final repository = _repository(
+          MockClient((request) async {
+            expect(request.method, 'GET');
+            expect(request.url.path, '/rest/v1/trips');
+            expect(request.url.queryParameters['is_public'], 'eq.true');
+            expect(request.url.queryParameters['deleted_at'], 'is.null');
+            expect(
+              request.url.queryParameters['order'],
+              'published_at.desc.nullslast',
+            );
+            return _jsonResponse([_tripRow()], request: request);
+          }),
+        );
+
+        final trips = await repository.getPublicTrips();
+
+        expect(trips, hasLength(1));
+        expect(trips.single.title, 'Penang Weekend');
+      },
+    );
   });
 
   group('writes', () {
@@ -191,6 +215,10 @@ void main() {
               'end_date',
               'notes',
               'summary',
+              'is_public',
+              'published_at',
+              'publisher_display_name',
+              'publisher_avatar_url',
             });
             expect(body['summary'], 'A food-filled weekend in Penang.');
             return _jsonResponse([], request: request);

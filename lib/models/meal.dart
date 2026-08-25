@@ -19,6 +19,11 @@ class Meal {
   /// Null for a meal typed in by hand.
   final String? photoPath;
 
+  /// 1–5 whole-star rating the user gives the meal. Null means not rated —
+  /// purely descriptive, never required to save a meal
+  /// (`IMPLEMENTATION_PLAN_RATING_LOCATION_SHOWCASE.md` §1).
+  final int? rating;
+
   const Meal({
     required this.id,
     required this.name,
@@ -26,7 +31,11 @@ class Meal {
     required this.mealType,
     this.portion = PortionSize.regular,
     this.photoPath,
-  });
+    this.rating,
+  }) : assert(
+         rating == null || (rating >= 1 && rating <= 5),
+         'rating must be null or between 1 and 5',
+       );
 
   factory Meal.fromJson(Map<String, dynamic> json) {
     return Meal(
@@ -38,6 +47,7 @@ class Meal {
           ? PortionSize.regular
           : PortionSize.values.byName(json['portion'] as String),
       photoPath: json['photoPath'] as String?,
+      rating: json['rating'] as int?,
     );
   }
 
@@ -49,12 +59,14 @@ class Meal {
       'mealType': mealType.name,
       'portion': portion.name,
       'photoPath': photoPath,
+      'rating': rating,
     };
   }
 
   /// [clearPhotoPath] removes an existing photo — without it a null
   /// [photoPath] means "leave unchanged", the same convention as
-  /// `HealthLog.clearCaloriesBurned` and `Profile.clearAvatarUrl`.
+  /// `HealthLog.clearCaloriesBurned` and `Profile.clearAvatarUrl`. [clearRating]
+  /// follows the same convention for [rating].
   Meal copyWith({
     String? id,
     String? name,
@@ -63,6 +75,8 @@ class Meal {
     PortionSize? portion,
     String? photoPath,
     bool clearPhotoPath = false,
+    int? rating,
+    bool clearRating = false,
   }) {
     return Meal(
       id: id ?? this.id,
@@ -71,6 +85,7 @@ class Meal {
       mealType: mealType ?? this.mealType,
       portion: portion ?? this.portion,
       photoPath: clearPhotoPath ? null : (photoPath ?? this.photoPath),
+      rating: clearRating ? null : (rating ?? this.rating),
     );
   }
 }

@@ -8,4 +8,5 @@ abstract class TripRepository {
   Future<void> updateTrip(Trip trip);
   Future<void> moveToTrash(String id);
   Future<void> restoreTrip(Trip trip);
+  Future<List<Trip>> getPublicTrips();
 }

@@ -202,4 +202,47 @@ void main() {
       },
     );
   });
+
+  group('getPublicTrips', () {
+    test(
+      'returns only public, non-deleted trips, newest published first',
+      () async {
+        final published = _newTrip(id: 'trip-published').copyWith(
+          isPublic: true,
+          publishedAt: now.subtract(const Duration(days: 1)),
+        );
+        final recentlyPublished = _newTrip(id: 'trip-recent').copyWith(
+          isPublic: true,
+          publishedAt: now,
+        );
+        final private = _newTrip(id: 'trip-private');
+        final deletedPublic = _newTrip(
+          id: 'trip-deleted-public',
+          deletedAt: now,
+        ).copyWith(isPublic: true, publishedAt: now);
+        await repository.addTrip(published);
+        await repository.addTrip(recentlyPublished);
+        await repository.addTrip(private);
+        await repository.addTrip(deletedPublic);
+
+        final publicTrips = await repository.getPublicTrips();
+
+        expect(publicTrips.map((trip) => trip.id), [
+          'trip-recent',
+          'trip-published',
+        ]);
+      },
+    );
+
+    test('falls back to createdAt ordering when publishedAt is null', () async {
+      final older = _newTrip(id: 'trip-older').copyWith(isPublic: true);
+      final newer = _newTrip(id: 'trip-newer').copyWith(isPublic: true);
+      await repository.addTrip(older);
+      await repository.addTrip(newer);
+
+      final publicTrips = await repository.getPublicTrips();
+
+      expect(publicTrips, hasLength(2));
+    });
+  });
 }

@@ -7,6 +7,7 @@ import '../../data/current_user_id_provider.dart';
 import '../../data/trip_repository_locator.dart';
 import '../admin/widgets/report_issue_button.dart';
 import '../auth/controller/auth_controller.dart';
+import '../community/community_screen.dart';
 import '../profile/screens/profile_view_screen.dart';
 import '../settings/settings_providers.dart';
 import '../settings/settings_screen.dart';
@@ -192,6 +193,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       appBar: AppBar(
         title: const Text('TripJournal'),
         actions: [
+          IconButton(
+            key: const Key('community-button'),
+            icon: const Icon(Icons.public),
+            tooltip: 'Community',
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const CommunityScreen()),
+            ),
+          ),
           ReportIssueButton(
             page: 'HomeScreen',
             userIdProvider: widget.userIdProvider,

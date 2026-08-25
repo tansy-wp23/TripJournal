@@ -167,8 +167,13 @@ pw.Widget _healthSection(
   );
 }
 
-String _mealLine(Meal meal) =>
-    '${meal.name} (${mealTypeLabel(meal.mealType)}, ~${meal.calories} kcal)';
+// Plain "4/5" rather than a ★ glyph: the PDF's default core font (Helvetica)
+// has no star character, and a missing glyph renders as a blank box rather
+// than failing loudly — a numeric rating degrades gracefully everywhere.
+String _mealLine(Meal meal) {
+  final rating = meal.rating == null ? '' : ', ${meal.rating}/5';
+  return '${meal.name} (${mealTypeLabel(meal.mealType)}, ~${meal.calories} kcal$rating)';
+}
 
 /// One meal line, with its photo alongside when the user logged the meal from
 /// one. Meals typed in by hand keep the plain bullet they always had, so an

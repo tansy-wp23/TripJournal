@@ -26,6 +26,10 @@ Map<String, dynamic> _profileRow({
     'last_login_at': '2026-08-01T02:03:04.000Z',
     'created_at': '2026-07-01T02:03:04.000Z',
     'updated_at': '2026-07-02T03:04:05.000Z',
+    'date_of_birth': '2000-05-07',
+    'country': 'Malaysia',
+    'travel_interests': ['Scenery', 'Food'],
+    'profile_completed': true,
   };
 }
 
@@ -84,6 +88,10 @@ void main() {
       expect(profile!.userID, _userId);
       expect(profile.displayName, 'Sang You');
       expect(profile.status, AccountStatus.active);
+      expect(profile.dateOfBirth, DateTime.parse('2000-05-07'));
+      expect(profile.country, 'Malaysia');
+      expect(profile.travelInterests, ['Scenery', 'Food']);
+      expect(profile.profileCompleted, isTrue);
     });
 
     test('returns null when no profile exists', () async {
@@ -147,6 +155,8 @@ void main() {
           expect(body['email'], 'sangyou@example.com');
           expect(body['display_name'], 'Sang You');
           expect(body['status'], 'active');
+          // Genuinely new profile — must route through onboarding once.
+          expect(body['profile_completed'], isFalse);
           expect(body, isNot(contains('userID')));
           expect(body, isNot(contains('displayName')));
           return _jsonResponse(_profileRow(), request: request);

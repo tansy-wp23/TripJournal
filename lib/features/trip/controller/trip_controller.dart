@@ -289,6 +289,34 @@ class TripController extends ChangeNotifier {
     return null;
   }
 
+  /// Marks [trip] as public and snapshots the publisher's identity.
+  Future<String?> publishTrip(
+    Trip trip, {
+    required String publisherDisplayName,
+    String? publisherAvatarUrl,
+  }) async {
+    final publishedTrip = trip.copyWith(
+      isPublic: true,
+      publishedAt: DateTime.now(),
+      publisherDisplayName: publisherDisplayName,
+      publisherAvatarUrl: publisherAvatarUrl,
+      updatedAt: DateTime.now(),
+    );
+    return editTrip(publishedTrip);
+  }
+
+  /// Marks [trip] as private (removes it from the community feed).
+  Future<String?> unpublishTrip(Trip trip) async {
+    final unpublishedTrip = trip.copyWith(
+      isPublic: false,
+      clearPublishedAt: true,
+      clearPublisherDisplayName: true,
+      clearPublisherAvatarUrl: true,
+      updatedAt: DateTime.now(),
+    );
+    return editTrip(unpublishedTrip);
+  }
+
   String? _coverForTrip(String tripId) {
     for (final trip in _trips) {
       if (trip.id == tripId) return trip.coverPhotoPath;
@@ -345,6 +373,10 @@ class TripController extends ChangeNotifier {
       createdAt: trip.createdAt,
       updatedAt: trip.updatedAt,
       deletedAt: trip.deletedAt,
+      isPublic: trip.isPublic,
+      publishedAt: trip.publishedAt,
+      publisherDisplayName: trip.publisherDisplayName,
+      publisherAvatarUrl: trip.publisherAvatarUrl,
     );
   }
 

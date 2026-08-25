@@ -22,6 +22,10 @@ class Trip {
   final DateTime createdAt;
   final DateTime updatedAt;
   final DateTime? deletedAt;
+  final bool isPublic;
+  final DateTime? publishedAt;
+  final String? publisherDisplayName;
+  final String? publisherAvatarUrl;
 
   const Trip({
     required this.id,
@@ -36,6 +40,10 @@ class Trip {
     required this.createdAt,
     required this.updatedAt,
     this.deletedAt,
+    this.isPublic = false,
+    this.publishedAt,
+    this.publisherDisplayName,
+    this.publisherAvatarUrl,
   });
 
   DateTime? get trashExpiresAt =>
@@ -100,6 +108,12 @@ class Trip {
       deletedAt: json['deletedAt'] == null
           ? null
           : DateTime.parse(json['deletedAt'] as String),
+      isPublic: json['isPublic'] as bool? ?? false,
+      publishedAt: json['publishedAt'] == null
+          ? null
+          : DateTime.parse(json['publishedAt'] as String),
+      publisherDisplayName: json['publisherDisplayName'] as String?,
+      publisherAvatarUrl: json['publisherAvatarUrl'] as String?,
     );
   }
 
@@ -117,6 +131,10 @@ class Trip {
       'createdAt': createdAt.toIso8601String(),
       'updatedAt': updatedAt.toIso8601String(),
       'deletedAt': deletedAt?.toIso8601String(),
+      'isPublic': isPublic,
+      'publishedAt': publishedAt?.toIso8601String(),
+      'publisherDisplayName': publisherDisplayName,
+      'publisherAvatarUrl': publisherAvatarUrl,
     };
   }
 
@@ -134,6 +152,13 @@ class Trip {
     DateTime? updatedAt,
     DateTime? deletedAt,
     bool clearDeletedAt = false,
+    bool? isPublic,
+    DateTime? publishedAt,
+    bool clearPublishedAt = false,
+    String? publisherDisplayName,
+    bool clearPublisherDisplayName = false,
+    String? publisherAvatarUrl,
+    bool clearPublisherAvatarUrl = false,
   }) {
     return Trip(
       id: id ?? this.id,
@@ -148,6 +173,14 @@ class Trip {
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       deletedAt: clearDeletedAt ? null : deletedAt ?? this.deletedAt,
+      isPublic: isPublic ?? this.isPublic,
+      publishedAt: clearPublishedAt ? null : (publishedAt ?? this.publishedAt),
+      publisherDisplayName: clearPublisherDisplayName
+          ? null
+          : (publisherDisplayName ?? this.publisherDisplayName),
+      publisherAvatarUrl: clearPublisherAvatarUrl
+          ? null
+          : (publisherAvatarUrl ?? this.publisherAvatarUrl),
     );
   }
 }

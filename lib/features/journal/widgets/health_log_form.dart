@@ -16,6 +16,7 @@ import '../../health/health_data_source.dart';
 import '../../health/health_data_source_locator.dart' as locator;
 import '../ai/food_detection_locator.dart';
 import 'meal_display.dart';
+import 'meal_rating_stars.dart';
 import 'photo_thumbnail.dart';
 
 class HealthLogFormData {
@@ -378,9 +379,23 @@ class _HealthLogFormState extends State<HealthLogForm> {
                           size: 40,
                         ),
                   title: Text(_meals[i].name),
-                  subtitle: Text(
-                    '${mealTypeLabel(_meals[i].mealType)} · ${portionSizeLabel(_meals[i].portion)} · '
-                    '~${_meals[i].calories} kcal',
+                  subtitle: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '${mealTypeLabel(_meals[i].mealType)} · ${portionSizeLabel(_meals[i].portion)} · '
+                        '~${_meals[i].calories} kcal',
+                      ),
+                      if (_meals[i].rating != null)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 2),
+                          child: MealRatingStars(
+                            key: Key('meal-row-rating-$i'),
+                            rating: _meals[i].rating,
+                            size: 14,
+                          ),
+                        ),
+                    ],
                   ),
                   onTap: () => _editMeal(i),
                   trailing: Row(
@@ -455,6 +470,8 @@ class _MealDialogState extends State<_MealDialog> {
   // whether or not the AI managed to recognise what was on the plate.
   String? _photoPath;
 
+  int? _rating;
+
   @override
   void initState() {
     super.initState();
@@ -464,6 +481,7 @@ class _MealDialogState extends State<_MealDialog> {
     _caloriesController = TextEditingController(text: initial?.calories.toString() ?? '');
     _mealType = initial?.mealType ?? MealType.breakfast;
     _portion = initial?.portion ?? PortionSize.regular;
+    _rating = initial?.rating;
     _baseCalories = initial == null ? 0 : initial.calories / initial.portion.calorieMultiplier;
   }
 
@@ -617,6 +635,7 @@ class _MealDialogState extends State<_MealDialog> {
         mealType: _mealType,
         portion: _portion,
         photoPath: _photoPath,
+        rating: _rating,
       ),
     );
   }
@@ -722,6 +741,20 @@ class _MealDialogState extends State<_MealDialog> {
                 DropdownMenuItem(value: type, child: Text(mealTypeLabel(type))),
             ],
             onChanged: (value) => setState(() => _mealType = value ?? _mealType),
+          ),
+          const SizedBox(height: 8),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Text('Rating', style: Theme.of(context).textTheme.labelMedium),
+          ),
+          const SizedBox(height: 4),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: MealRatingStars(
+              rating: _rating,
+              size: 28,
+              onChanged: (rating) => setState(() => _rating = rating),
+            ),
           ),
         ],
       ),

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:tripjournal/features/community/community_screen.dart';
 import 'package:tripjournal/features/home/home_screen.dart';
 
 void main() {
@@ -25,5 +26,23 @@ void main() {
     // "Your Trips" list.
     expect(find.text('Kyoto Trip'), findsNWidgets(2));
     expect(find.text('Osaka Trip'), findsOneWidget);
+    expect(find.byKey(const Key('community-button')), findsOneWidget);
+  });
+
+  testWidgets('tapping the community button opens the Community screen', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(1200, 2600);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(const ProviderScope(child: MaterialApp(home: HomeScreen())));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('community-button')));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(CommunityScreen), findsOneWidget);
   });
 }
