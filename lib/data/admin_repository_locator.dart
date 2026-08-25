@@ -5,14 +5,18 @@ import 'admin_account_actions_repository.dart';
 import 'admin_audit_log_repository.dart';
 import 'admin_dashboard_repository.dart';
 import 'admin_user_directory_repository.dart';
+import 'ai_request_log_repository.dart';
 import 'auth_repository.dart';
 import 'issue_report_repository.dart';
+import 'mock_ai_request_log_repository.dart';
+import 'mock_system_error_log_repository.dart';
 import 'supabase_admin_access_attempt_log_repository.dart';
 import 'supabase_admin_account_actions_repository.dart';
 import 'supabase_admin_audit_log_repository.dart';
 import 'supabase_admin_dashboard_repository.dart';
 import 'supabase_admin_user_directory_repository.dart';
 import 'supabase_issue_report_repository.dart';
+import 'system_error_log_repository.dart';
 import 'user_management_repository_locator.dart' as user_management;
 
 /// The one place the app resolves its admin repositories from — mirrors
@@ -62,3 +66,19 @@ AdminAccessAttemptLogRepository get adminAccessAttemptLogRepository =>
 /// PB-06 (submit) through PB-09 (update status) — Sprint 2.
 IssueReportRepository get issueReportRepository =>
     SupabaseIssueReportRepository(_supabase);
+
+/// PB-11 (Monitor System Error Logs) — Sprint 3. Mock-only for now: Phase
+/// 21 (real backend) is deferred to a later sprint, so unlike the
+/// repositories above, this stays backed by [MockSystemErrorLogRepository].
+/// A top-level final, not a lazy getter — the mock holds in-memory state
+/// (recorded entries) that must survive across every read/write in the
+/// app's lifetime, and importing this file touches no `Supabase.instance`
+/// for this particular repository either way.
+final SystemErrorLogRepository systemErrorLogRepository =
+    MockSystemErrorLogRepository();
+
+/// PB-12 (Monitor AI Processing Requests) + PB-13 (Monitor Failed AI
+/// Requests) — Sprint 3. Mock-only for now, same reasoning as
+/// [systemErrorLogRepository] above.
+final AiRequestLogRepository aiRequestLogRepository =
+    MockAiRequestLogRepository();

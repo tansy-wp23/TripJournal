@@ -1908,3 +1908,132 @@ uploads to it yet) and `SystemHealthScreen`'s Sprint 3 work.
 mocks. Phase 15 onward (Sprint 3 — AI & System Monitoring) is still
 genuinely unbuilt and, per `ADMIN_MODULE_IMPLEMENTATION_PLAN.md`'s own
 numbering, the next phase in sequence.
+
+---
+
+## Phase 15 — Recon & Contracts (Sprint 3) (complete)
+
+### Open Decisions — resolved with the plan's recommended defaults
+
+7. **"Database connectivity status" / "API availability" while mock-first**
+   — recommended default taken: `SystemHealthScreen` (Phase 19) will show
+   **"N/A — mock backend in use"** for any indicator with no real
+   infrastructure behind it, rather than fabricating a fake "healthy"
+   status. The Gemini AI key check is real and buildable now (`.env`'s
+   `GEMINI_API_KEY` set or not) — that's the one indicator Phase 19 can
+   check honestly today.
+8. **`SystemErrorLog` severity levels** — recommended default taken: a
+   four-value `ErrorSeverity` enum (`info, warning, error, fatal`),
+   matching common logging-framework convention.
+
+### Entities defined (`lib/models/`)
+
+- `SystemErrorLog` (`system_error_log.dart`) — `logId`, `module`,
+  `severity` (`ErrorSeverity`), `message`, `stackTrace` (nullable),
+  `createdAt`. `fromJson`/`toJson` included for the eventual Phase 21
+  Supabase swap.
+- `AiRequestLog` (`ai_request_log.dart`) — `logId`, `userId`, `requestType`
+  (`AiRequestType { dailyAdvice, foodDetection, tripSummary }`), `status`
+  (`AiRequestStatus { succeeded, failed }`), `executionTimeMs`,
+  `errorMessage` (nullable), `createdAt`. `fromJson`/`toJson` included.
+
+### Repository interfaces defined (`lib/data/`, no implementations)
+
+- `SystemErrorLogRepository` — `recordError(entry)`, `getAllErrors({module,
+  severity})`
+- `AiRequestLogRepository` — `recordRequest(entry)`, `getAllRequests({status})`,
+  `getFailedRequests()`
+
+### AI locator recon
+
+Confirmed the current shape of all three locators Phase 18 will wrap —
+each is a single top-level `final <Service>` resolved by a private
+`_resolve...()` function that checks `dotenv.env['GEMINI_API_KEY']` and
+falls back to a `Mock...Service`:
+
+- `lib/features/journal/ai/daily_advice_locator.dart` → `dailyAdviceService`
+  (`DailyAdviceService`)
+- `lib/features/journal/ai/food_detection_locator.dart` →
+  `foodDetectionService` (`FoodDetectionService`)
+- `lib/features/trip/ai/trip_summary_locator.dart` → `tripSummaryService`
+  (`TripSummaryService`)
+
+All three are plain top-level finals, not classes/functions taking a
+repository — Phase 18's logging decorator will need to replace each final
+with one that wraps the resolved service instance, timing calls and
+writing to `AiRequestLogRepository` before delegating. None of the three
+services currently exposes a shared interface beyond their own file's
+abstract class, so the decorator will need one wrapper type per service
+(or a generic wrapper parameterized over the call), not a single shared
+decorator class — revisit at Phase 18 once the wrapping shape is chosen.
+
+### Files touched (Phase 15)
+
+- `lib/models/system_error_log.dart` (new)
+- `lib/models/ai_request_log.dart` (new)
+- `lib/data/system_error_log_repository.dart` (new)
+- `lib/data/ai_request_log_repository.dart` (new)
+- `docs/admin/PROGRESS.md` (this file)
+
+### Verification
+
+- `flutter analyze` — no issues found.
+
+### Definition of Done
+
+- [x] `SystemErrorLog`, `AiRequestLog` defined
+- [x] `SystemErrorLogRepository`, `AiRequestLogRepository` defined, no
+      implementations yet
+- [x] Code compiles
+
+---
+
+## Phase 16 — Mock Repositories (Sprint 3) (complete)
+
+### What was built
+
+- **`MockSystemErrorLogRepository`** — seeded with 5 sample errors spanning
+  every `ErrorSeverity` value and 4 different modules (`journal`, `trip`,
+  `auth`, `health`). Same `_logCounter`/`nextLogId()` pattern as
+  `MockAdminAuditLogRepository`.
+- **`MockAiRequestLogRepository`** — seeded with 6 sample requests covering
+  all three `AiRequestType` values with a mix of succeeded/failed status.
+  `getFailedRequests()` delegates to `getAllRequests(status: failed)` rather
+  than duplicating the filter/sort logic.
+- **`admin_repository_locator.dart`**: both new repositories wired as
+  top-level `final`s backed by their mocks — **not** lazy getters like the
+  rest of the locator's entries. Unlike the Supabase-backed repositories
+  (stateless — a fresh client wrapper per call is fine), these mocks hold
+  in-memory state that must persist across every read/write for the app's
+  lifetime, so a single shared instance is required. This will need
+  revisiting at Phase 21 once real `Supabase*` implementations exist — at
+  that point they can move back to lazy getters like every other entry in
+  this file.
+
+### Deferred / not built
+
+`AdminTestHarness` (`test/support/admin_test_harness.dart`) was **not**
+extended with these two repositories yet — there are no controllers to
+wire them into until Phase 17/18 build `SystemErrorLogScreen` and
+`AiRequestMonitoringScreen`. Revisit then.
+
+### Files touched (Phase 16)
+
+- `lib/data/mock_system_error_log_repository.dart` (new)
+- `lib/data/mock_ai_request_log_repository.dart` (new)
+- `lib/data/admin_repository_locator.dart` (modified — two new top-level
+  `final` repositories)
+- `test/mock_system_error_log_repository_test.dart` (new)
+- `test/mock_ai_request_log_repository_test.dart` (new)
+- `docs/admin/PROGRESS.md` (this file)
+
+### Verification
+
+- `flutter analyze` — no issues found.
+- `flutter test` — full suite (954 tests) passes, including 13 net-new
+  tests from this phase; no regressions.
+
+### Definition of Done
+
+- [x] Both mocks implemented and unit-testable
+- [x] Locator wires them; still the one place mock vs. real is decided
