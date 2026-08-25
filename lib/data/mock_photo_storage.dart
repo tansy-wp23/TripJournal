@@ -11,7 +11,10 @@ import 'photo_storage.dart';
 /// is real on device.
 final class MockPhotoStorage implements PhotoStorage {
   @override
-  Future<String> savePhoto(XFile photo) async {
+  Future<String> savePhoto(XFile photo, {required String tripId}) async {
+    // tripId is unused here on purpose: the local copy lives in the app's own
+    // directory, which no policy scopes by trip. Only the Supabase
+    // implementation needs it.
     final copied = await copyPhotoIntoAppStorage(photo);
     if (copied != null) return copied;
 

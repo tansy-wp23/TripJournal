@@ -24,6 +24,22 @@ Profile profileFromSupabaseRow(Map<String, dynamic> row) {
         : DateTime.parse(row['last_login_at'] as String),
     createdAt: DateTime.parse(row['created_at'] as String),
     updatedAt: DateTime.parse(row['updated_at'] as String),
+    dateOfBirth: row['date_of_birth'] == null
+        ? null
+        : DateTime.parse(row['date_of_birth'] as String),
+    country: row['country'] as String?,
+    travelInterests:
+        (row['travel_interests'] as List<dynamic>?)
+            ?.map((e) => e as String)
+            .toList() ??
+        const [],
+    // Defaults true (not the column's own `false` default) so a row fetched before
+    // this migration ran — or a hand-written test fixture missing the key —
+    // reads as "already onboarded" rather than bouncing an existing user
+    // into onboarding. The real default-false behaviour for genuinely new
+    // signups comes from the column default on INSERT, not from this read
+    // path.
+    profileCompleted: row['profile_completed'] as bool? ?? true,
   );
 }
 
@@ -41,6 +57,10 @@ Map<String, dynamic> profileToSupabaseRow(Profile profile) {
     'last_login_at': profile.lastLoginAt?.toIso8601String(),
     'created_at': profile.createdAt.toIso8601String(),
     'updated_at': profile.updatedAt.toIso8601String(),
+    'date_of_birth': _formatDateOnly(profile.dateOfBirth),
+    'country': profile.country,
+    'travel_interests': profile.travelInterests,
+    'profile_completed': profile.profileCompleted,
   };
 }
 
@@ -55,5 +75,16 @@ Map<String, dynamic> profileEditableFieldsToSupabaseRow(Profile profile) {
     'status': profile.status.name,
     'deactivated_at': profile.deactivatedAt?.toIso8601String(),
     'last_login_at': profile.lastLoginAt?.toIso8601String(),
+    'date_of_birth': _formatDateOnly(profile.dateOfBirth),
+    'country': profile.country,
+    'travel_interests': profile.travelInterests,
+    'profile_completed': profile.profileCompleted,
   };
+}
+
+String? _formatDateOnly(DateTime? date) {
+  if (date == null) return null;
+  final month = date.month.toString().padLeft(2, '0');
+  final day = date.day.toString().padLeft(2, '0');
+  return '${date.year}-$month-$day';
 }

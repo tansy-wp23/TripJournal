@@ -1,5 +1,5 @@
-import '../../../models/journal_entry.dart';
 import '../../../models/geo_tag.dart';
+import '../../../models/journal_entry.dart';
 
 /// The smallest rectangle containing all visible marker groups.
 class TripMapBounds {
@@ -25,6 +25,7 @@ class TripMapMarkerGroup {
     required this.longitude,
     required this.entries,
     required this.dayNumber,
+    this.isPreviousDayContext = false,
   });
 
   final String key;
@@ -32,24 +33,55 @@ class TripMapMarkerGroup {
   final double longitude;
   final List<JournalEntry> entries;
   final int dayNumber;
+  final bool isPreviousDayContext;
+}
+
+/// The final mapped stop on one day linked to the first mapped stop on the
+/// immediately following day.
+class TripMapDayConnector {
+  const TripMapDayConnector({
+    required this.fromDay,
+    required this.toDay,
+    required this.fromLatitude,
+    required this.fromLongitude,
+    required this.toLatitude,
+    required this.toLongitude,
+    required this.fromLabel,
+    required this.toLabel,
+  });
+
+  final int fromDay;
+  final int toDay;
+  final double fromLatitude;
+  final double fromLongitude;
+  final double toLatitude;
+  final double toLongitude;
+  final String fromLabel;
+  final String toLabel;
+
+  String get id => 'day-$fromDay-to-day-$toDay';
 }
 
 /// Pure input for map surfaces. It contains no repository or Flutter map
 /// dependencies so it can be used by the map UI and its fallback alike.
 class TripMapModel {
-  const TripMapModel({
+  TripMapModel({
     required this.groups,
+    required List<TripMapDayConnector> connectors,
     required this.availableDays,
     required this.mappedEntryCount,
     required this.unmappedEntryCount,
     required this.bounds,
-  });
+    required this.previousDayHasNoMappedEntry,
+  }) : connectors = List.unmodifiable(connectors);
 
   final List<TripMapMarkerGroup> groups;
+  final List<TripMapDayConnector> connectors;
   final List<int> availableDays;
   final int mappedEntryCount;
   final int unmappedEntryCount;
   final TripMapBounds? bounds;
+  final bool previousDayHasNoMappedEntry;
 }
 
 /// Derives chronologically ordered marker groups for a trip.
@@ -61,9 +93,16 @@ class TripMapModel {
 TripMapModel buildTripMapModel({
   required List<JournalEntry> entries,
   required DateTime tripStartDate,
+  required DateTime tripEndDate,
   int? selectedDay,
 }) {
-  final mapped = entries.where((entry) => entry.location != null).toList();
+  final tripStartDay = _dateOnly(tripStartDate);
+  final tripEndDay = _dateOnly(tripEndDate);
+  final tripEntries = entries.where((entry) {
+    final entryDay = _dateOnly(entry.createdAt);
+    return !entryDay.isBefore(tripStartDay) && !entryDay.isAfter(tripEndDay);
+  }).toList();
+  final mapped = tripEntries.where((entry) => entry.location != null).toList();
   final availableDays =
       mapped
           .map((entry) => _dayNumber(entry.createdAt, tripStartDate))
@@ -71,14 +110,18 @@ TripMapModel buildTripMapModel({
           .toList()
         ..sort();
 
+  final mappedByDay = <int, List<JournalEntry>>{};
+  for (final entry in mapped) {
+    final dayNumber = _dayNumber(entry.createdAt, tripStartDate);
+    mappedByDay.putIfAbsent(dayNumber, () => <JournalEntry>[]).add(entry);
+  }
+  for (final dayEntries in mappedByDay.values) {
+    dayEntries.sort(_compareEntries);
+  }
+
   final visible = selectedDay == null
       ? mapped
-      : mapped
-            .where(
-              (entry) =>
-                  _dayNumber(entry.createdAt, tripStartDate) == selectedDay,
-            )
-            .toList();
+      : List<JournalEntry>.of(mappedByDay[selectedDay] ?? const []);
 
   final grouped = <String, List<JournalEntry>>{};
   for (final entry in visible) {
@@ -102,15 +145,114 @@ TripMapModel buildTripMapModel({
       ),
     );
   }
+
+  if (selectedDay != null && visible.isNotEmpty && selectedDay > 1) {
+    final previousDayEntries = mappedByDay[selectedDay - 1];
+    if (previousDayEntries != null && previousDayEntries.isNotEmpty) {
+      final previousEntry = previousDayEntries.last;
+      final previousLocation = previousEntry.location!;
+      groups.add(
+        TripMapMarkerGroup(
+          key: 'context:day-${selectedDay - 1}:${_groupKey(previousLocation)}',
+          latitude: previousLocation.latitude,
+          longitude: previousLocation.longitude,
+          entries: List.unmodifiable([previousEntry]),
+          dayNumber: selectedDay - 1,
+          isPreviousDayContext: true,
+        ),
+      );
+    }
+  }
   groups.sort(_compareGroups);
+
+  final connectors = _connectorsFor(
+    mappedByDay: mappedByDay,
+    availableDays: availableDays,
+    selectedDay: selectedDay,
+  );
+  final previousDayHasNoMappedEntry =
+      selectedDay != null &&
+      selectedDay > 1 &&
+      visible.isNotEmpty &&
+      (mappedByDay[selectedDay - 1]?.isEmpty ?? true);
 
   return TripMapModel(
     groups: List.unmodifiable(groups),
+    connectors: List.unmodifiable(connectors),
     availableDays: List.unmodifiable(availableDays),
     mappedEntryCount: mapped.length,
-    unmappedEntryCount: entries.length - mapped.length,
-    bounds: _boundsFor(groups),
+    unmappedEntryCount: tripEntries.length - mapped.length,
+    bounds: _boundsFor(groups, connectors),
+    previousDayHasNoMappedEntry: previousDayHasNoMappedEntry,
   );
+}
+
+List<TripMapDayConnector> _connectorsFor({
+  required Map<int, List<JournalEntry>> mappedByDay,
+  required List<int> availableDays,
+  required int? selectedDay,
+}) {
+  final fromDays = selectedDay == null
+      ? availableDays.where((day) => day >= 1)
+      : selectedDay > 1
+      ? <int>[selectedDay - 1]
+      : const <int>[];
+  final connectors = <TripMapDayConnector>[];
+  for (final fromDay in fromDays) {
+    final fromEntries = mappedByDay[fromDay];
+    final toEntries = mappedByDay[fromDay + 1];
+    if (fromEntries == null ||
+        fromEntries.isEmpty ||
+        toEntries == null ||
+        toEntries.isEmpty) {
+      continue;
+    }
+    final fromLocation = fromEntries.last.location!;
+    final toLocation = toEntries.first.location!;
+    if (_sameMappedLocation(fromLocation, toLocation)) continue;
+    connectors.add(
+      TripMapDayConnector(
+        fromDay: fromDay,
+        toDay: fromDay + 1,
+        fromLatitude: fromLocation.latitude,
+        fromLongitude: fromLocation.longitude,
+        toLatitude: toLocation.latitude,
+        toLongitude: toLocation.longitude,
+        fromLabel: _locationLabel(fromLocation),
+        toLabel: _locationLabel(toLocation),
+      ),
+    );
+  }
+  return connectors;
+}
+
+bool _sameMappedLocation(GeoTag a, GeoTag b) {
+  final aPlaceId = a.placeId?.trim();
+  final bPlaceId = b.placeId?.trim();
+  if (aPlaceId != null &&
+      aPlaceId.isNotEmpty &&
+      bPlaceId != null &&
+      bPlaceId.isNotEmpty &&
+      aPlaceId == bPlaceId) {
+    return true;
+  }
+  return a.latitude.toStringAsFixed(6) == b.latitude.toStringAsFixed(6) &&
+      _normalizedLongitude(a.longitude).toStringAsFixed(6) ==
+          _normalizedLongitude(b.longitude).toStringAsFixed(6);
+}
+
+double _normalizedLongitude(double longitude) {
+  final normalized = ((longitude + 180) % 360 + 360) % 360 - 180;
+  return normalized == 0 ? 0 : normalized;
+}
+
+String _locationLabel(GeoTag location) {
+  final placeName = location.placeName?.trim();
+  if (placeName != null && placeName.isNotEmpty) return placeName;
+  final address = location.formattedAddress?.trim();
+  if (address != null && address.isNotEmpty) return address;
+  return '${location.latitude.toStringAsFixed(5)}, '
+      '${location.longitude.toStringAsFixed(5)}';
 }
 
 String _groupKey(GeoTag location) {
@@ -158,23 +300,52 @@ int _compareGroups(TripMapMarkerGroup a, TripMapMarkerGroup b) {
   return a.key.compareTo(b.key);
 }
 
-TripMapBounds? _boundsFor(List<TripMapMarkerGroup> groups) {
-  if (groups.length < 2) return null;
+TripMapBounds? _boundsFor(
+  List<TripMapMarkerGroup> groups,
+  List<TripMapDayConnector> connectors,
+) {
+  final points = <(double, double)>[
+    for (final group in groups) (group.latitude, group.longitude),
+    for (final connector in connectors) ...[
+      (connector.fromLatitude, connector.fromLongitude),
+      (connector.toLatitude, connector.toLongitude),
+    ],
+  ];
+  if (points.length < 2) return null;
 
-  var minLat = groups.first.latitude;
-  var maxLat = groups.first.latitude;
-  var minLng = groups.first.longitude;
-  var maxLng = groups.first.longitude;
-  for (final group in groups.skip(1)) {
-    if (group.latitude < minLat) minLat = group.latitude;
-    if (group.latitude > maxLat) maxLat = group.latitude;
-    if (group.longitude < minLng) minLng = group.longitude;
-    if (group.longitude > maxLng) maxLng = group.longitude;
+  var minLat = points.first.$1;
+  var maxLat = points.first.$1;
+  for (final point in points.skip(1)) {
+    if (point.$1 < minLat) minLat = point.$1;
+    if (point.$1 > maxLat) maxLat = point.$1;
   }
+  final longitudeBounds = _smallestLongitudeBounds(points);
   return TripMapBounds(
     southWestLatitude: minLat,
-    southWestLongitude: minLng,
+    southWestLongitude: longitudeBounds.$1,
     northEastLatitude: maxLat,
-    northEastLongitude: maxLng,
+    northEastLongitude: longitudeBounds.$2,
   );
+}
+
+(double, double) _smallestLongitudeBounds(List<(double, double)> points) {
+  final longitudes = points.map((point) => point.$2).toList()..sort();
+  var largestGap = -1.0;
+  var west = longitudes.first;
+  var east = longitudes.last;
+  for (var index = 0; index < longitudes.length; index++) {
+    final current = longitudes[index];
+    final next = index == longitudes.length - 1
+        ? longitudes.first + 360
+        : longitudes[index + 1];
+    final gap = next - current;
+    if (gap > largestGap) {
+      largestGap = gap;
+      west = index == longitudes.length - 1
+          ? longitudes.first
+          : longitudes[index + 1];
+      east = current;
+    }
+  }
+  return (west, east);
 }

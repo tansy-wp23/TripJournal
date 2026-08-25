@@ -27,4 +27,21 @@ void main() {
       expect(validateMealCalories(-1), 'Please enter a valid number.');
     });
   });
+
+  group('validateMealRating', () {
+    test('null (not rated) is always accepted', () {
+      expect(validateMealRating(null), isNull);
+    });
+
+    test('1 through 5 are accepted', () {
+      for (var rating = 1; rating <= 5; rating++) {
+        expect(validateMealRating(rating), isNull);
+      }
+    });
+
+    test('0 and 6 are rejected', () {
+      expect(validateMealRating(0), isNotNull);
+      expect(validateMealRating(6), isNotNull);
+    });
+  });
 }

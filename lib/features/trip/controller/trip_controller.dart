@@ -6,10 +6,12 @@ import '../../../data/repository_locator.dart';
 import '../../../data/trip_cover_storage.dart';
 import '../../../data/trip_repository.dart';
 import '../../../data/trip_repository_locator.dart';
+import '../../../models/journal_entry.dart';
 import '../../../models/trip.dart';
 import '../../../validation/trip_validation.dart';
 import '../../journal/widgets/format_utils.dart';
 import '../trip_overlap.dart';
+import '../trip_entry_date_range.dart';
 
 class TripController extends ChangeNotifier {
   TripController(
@@ -199,6 +201,20 @@ class TripController extends ChangeNotifier {
       _error = null;
       _cleanupWarning = null;
       _refreshWarning = null;
+      final existingTrip = _tripForId(trip.id);
+      if (existingTrip != null && _datesChanged(existingTrip, trip)) {
+        late final List<JournalEntry> existingEntries;
+        try {
+          existingEntries = await _journalRepository.getEntries(trip.id);
+        } catch (e) {
+          _error = e.toString();
+          notifyListeners();
+          return _error;
+        }
+        if (existingEntries.any((entry) => !isEntryWithinTrip(trip, entry))) {
+          return 'Trip dates must include all existing journal entries.';
+        }
+      }
       final previousCover = _coverForTrip(trip.id);
       String? uploadedCoverUrl;
       var tripToPersist = trip;
@@ -273,11 +289,58 @@ class TripController extends ChangeNotifier {
     return null;
   }
 
+  /// Marks [trip] as public and snapshots the publisher's identity.
+  Future<String?> publishTrip(
+    Trip trip, {
+    required String publisherDisplayName,
+    String? publisherAvatarUrl,
+  }) async {
+    final publishedTrip = trip.copyWith(
+      isPublic: true,
+      publishedAt: DateTime.now(),
+      publisherDisplayName: publisherDisplayName,
+      publisherAvatarUrl: publisherAvatarUrl,
+      updatedAt: DateTime.now(),
+    );
+    return editTrip(publishedTrip);
+  }
+
+  /// Marks [trip] as private (removes it from the community feed).
+  Future<String?> unpublishTrip(Trip trip) async {
+    final unpublishedTrip = trip.copyWith(
+      isPublic: false,
+      clearPublishedAt: true,
+      clearPublisherDisplayName: true,
+      clearPublisherAvatarUrl: true,
+      updatedAt: DateTime.now(),
+    );
+    return editTrip(unpublishedTrip);
+  }
+
   String? _coverForTrip(String tripId) {
     for (final trip in _trips) {
       if (trip.id == tripId) return trip.coverPhotoPath;
     }
     return null;
+  }
+
+  Trip? _tripForId(String tripId) {
+    for (final trip in _trips) {
+      if (trip.id == tripId) return trip;
+    }
+    return null;
+  }
+
+  bool _datesChanged(Trip before, Trip after) =>
+      !_sameLocalDate(before.startDate, after.startDate) ||
+      !_sameLocalDate(before.endDate, after.endDate);
+
+  bool _sameLocalDate(DateTime a, DateTime b) {
+    final localA = a.toLocal();
+    final localB = b.toLocal();
+    return localA.year == localB.year &&
+        localA.month == localB.month &&
+        localA.day == localB.day;
   }
 
   bool _isRemoteCover(String? cover) {
@@ -301,13 +364,19 @@ class TripController extends ChangeNotifier {
       id: trip.id,
       userId: trip.userId,
       title: trip.title,
+      destination: trip.destination,
       coverPhotoPath: coverPhotoPath,
       startDate: trip.startDate,
       endDate: trip.endDate,
       notes: trip.notes,
+      summary: trip.summary,
       createdAt: trip.createdAt,
       updatedAt: trip.updatedAt,
       deletedAt: trip.deletedAt,
+      isPublic: trip.isPublic,
+      publishedAt: trip.publishedAt,
+      publisherDisplayName: trip.publisherDisplayName,
+      publisherAvatarUrl: trip.publisherAvatarUrl,
     );
   }
 

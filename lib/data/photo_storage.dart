@@ -15,10 +15,18 @@ abstract interface class PhotoStorage {
   /// Copies [photo] into durable storage and returns the path to use from now
   /// on.
   ///
+  /// [tripId] is the trip the photo's entry belongs to. A local implementation
+  /// has no use for it, but the Supabase one cannot work without it: the
+  /// `journal-photos` RLS policy runs `storage_trip_mutation_allowed`, which
+  /// requires the object name to start `{auth.uid()}/{trip_id}/` and rejects
+  /// any upload whose second folder is not a trip that caller owns. It is a
+  /// parameter rather than something the implementation looks up because only
+  /// the caller knows which entry the photo is being attached to.
+  ///
   /// **Never throws.** Callers add photos inside `try` blocks whose `catch`
   /// aborts a whole multi-select batch, so a failure here has to degrade to
   /// "keep the original path" rather than losing the user's other photos.
-  Future<String> savePhoto(XFile photo);
+  Future<String> savePhoto(XFile photo, {required String tripId});
 
   /// Best-effort cleanup for a photo the user removed. A no-op for paths this
   /// storage never owned.

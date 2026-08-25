@@ -84,6 +84,9 @@ class MockJournalRepository implements JournalRepository {
               // carousel's food pictures, and the toggle that hides them) is
               // visible without picking from the device gallery.
               photoPath: 'assets/mock/ramen_lunch.jpg',
+              // Seeded so the star-rating display path is visible without
+              // rating a meal by hand.
+              rating: 5,
             ),
             Meal(
               id: 'meal-1c',
@@ -91,6 +94,7 @@ class MockJournalRepository implements JournalRepository {
               calories: 950,
               mealType: MealType.dinner,
               portion: PortionSize.large,
+              rating: 4,
             ),
           ],
           aiAdvice:

@@ -82,6 +82,13 @@ class AuthController extends ChangeNotifier {
     if (profile == null) return AuthStatus.signedOut;
     if (profile.isSuspended) return AuthStatus.suspended;
     if (profile.isDeactivated) return AuthStatus.deactivated;
+    // Checked after suspended/deactivated (an admin-imposed or self-service
+    // gate always wins over onboarding) but still before authenticated — a
+    // freshly-created profile (`profileCompleted == false`) sees the
+    // onboarding screen instead of the home screen exactly once. Skipping
+    // still sets the flag (`ProfileController.skipOnboarding`), so this is
+    // not re-checked on every subsequent login.
+    if (!profile.profileCompleted) return AuthStatus.needsOnboarding;
     return AuthStatus.authenticated;
   }
 
@@ -217,9 +224,37 @@ class AuthController extends ChangeNotifier {
     await signOut();
   }
 
+  /// Sends a permanent-deletion code to the user's email. Used by the
+  /// deletion flow (Phase 9).
+  Future<void> requestDeletion() async {
+    await _accountLifecycleRepository.requestDeletion();
+  }
+
+  /// Confirms permanent account deletion with [code]. On success, explicitly
+  /// clears local app state and signs out — the local Supabase session now
+  /// points at a user that no longer exists, so don't rely on some later API
+  /// call failing naturally to catch this; reset proactively and route to
+  /// login (Phase 9).
+  ///
+  /// Throws [CodeValidationException] if the code is wrong or expired.
+  Future<void> deleteAccount(String code) async {
+    await _accountLifecycleRepository.deleteAccount(code);
+    await signOut();
+  }
+
   /// Called when the user successfully reactivates — refreshes the local
   /// profile state so the UI can react (status becomes authenticated).
-  Future<void> onReactivated() async {
+  Future<void> onReactivated() => refreshProfile();
+
+  /// Re-fetches the current user's profile from the repository and
+  /// republishes it. Needed whenever something outside this controller
+  /// changes the profile row — [ProfileController] finishing or skipping
+  /// onboarding is the motivating case: it saves through its own
+  /// [ProfileRepository] call, not through this controller, so
+  /// [AuthController]'s cached `_profile` (and therefore [status]) would
+  /// otherwise stay stuck on [AuthStatus.needsOnboarding] until the next
+  /// full sign-in.
+  Future<void> refreshProfile() async {
     final userId = _session?.userId;
     if (userId == null) return;
     _profile = await _profileRepository.getProfile(userId);
@@ -331,8 +366,17 @@ class AuthController extends ChangeNotifier {
 
 /// The high-level auth status the UI routes on. `suspended` (an
 /// admin-imposed suspension) is distinct from `deactivated` (self-service)
-/// — see [AuthController.status]'s doc comment.
-enum AuthStatus { signedOut, loading, authenticated, deactivated, suspended }
+/// — see [AuthController.status]'s doc comment. `needsOnboarding` is a
+/// genuinely new profile (`Profile.profileCompleted == false`) that hasn't
+/// seen the Profile Onboarding screen yet.
+enum AuthStatus {
+  signedOut,
+  loading,
+  authenticated,
+  deactivated,
+  suspended,
+  needsOnboarding,
+}
 
 /// The single place the app resolves its [AuthController] from — mirrors
 /// `tripControllerProvider` / `journalControllerProvider`.

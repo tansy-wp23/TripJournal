@@ -8,6 +8,7 @@ import '../pdf/journal_pdf_export.dart';
 import '../widgets/delete_confirmation_dialog.dart';
 import '../widgets/format_utils.dart' show formatDate, formatThousands;
 import '../widgets/meal_display.dart';
+import '../widgets/meal_rating_stars.dart';
 import '../widgets/mood_display.dart';
 import '../widgets/photo_thumbnail.dart';
 import 'create_edit_entry_screen.dart';
@@ -112,6 +113,16 @@ class EntryDetailScreen extends ConsumerWidget {
           ),
           const SizedBox(height: 16),
           Text(entry.body, style: Theme.of(context).textTheme.bodyLarge),
+          if (entry.location?.locationTag case final tag?) ...[
+            const SizedBox(height: 12),
+            Text(
+              tag,
+              key: const Key('entry-location-tag'),
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                color: Theme.of(context).colorScheme.primary,
+              ),
+            ),
+          ],
           if (entry.photoPaths.isNotEmpty) ...[
             const SizedBox(height: 16),
             Wrap(
@@ -171,9 +182,23 @@ class EntryDetailScreen extends ConsumerWidget {
                                 size: 40,
                               ),
                         title: Text(meal.name),
-                        subtitle: Text(
-                          '${mealTypeLabel(meal.mealType)} · ${portionSizeLabel(meal.portion)} · '
-                          '~${meal.calories} kcal',
+                        subtitle: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '${mealTypeLabel(meal.mealType)} · ${portionSizeLabel(meal.portion)} · '
+                              '~${meal.calories} kcal',
+                            ),
+                            if (meal.rating != null)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 2),
+                                child: MealRatingStars(
+                                  key: Key('meal-rating-display-${meal.id}'),
+                                  rating: meal.rating,
+                                  size: 14,
+                                ),
+                              ),
+                          ],
                         ),
                       ),
                     const Divider(),

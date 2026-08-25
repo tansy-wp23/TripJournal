@@ -2,9 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:tripjournal/data/repository_locator.dart';
+import 'package:tripjournal/data/trip_repository_locator.dart';
 import 'package:tripjournal/features/journal/controller/journal_controller.dart';
 import 'package:tripjournal/features/journal/screens/entry_detail_screen.dart';
 import 'package:tripjournal/features/trip/trip_view_screen.dart';
+import 'package:tripjournal/models/geo_tag.dart';
+import 'package:tripjournal/models/journal_entry.dart';
 import 'package:tripjournal/models/mood.dart';
 
 void main() {
@@ -29,7 +33,7 @@ void main() {
   }
 
   testWidgets(
-    'Map ignores Entry filters while query, mood, and date survive switching',
+    'Map day switching leaves Entry query mood and date filters unchanged',
     (tester) async {
       final container = ProviderContainer();
       addTearDown(container.dispose);
@@ -70,6 +74,9 @@ void main() {
       expect(find.byKey(const Key('trip-view-search-toggle')), findsNothing);
       expect(find.byKey(const Key('trip-view-filter-button')), findsNothing);
       expect(find.text('3 mapped · 0 without location'), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('trip-map-day-2')));
+      await tester.pumpAndSettle();
 
       await tester.tap(find.byKey(const Key('trip-view-entries-tab')));
       await tester.pumpAndSettle();
@@ -161,5 +168,47 @@ void main() {
 
     expect(find.byKey(const Key('trip-view-search-toggle')), findsOneWidget);
     expect(find.byKey(const Key('no-entries-yet-hint')), findsOneWidget);
+  });
+
+  testWidgets('Trip View excludes entries outside the trip dates everywhere', (
+    tester,
+  ) async {
+    final trip = (await tripRepository.getTrip('trip-001'))!;
+    final outsideDate = trip.endDate.add(const Duration(days: 7));
+    final outsideDay =
+        outsideDate
+            .difference(
+              DateTime(
+                trip.startDate.year,
+                trip.startDate.month,
+                trip.startDate.day,
+              ),
+            )
+            .inDays +
+        1;
+    final outside = JournalEntry(
+      id: 'outside-trip-dates',
+      tripId: trip.id,
+      title: 'Outside trip dates',
+      body: '',
+      mood: Mood.happy,
+      photoPaths: const [],
+      location: const GeoTag(latitude: 1, longitude: 1),
+      createdAt: outsideDate,
+      updatedAt: outsideDate,
+    );
+    await journalRepository.addEntry(outside);
+    addTearDown(() => journalRepository.deleteEntry(outside.id));
+
+    await pumpTrip(tester);
+
+    expect(find.textContaining('3 of '), findsOneWidget);
+    expect(find.text('Outside trip dates'), findsNothing);
+
+    await tester.tap(find.byKey(const Key('trip-view-map-tab')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(Key('trip-map-day-$outsideDay')), findsNothing);
+    expect(find.text('3 mapped · 0 without location'), findsOneWidget);
   });
 }

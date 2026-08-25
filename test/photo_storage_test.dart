@@ -15,7 +15,7 @@ void main() {
   // to be quiet and lossless rather than a failure.
   group('MockPhotoStorage without a filesystem to copy into', () {
     test('echoes the picker path so the photo is never lost', () async {
-      final saved = await storage.savePhoto(XFile('/tmp/pick/meal.jpg'));
+      final saved = await storage.savePhoto(XFile('/tmp/pick/meal.jpg'), tripId: 'trip-001');
       expect(saved, '/tmp/pick/meal.jpg');
     });
 
@@ -23,8 +23,8 @@ void main() {
     // differently (the dart:io implementation splits on the OS path
     // separator), so these assert the scheme rather than the exact filename.
     test('synthesizes a stable URI for web blob and data paths', () async {
-      final blob = await storage.savePhoto(XFile('blob:http://localhost/abc', name: 'shot.jpg'));
-      final data = await storage.savePhoto(XFile('data:image/jpeg;base64,AAAA', name: 'shot.jpg'));
+      final blob = await storage.savePhoto(XFile('blob:http://localhost/abc', name: 'shot.jpg'), tripId: 'trip-001');
+      final data = await storage.savePhoto(XFile('data:image/jpeg;base64,AAAA', name: 'shot.jpg'), tripId: 'trip-001');
 
       expect(blob, startsWith('mock-photo://local/'));
       expect(data, startsWith('mock-photo://local/'));
@@ -33,7 +33,7 @@ void main() {
     test('synthesizes a URI for an empty path rather than returning nothing', () async {
       // An empty name collapses the trailing segment, so this asserts only
       // that a non-empty synthetic URI comes back rather than the raw path.
-      final saved = await storage.savePhoto(XFile('', name: 'shot.jpg'));
+      final saved = await storage.savePhoto(XFile('', name: 'shot.jpg'), tripId: 'trip-001');
       expect(saved, startsWith('mock-photo://local'));
     });
   });
@@ -43,13 +43,13 @@ void main() {
     // _addFromGallery's loop sits inside one try/catch.
     test('for a file that does not exist', () async {
       expect(
-        await storage.savePhoto(XFile('/definitely/not/here/ghost.jpg')),
+        await storage.savePhoto(XFile('/definitely/not/here/ghost.jpg'), tripId: 'trip-001'),
         '/definitely/not/here/ghost.jpg',
       );
     });
 
     test('for a path with no extension', () async {
-      expect(await storage.savePhoto(XFile('/tmp/pick/noext')), '/tmp/pick/noext');
+      expect(await storage.savePhoto(XFile('/tmp/pick/noext'), tripId: 'trip-001'), '/tmp/pick/noext');
     });
   });
 

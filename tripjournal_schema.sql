@@ -6,8 +6,14 @@
 -- DECISIONS BAKED IN:
 --   * user_id references auth.users(id) directly  [SAFE DEFAULT — see note]
 --   * Entry photos: stored as a text[] array column on journal_entries (simple)
---   * Food/meal photos: NOT persisted (photo is a transient input to AI
---     detection only) — meals has no photo column
+--   * Food/meal photos: PERSISTED on meals.photo_url  [REVERSED 2026-08-19]
+--     Originally "NOT persisted (transient input to AI detection only)". The
+--     app outgrew that: Meal.photoPath keeps the user's photo whether or not
+--     detection recognised the food, the PDF export prints meal photos, and
+--     the trip slideshow has a food-photo toggle. Keeping the column is what
+--     makes those shipped features survive a restart.
+--   * Entry location: journal_entries.location jsonb (GeoTag) — added with the
+--     entry location picker, see migration 202608190001
 --   * Row Level Security (RLS) enabled on every table, with per-user policies
 --
 -- ⚠️ REVISIT AT INTEGRATION:
@@ -19,9 +25,8 @@
 --
 -- 📸 PHOTOS: actual image files are NOT stored in these tables. They go in a
 --   Supabase STORAGE bucket; only the resulting URL strings are saved here
---   (journal_entries.photo_urls). Create the bucket separately in the
---   dashboard (Storage → New bucket, e.g. "journal-photos") and set its access
---   policies. That is a dashboard step, not part of this SQL.
+--   (journal_entries.photo_urls). The trip-covers and journal-photos buckets
+--   and their access policies are configured below.
 -- ============================================================================
 
 
@@ -38,6 +43,7 @@ create table public.trips (
   start_date     date not null,
   end_date       date not null,
   notes          text,                              -- trip-level Notes/Reminders; optional
+  summary        text,                              -- generated summary, optionally user-edited
   created_at     timestamptz not null default now(),
   updated_at     timestamptz not null default now(),
   deleted_at     timestamptz,
@@ -64,6 +70,7 @@ create table public.journal_entries (
   body         text check (char_length(body) <= 5000),
   mood         text,                                -- e.g. 'happy','tired','excited','stressed','neutral'
   photo_urls   text[] not null default '{}',        -- Storage URLs; app enforces max 5
+  location     jsonb,                               -- GeoTag; null when untagged
   entry_date   date not null,                       -- which calendar day of the trip this belongs to
   created_at   timestamptz not null default now(),  -- entry timestamp (orders multiple same-day entries)
   updated_at   timestamptz not null default now(),
@@ -73,11 +80,29 @@ create table public.journal_entries (
     or (body is not null and char_length(trim(body)) > 0)
   ),
   -- at most 5 photos (DB backstop; app also enforces + warns)
-  constraint entry_max_5_photos check (array_length(photo_urls, 1) is null or array_length(photo_urls, 1) <= 5)
+  constraint entry_max_5_photos check (array_length(photo_urls, 1) is null or array_length(photo_urls, 1) <= 5),
+  constraint journal_entries_location_geo_tag_check check (
+    case
+      when location is null then true
+      when jsonb_typeof(location) <> 'object' then false
+      when jsonb_typeof(location -> 'latitude') <> 'number' then false
+      when jsonb_typeof(location -> 'longitude') <> 'number' then false
+      when not ((location ->> 'latitude')::numeric between -90 and 90) then false
+      when not ((location ->> 'longitude')::numeric between -180 and 180) then false
+      when location ? 'placeName'
+        and jsonb_typeof(location -> 'placeName') not in ('string', 'null') then false
+      when location ? 'formattedAddress'
+        and jsonb_typeof(location -> 'formattedAddress') not in ('string', 'null') then false
+      when location ? 'placeId'
+        and jsonb_typeof(location -> 'placeId') not in ('string', 'null') then false
+      else true
+    end
+  )
 );
 
 comment on table public.journal_entries is 'Journal entries belonging to a trip; multiple per day allowed.';
 comment on column public.journal_entries.photo_urls is 'Array of Supabase Storage URLs. Actual files live in Storage, not here. App enforces max 5.';
+comment on column public.journal_entries.location is 'GeoTag as JSON: latitude, longitude, placeName, formattedAddress, placeId. Null for an entry with no location tagged.';
 comment on column public.journal_entries.entry_date is 'Calendar day within the trip range. Must fall within trips.start_date..end_date (enforced in app).';
 
 create index journal_entries_trip_id_idx on public.journal_entries (trip_id);
@@ -113,7 +138,7 @@ create index health_logs_user_id_idx on public.health_logs (user_id);
 -- ============================================================================
 -- 4. MEALS
 -- Belongs to a health log. Name required, calories >= 0 (default 0), portion.
--- Food photos are NOT persisted (photo is a transient input to AI detection).
+-- Food photos ARE persisted on photo_url (reversed 2026-08-19 — see header).
 -- ============================================================================
 create table public.meals (
   id            uuid primary key default gen_random_uuid(),
@@ -123,11 +148,14 @@ create table public.meals (
   calories      integer not null default 0 check (calories >= 0),  -- blank defaults to 0
   portion       text not null default 'regular' check (portion in ('small','regular','large')),
   meal_type     text check (meal_type in ('breakfast','lunch','dinner','snack')),
+  photo_url     text,                              -- Storage URL; null if typed by hand
+  rating        smallint check (rating is null or (rating between 1 and 5)),  -- 1-5 stars; null = not rated
   created_at    timestamptz not null default now(),
   updated_at    timestamptz not null default now()
 );
 
-comment on table public.meals is 'Meals for a health log. Food photos are NOT stored (transient detection input only).';
+comment on table public.meals is 'Meals for a health log. Food photos ARE stored as a Storage URL on photo_url.';
+comment on column public.meals.photo_url is 'Storage URL of the photo this meal was logged from. Null for a meal typed in by hand. Kept even when AI detection failed to recognise the food.';
 comment on column public.meals.portion is 'small/regular/large. Used to scale the calorie estimate (editable).';
 
 create index meals_health_log_id_idx on public.meals (health_log_id);
@@ -340,6 +368,24 @@ on conflict (id) do update set
   file_size_limit = excluded.file_size_limit,
   allowed_mime_types = excluded.allowed_mime_types;
 
+insert into storage.buckets (
+  id,
+  name,
+  public,
+  file_size_limit,
+  allowed_mime_types
+) values (
+  'journal-photos',
+  'journal-photos',
+  true,
+  33554432,
+  array['image/jpeg', 'image/png', 'image/webp']
+)
+on conflict (id) do update set
+  public = excluded.public,
+  file_size_limit = excluded.file_size_limit,
+  allowed_mime_types = excluded.allowed_mime_types;
+
 drop policy if exists "trip_covers_insert_own" on storage.objects;
 create policy "trip_covers_insert_own" on storage.objects
   for insert
@@ -512,7 +558,15 @@ create trigger journal_entries_guard_purge_claim
   for each row execute function public.guard_claimed_journal_mutation();
 
 revoke update on table public.trips from authenticated;
-grant update (title, destination, cover_photo_url, start_date, end_date, notes)
+grant update (
+  title,
+  destination,
+  cover_photo_url,
+  start_date,
+  end_date,
+  notes,
+  summary
+)
   on table public.trips to authenticated;
 
 drop policy "trips_insert_own" on public.trips;
@@ -885,9 +939,294 @@ grant execute on function public.complete_trip_purge(uuid, uuid)
   to service_role;
 
 -- ============================================================================
+-- ATOMIC JOURNAL BUNDLE WRITES
+-- ============================================================================
+grant select, delete on table public.journal_entries to authenticated;
+revoke insert, update on table public.journal_entries from authenticated;
+grant select on table public.health_logs to authenticated;
+revoke insert, update, delete on table public.health_logs from authenticated;
+grant select on table public.meals to authenticated;
+revoke insert, update, delete on table public.meals from authenticated;
+
+create or replace function public.save_journal_entry_bundle(
+  p_entry jsonb,
+  p_health_log jsonb,
+  p_meals jsonb
+)
+returns uuid
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_user_id uuid := auth.uid();
+  v_entry_id uuid;
+  v_trip_id uuid;
+  v_existing_trip_id uuid;
+  v_health_log_id uuid;
+  v_meal jsonb;
+begin
+  if v_user_id is null then
+    raise exception 'authentication_required' using errcode = '28000';
+  end if;
+  if jsonb_typeof(p_entry) <> 'object' then
+    raise exception 'invalid_entry_payload' using errcode = '22023';
+  end if;
+  if p_health_log is not null and jsonb_typeof(p_health_log) <> 'object' then
+    raise exception 'invalid_health_log_payload' using errcode = '22023';
+  end if;
+  if p_meals is null or jsonb_typeof(p_meals) <> 'array' then
+    raise exception 'invalid_meals_payload' using errcode = '22023';
+  end if;
+  if p_health_log is null and jsonb_array_length(p_meals) <> 0 then
+    raise exception 'meals_require_health_log' using errcode = '22023';
+  end if;
+
+  v_entry_id := (p_entry ->> 'id')::uuid;
+  v_trip_id := (p_entry ->> 'trip_id')::uuid;
+  perform 1 from public.trips
+  where id = v_trip_id and user_id = v_user_id and deleted_at is null
+  for update;
+  if not found then
+    raise exception 'trip_not_found' using errcode = 'P0001';
+  end if;
+
+  select trip_id into v_existing_trip_id
+  from public.journal_entries
+  where id = v_entry_id and user_id = v_user_id
+  for update;
+
+  if found then
+    if v_existing_trip_id <> v_trip_id then
+      raise exception 'entry_trip_cannot_change' using errcode = '22023';
+    end if;
+    update public.journal_entries set
+      title = p_entry ->> 'title',
+      body = p_entry ->> 'body',
+      mood = p_entry ->> 'mood',
+      photo_urls = coalesce(
+        array(select jsonb_array_elements_text(p_entry -> 'photo_urls')), '{}'
+      ),
+      location = nullif(p_entry -> 'location', 'null'::jsonb),
+      entry_date = (p_entry ->> 'entry_date')::date,
+      updated_at = (p_entry ->> 'updated_at')::timestamptz
+    where id = v_entry_id and user_id = v_user_id;
+  else
+    insert into public.journal_entries (
+      id, trip_id, user_id, title, body, mood, photo_urls, location,
+      entry_date, created_at, updated_at
+    ) values (
+      v_entry_id,
+      v_trip_id,
+      v_user_id,
+      p_entry ->> 'title',
+      p_entry ->> 'body',
+      p_entry ->> 'mood',
+      coalesce(
+        array(select jsonb_array_elements_text(p_entry -> 'photo_urls')), '{}'
+      ),
+      nullif(p_entry -> 'location', 'null'::jsonb),
+      (p_entry ->> 'entry_date')::date,
+      (p_entry ->> 'created_at')::timestamptz,
+      (p_entry ->> 'updated_at')::timestamptz
+    );
+  end if;
+
+  delete from public.health_logs
+  where entry_id = v_entry_id and user_id = v_user_id;
+
+  if p_health_log is not null then
+    if (p_health_log ->> 'entry_id')::uuid <> v_entry_id then
+      raise exception 'health_log_entry_mismatch' using errcode = '22023';
+    end if;
+    v_health_log_id := (p_health_log ->> 'id')::uuid;
+    insert into public.health_logs (
+      id, entry_id, user_id, steps, calories_eaten, calories_burned, ai_advice
+    ) values (
+      v_health_log_id,
+      v_entry_id,
+      v_user_id,
+      (p_health_log ->> 'steps')::integer,
+      (p_health_log ->> 'calories_eaten')::integer,
+      (p_health_log ->> 'calories_burned')::integer,
+      p_health_log ->> 'ai_advice'
+    );
+
+    for v_meal in select value from jsonb_array_elements(p_meals)
+    loop
+      if jsonb_typeof(v_meal) <> 'object'
+        or (v_meal ->> 'health_log_id')::uuid <> v_health_log_id then
+        raise exception 'meal_health_log_mismatch' using errcode = '22023';
+      end if;
+      insert into public.meals (
+        id, health_log_id, user_id, name, calories, meal_type, portion, photo_url
+      ) values (
+        (v_meal ->> 'id')::uuid,
+        v_health_log_id,
+        v_user_id,
+        v_meal ->> 'name',
+        (v_meal ->> 'calories')::integer,
+        v_meal ->> 'meal_type',
+        coalesce(v_meal ->> 'portion', 'regular'),
+        v_meal ->> 'photo_url'
+      );
+    end loop;
+  end if;
+  return v_entry_id;
+end;
+$$;
+
+revoke execute on function public.save_journal_entry_bundle(jsonb, jsonb, jsonb)
+  from public, anon;
+grant execute on function public.save_journal_entry_bundle(jsonb, jsonb, jsonb)
+  to authenticated;
+
+-- ============================================================================
+-- DURABLE PLACES RATE LIMIT
+-- ============================================================================
+create table public.places_rate_limits (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  window_started_at timestamptz not null,
+  request_count integer not null check (request_count between 0 and 20),
+  updated_at timestamptz not null default now()
+);
+alter table public.places_rate_limits enable row level security;
+revoke all on table public.places_rate_limits from public, anon, authenticated;
+
+create or replace function public.consume_places_rate_limit()
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_user_id uuid := auth.uid();
+  v_now timestamptz := clock_timestamp();
+  v_window_started_at timestamptz;
+  v_request_count integer;
+  v_retry_after integer;
+begin
+  if v_user_id is null then
+    raise exception 'authentication_required' using errcode = '28000';
+  end if;
+  insert into public.places_rate_limits (
+    user_id, window_started_at, request_count, updated_at
+  ) values (v_user_id, v_now, 1, v_now)
+  on conflict (user_id) do nothing
+  returning window_started_at, request_count
+  into v_window_started_at, v_request_count;
+
+  if found then
+    return jsonb_build_object(
+      'allowed', true, 'remaining', 19, 'retry_after_seconds', 0
+    );
+  end if;
+
+  select window_started_at, request_count
+  into v_window_started_at, v_request_count
+  from public.places_rate_limits
+  where user_id = v_user_id
+  for update;
+
+  if v_window_started_at + interval '60 seconds' <= v_now then
+    update public.places_rate_limits
+    set window_started_at = v_now, request_count = 1, updated_at = v_now
+    where user_id = v_user_id;
+    return jsonb_build_object(
+      'allowed', true, 'remaining', 19, 'retry_after_seconds', 0
+    );
+  end if;
+  if v_request_count >= 20 then
+    v_retry_after := greatest(
+      1,
+      ceil(extract(epoch from (
+        v_window_started_at + interval '60 seconds' - v_now
+      )))::integer
+    );
+    return jsonb_build_object(
+      'allowed', false,
+      'remaining', 0,
+      'retry_after_seconds', v_retry_after
+    );
+  end if;
+  update public.places_rate_limits
+  set request_count = request_count + 1, updated_at = v_now
+  where user_id = v_user_id;
+  return jsonb_build_object(
+    'allowed', true,
+    'remaining', 19 - v_request_count,
+    'retry_after_seconds', 0
+  );
+end;
+$$;
+
+revoke execute on function public.consume_places_rate_limit()
+  from public, anon;
+grant execute on function public.consume_places_rate_limit()
+  to authenticated;
+
+-- ============================================================================
+-- Public trip publishing: adds is_public visibility, publisher identity
+-- snapshot, and cross-user SELECT policies for trips + child tables.
+-- ============================================================================
+
+alter table public.trips
+  add column if not exists is_public              boolean      not null default false,
+  add column if not exists published_at           timestamptz,
+  add column if not exists publisher_display_name text,
+  add column if not exists publisher_avatar_url   text;
+
+create index if not exists trips_public_published_idx
+  on public.trips (published_at desc)
+  where is_public = true and deleted_at is null;
+
+grant update (is_public, published_at, publisher_display_name, publisher_avatar_url)
+  on table public.trips to authenticated;
+
+grant update (summary) on table public.trips to authenticated;
+
+drop policy if exists "trips_select_public" on public.trips;
+create policy "trips_select_public" on public.trips
+  for select to authenticated
+  using (is_public = true and deleted_at is null);
+
+drop policy if exists "entries_select_public" on public.journal_entries;
+create policy "entries_select_public" on public.journal_entries
+  for select to authenticated
+  using (
+    exists (
+      select 1 from public.trips as t
+      where t.id = trip_id and t.is_public = true and t.deleted_at is null
+    )
+  );
+
+drop policy if exists "health_logs_select_public" on public.health_logs;
+create policy "health_logs_select_public" on public.health_logs
+  for select to authenticated
+  using (
+    exists (
+      select 1
+      from public.journal_entries as e
+      join public.trips as t on t.id = e.trip_id
+      where e.id = entry_id and t.is_public = true and t.deleted_at is null
+    )
+  );
+
+drop policy if exists "meals_select_public" on public.meals;
+create policy "meals_select_public" on public.meals
+  for select to authenticated
+  using (
+    exists (
+      select 1
+      from public.health_logs as hl
+      join public.journal_entries as e on e.id = hl.entry_id
+      join public.trips as t on t.id = e.trip_id
+      where hl.id = health_log_id and t.is_public = true and t.deleted_at is null
+    )
+  );
+
+-- ============================================================================
 -- END. Next steps (NOT SQL):
---   1. Storage → create a separate bucket (e.g. "journal-photos") for entry
---      images. The trip-covers bucket and policies are configured above.
---   2. Android: add INTERNET permission to the manifest.
---   3. Confirm Data API exposes the public schema tables (default privileges).
+--   1. Android: add INTERNET permission to the manifest.
+--   2. Confirm Data API exposes the public schema tables (default privileges).
 -- ============================================================================

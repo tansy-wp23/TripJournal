@@ -25,4 +25,34 @@ void main() {
       expect(validateProfileDisplayName(exact), isNull);
     });
   });
+
+  group('validateDateOfBirth', () {
+    test('null is always valid — date of birth is optional', () {
+      expect(validateDateOfBirth(null), isNull);
+    });
+
+    test('accepts a plausible past date', () {
+      expect(validateDateOfBirth(DateTime(2000, 5, 7)), isNull);
+    });
+
+    test('rejects a future date', () {
+      final future = DateTime.now().add(const Duration(days: 1));
+      expect(validateDateOfBirth(future), isNotNull);
+    });
+
+    test('rejects a date before 1900', () {
+      expect(validateDateOfBirth(DateTime(1899, 12, 31)), isNotNull);
+    });
+
+    test('accepts today', () {
+      expect(validateDateOfBirth(DateTime.now()), isNull);
+    });
+  });
+
+  group('kTravelInterestOptions', () {
+    test('is non-empty and has no duplicates', () {
+      expect(kTravelInterestOptions, isNotEmpty);
+      expect(kTravelInterestOptions.toSet().length, kTravelInterestOptions.length);
+    });
+  });
 }

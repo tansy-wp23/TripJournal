@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:uuid/uuid.dart';
 
 import '../../../data/photo_storage.dart';
 import '../../../data/repository_locator.dart' as photo_locator;
@@ -15,6 +16,7 @@ import '../../health/health_data_source.dart';
 import '../../health/health_data_source_locator.dart' as locator;
 import '../ai/food_detection_locator.dart';
 import 'meal_display.dart';
+import 'meal_rating_stars.dart';
 import 'photo_thumbnail.dart';
 
 class HealthLogFormData {
@@ -38,6 +40,7 @@ class HealthLogForm extends StatefulWidget {
     this.initialCaloriesBurned,
     this.initialMeals = const [],
     required this.entryDate,
+    required this.tripId,
     this.initialStepsFromHealth = false,
     this.initialCaloriesFromHealth = false,
     this.initialShowConnectHealthNote = false,
@@ -48,6 +51,10 @@ class HealthLogForm extends StatefulWidget {
 
   final int initialSteps;
   final int? initialCaloriesBurned;
+
+  /// Trip the parent entry belongs to. Forwarded to [PhotoStorage.savePhoto]
+  /// for meal photos, whose `journal-photos` object paths are scoped by trip.
+  final String tripId;
   final List<Meal> initialMeals;
 
   /// The calendar day to query the health platform for — matches how
@@ -206,7 +213,10 @@ class _HealthLogFormState extends State<HealthLogForm> {
   Future<void> _addMeal() async {
     final meal = await showDialog<Meal>(
       context: context,
-      builder: (_) => _MealDialog(photoStorage: _photoStorage),
+      builder: (_) => _MealDialog(
+        photoStorage: _photoStorage,
+        tripId: widget.tripId,
+      ),
     );
     if (meal == null) return;
     setState(() => _meals = [..._meals, meal]);
@@ -219,6 +229,7 @@ class _HealthLogFormState extends State<HealthLogForm> {
       builder: (_) => _MealDialog(
         initialMeal: _meals[index],
         photoStorage: _photoStorage,
+        tripId: widget.tripId,
       ),
     );
     if (updated == null) return;
@@ -368,9 +379,23 @@ class _HealthLogFormState extends State<HealthLogForm> {
                           size: 40,
                         ),
                   title: Text(_meals[i].name),
-                  subtitle: Text(
-                    '${mealTypeLabel(_meals[i].mealType)} · ${portionSizeLabel(_meals[i].portion)} · '
-                    '~${_meals[i].calories} kcal',
+                  subtitle: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '${mealTypeLabel(_meals[i].mealType)} · ${portionSizeLabel(_meals[i].portion)} · '
+                        '~${_meals[i].calories} kcal',
+                      ),
+                      if (_meals[i].rating != null)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 2),
+                          child: MealRatingStars(
+                            key: Key('meal-row-rating-$i'),
+                            rating: _meals[i].rating,
+                            size: 14,
+                          ),
+                        ),
+                    ],
                   ),
                   onTap: () => _editMeal(i),
                   trailing: Row(
@@ -405,10 +430,15 @@ class _HealthLogFormState extends State<HealthLogForm> {
 /// fields are pre-filled and the result preserves the meal's original [id]
 /// so the caller can replace it in place rather than appending a new one.
 class _MealDialog extends StatefulWidget {
-  const _MealDialog({this.initialMeal, required this.photoStorage});
+  const _MealDialog({
+    this.initialMeal,
+    required this.photoStorage,
+    required this.tripId,
+  });
 
   final Meal? initialMeal;
   final PhotoStorage photoStorage;
+  final String tripId;
 
   bool get isEditing => initialMeal != null;
 
@@ -440,6 +470,8 @@ class _MealDialogState extends State<_MealDialog> {
   // whether or not the AI managed to recognise what was on the plate.
   String? _photoPath;
 
+  int? _rating;
+
   @override
   void initState() {
     super.initState();
@@ -449,6 +481,7 @@ class _MealDialogState extends State<_MealDialog> {
     _caloriesController = TextEditingController(text: initial?.calories.toString() ?? '');
     _mealType = initial?.mealType ?? MealType.breakfast;
     _portion = initial?.portion ?? PortionSize.regular;
+    _rating = initial?.rating;
     _baseCalories = initial == null ? 0 : initial.calories / initial.portion.calorieMultiplier;
   }
 
@@ -529,7 +562,10 @@ class _MealDialogState extends State<_MealDialog> {
 
       // Copy first, then detect from the stored copy — the picker's own path
       // lives in an evictable cache directory.
-      final stored = await widget.photoStorage.savePhoto(picked);
+      final stored = await widget.photoStorage.savePhoto(
+        picked,
+        tripId: widget.tripId,
+      );
       if (!mounted) return;
       setState(() => _photoPath = stored);
 
@@ -590,12 +626,16 @@ class _MealDialogState extends State<_MealDialog> {
     Navigator.pop(
       context,
       Meal(
-        id: widget.initialMeal?.id ?? 'meal-${DateTime.now().microsecondsSinceEpoch}',
+        // A real UUID, not 'meal-<microseconds>': `meals.id` is a uuid column,
+        // so the old format failed the insert outright with 22P02 the moment
+        // BACKEND_MODE=supabase was switched on. Editing keeps the existing id.
+        id: widget.initialMeal?.id ?? const Uuid().v4(),
         name: name,
         calories: calories,
         mealType: _mealType,
         portion: _portion,
         photoPath: _photoPath,
+        rating: _rating,
       ),
     );
   }
@@ -701,6 +741,20 @@ class _MealDialogState extends State<_MealDialog> {
                 DropdownMenuItem(value: type, child: Text(mealTypeLabel(type))),
             ],
             onChanged: (value) => setState(() => _mealType = value ?? _mealType),
+          ),
+          const SizedBox(height: 8),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Text('Rating', style: Theme.of(context).textTheme.labelMedium),
+          ),
+          const SizedBox(height: 4),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: MealRatingStars(
+              rating: _rating,
+              size: 28,
+              onChanged: (rating) => setState(() => _rating = rating),
+            ),
           ),
         ],
       ),

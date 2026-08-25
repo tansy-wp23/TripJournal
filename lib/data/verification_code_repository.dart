@@ -20,10 +20,36 @@ abstract class VerificationCodeRepository {
     required String code,
     required VerificationPurpose purpose,
   });
-
-  /// Invalidates the previous code and sends a fresh one.
-  Future<void> resendCode(VerificationPurpose purpose);
 }
 
 /// Outcome of validating a submitted code.
 enum CodeValidationResult { valid, invalid, expired }
+
+/// Why a code-send attempt failed. The UI (Phase 4/9) maps each kind to a
+/// plain-language message so a non-technical user gets an honest reason
+/// without seeing raw exception types.
+enum SendCodeFailureKind {
+  /// The server rate-limited the send (one code per user+purpose per 60s).
+  rateLimited,
+
+  /// The server returned a 5xx — a server-side problem, not the user's fault.
+  serverError,
+
+  /// The request never reached the server (no connection, timeout, DNS…).
+  networkError,
+
+  /// Anything else (400/401/404, unexpected shapes, …).
+  other,
+}
+
+/// Thrown by [VerificationCodeRepository.sendCode] when the code could not
+/// be sent. Carries a [SendCodeFailureKind] so the UI can show an honest,
+/// user-friendly message instead of a raw exception string.
+class SendCodeException implements Exception {
+  final SendCodeFailureKind kind;
+
+  const SendCodeException(this.kind);
+
+  @override
+  String toString() => 'SendCodeException($kind)';
+}

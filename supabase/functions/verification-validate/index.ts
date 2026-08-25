@@ -1,7 +1,7 @@
 // verification-validate — check a submitted code without consuming it.
 //
 // POST /functions/v1/verification-validate
-//   { "purpose": "deactivation" | "reactivation", "code": "123456" }
+//   { "purpose": "deactivation" | "reactivation" | "deletion", "code": "123456" }
 //
 // Requires a valid user JWT. Returns { result: "valid" | "invalid" |
 // "expired" | "locked" | "not_found" }. Does NOT mark the code used — the
@@ -64,8 +64,15 @@ Deno.serve(async (req: Request) => {
     );
 
     const { purpose, code } = await req.json();
-    if (purpose !== "deactivation" && purpose !== "reactivation") {
-      return json({ error: "purpose must be 'deactivation' or 'reactivation'" }, 400);
+    if (
+      purpose !== "deactivation" &&
+      purpose !== "reactivation" &&
+      purpose !== "deletion"
+    ) {
+      return json(
+        { error: "purpose must be 'deactivation', 'reactivation', or 'deletion'" },
+        400,
+      );
     }
     if (typeof code !== "string" || !/^\d{6}$/.test(code)) {
       return json({ error: "code must be a 6-digit string" }, 400);

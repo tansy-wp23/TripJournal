@@ -69,6 +69,15 @@ class MockTripRepository implements TripRepository {
     }
   }
 
+  @override
+  Future<List<Trip>> getPublicTrips() async {
+    return _trips.where((trip) => trip.isPublic && trip.deletedAt == null).toList()
+      ..sort(
+        (a, b) =>
+            (b.publishedAt ?? b.createdAt).compareTo(a.publishedAt ?? a.createdAt),
+      );
+  }
+
   static List<Trip> _seedTrips() {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);

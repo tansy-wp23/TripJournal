@@ -72,15 +72,27 @@ class MockProfileRepository implements ProfileRepository {
     required String email,
     required String displayName,
   }) async {
-    if (_profile != null) return _profile!;
+    if (_profile != null) {
+      // Stamp last_login_at on every sign-in (interactive or restored),
+      // mirroring SupabaseProfileRepository.
+      _profile = _profile!.copyWith(lastLoginAt: DateTime.now());
+      return _profile!;
+    }
     final now = DateTime.now();
     _profile = Profile(
       userID: userId,
       email: email,
       displayName: displayName,
       status: AccountStatus.active,
+      lastLoginAt: now,
       createdAt: now,
       updatedAt: now,
+      // Genuinely new account — route through onboarding once (Profile
+      // Onboarding feature). Every other Profile() construction in this
+      // class (the active/deactivated seeds above) leaves this at its
+      // default `true`, since those represent users who were already using
+      // the app.
+      profileCompleted: false,
     );
     return _profile!;
   }

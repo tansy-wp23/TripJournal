@@ -369,6 +369,9 @@ final class _MemoryTripRepository implements TripRepository {
   }
 
   @override
+  Future<List<Trip>> getPublicTrips() async => const [];
+
+  @override
   Future<void> restoreTrip(Trip trip) async {
     restoreCalls++;
     await restoreGate?.future;

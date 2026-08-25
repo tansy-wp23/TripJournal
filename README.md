@@ -69,21 +69,30 @@ design (why it's dotenv-based, the safety/tone constraints sent to the model,
 etc.).
 
 The model name is centralized in `lib/features/journal/ai/gemini_model.dart`
-(`geminiModel`, currently `gemini-flash-latest`) — both
+(`geminiModel`, currently `gemini-3.6-flash`) — both
 `GeminiDailyAdviceService` and `GeminiFoodDetectionService` read it from
 there, so there's one place to change if it ever needs to move.
 
 > ⚠️ A valid key isn't a guarantee of working calls — free-tier quota is
-> granted **per model, not per key**, and Google periodically retires model
-> versions. `gemini-2.0-flash` (the original choice) later returned 429
-> `RESOURCE_EXHAUSTED` (`limit: 0`) even with billing enabled on the project.
-> `gemini-flash-latest` is Google's maintained alias for the current
-> recommended flash model, chosen specifically so this doesn't need to be
-> re-diagnosed every time a version is deprecated — but if it ever fails
-> again, check [the models list](https://ai.google.dev/gemini-api/docs/models)
-> for current availability and swap the constant. Failures are graceful:
-> daily advice falls back to a "tap to retry" affordance, food detection
-> falls back to manual entry.
+> granted **per model name, not per key**, and Google periodically retires
+> model versions. Both failure modes have already happened here:
+>
+> - `gemini-2.0-flash` (the original choice) returned 429
+>   `RESOURCE_EXHAUSTED` (`limit: 0`) once its free tier was wound down,
+>   even with billing enabled on the project.
+> - `gemini-flash-latest` (the alias that replaced it) exhausted its
+>   **daily request cap** in ordinary use. Probing found the alias returning
+>   429 while `gemini-3.7-flash` — the model that alias resolves to —
+>   answered normally, so an alias has its own quota bucket separate from
+>   the concrete version behind it. Pinning a version is the fix.
+>
+> Note that `ListModels` still lists models you cannot call:
+> `gemini-2.5-flash` appears in it but returns 404 *"no longer available to
+> new users"*. Always confirm a candidate with a real request before pinning
+> it. If it fails again, check
+> [the models list](https://ai.google.dev/gemini-api/docs/models) and swap
+> the constant. Failures are graceful either way: daily advice falls back to
+> a "tap to retry" affordance, food detection falls back to manual entry.
 
 > ⚠️ **Real device note:** on some Android OEM skins (confirmed on an Infinix
 > running XOS), the modern Android Photo Picker silently reports
@@ -141,6 +150,46 @@ Swapping mock → Supabase is a **one-line change** in the provider/locator.
 Build and test against the **mock** implementations first, then swap in the real
 data source. This keeps the app runnable in an emulator without a network or a
 physical device.
+
+### `BACKEND_MODE` — one switch for the whole app
+
+Which data sources the app uses is **one** decision, not one per repository:
+
+```bash
+flutter run                                  # mock (the default)
+flutter run --dart-define=BACKEND_MODE=supabase
+```
+
+For Android acceptance testing with real persistence and map tiles, use the
+workspace launch configuration **TripJournal (Supabase + Android Maps)**. Its
+two build flags are deliberately kept together:
+
+```powershell
+D:\Download\flutter-sdk\bin\flutter.bat run `
+  --dart-define=BACKEND_MODE=supabase `
+  --dart-define-from-file=.local/maps_defines.json
+```
+
+The local map file and `.env` are both untracked. A run without
+`BACKEND_MODE=supabase` uses the in-memory demo backend, so Trip and Journal
+changes from that run do not survive an app restart.
+
+`lib/data/backend_mode.dart` reads it once; `repository_locator.dart` and
+`trip_repository_locator.dart` both route through it, covering the journal
+repository, photo storage, trip repository, trip cover storage and the
+current-user-id provider.
+
+It is a single switch on purpose. When each locator chose independently, a
+half-migrated state was representable — real journal rows written against a mock
+trip id, or a real trip owned by `kMockUserId`, which no `auth.uid()` will ever
+match. Those states fail **silently**: the write is accepted and the row simply
+never comes back. An unrecognised value (`BACKEND_MODE=supabse`) throws rather
+than falling back to mock, for the same reason.
+
+`flutter test` passes no define, so the suite always runs on mock.
+
+**Supabase mode needs a signed-in user.** Every RLS policy gates on `auth.uid()`,
+and an anonymous session doesn't error — it reads back empty.
 
 ### State management
 

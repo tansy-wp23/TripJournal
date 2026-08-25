@@ -114,26 +114,70 @@ void main() {
       expect(controller.profile!.isActive, isTrue);
     });
 
-    test('first-time user gets a profile created on sign-in', () async {
-      profileRepository = MockProfileRepository(
-        state: MockProfileState.firstTime,
-      );
-      lifecycleRepository = MockAccountLifecycleRepository(
-        profileRepository: profileRepository,
-        verificationCodeRepository: verificationCodeRepository,
-      );
-      controller = AuthController(
-        authRepository,
-        profileRepository,
-        lifecycleRepository,
-      );
+    test(
+      'first-time user gets a profile created on sign-in, routed to '
+      'onboarding (Profile Onboarding feature)',
+      () async {
+        profileRepository = MockProfileRepository(
+          state: MockProfileState.firstTime,
+        );
+        lifecycleRepository = MockAccountLifecycleRepository(
+          profileRepository: profileRepository,
+          verificationCodeRepository: verificationCodeRepository,
+        );
+        controller = AuthController(
+          authRepository,
+          profileRepository,
+          lifecycleRepository,
+        );
 
-      await controller.signInWithGoogle();
+        await controller.signInWithGoogle();
 
-      expect(controller.status, AuthStatus.authenticated);
-      expect(controller.profile, isNotNull);
-      expect(controller.profile!.userID, 'user-001');
-    });
+        // Not authenticated yet — a genuinely new profile has
+        // profileCompleted == false until onboarding is finished or
+        // skipped (ProfileController.completeOnboarding / skipOnboarding).
+        expect(controller.status, AuthStatus.needsOnboarding);
+        expect(controller.profile, isNotNull);
+        expect(controller.profile!.userID, 'user-001');
+        expect(controller.profile!.profileCompleted, isFalse);
+      },
+    );
+
+    test(
+      'refreshProfile() re-fetches the profile and republishes status — '
+      'the completeOnboarding/skipOnboarding -> AuthGate wiring',
+      () async {
+        profileRepository = MockProfileRepository(
+          state: MockProfileState.firstTime,
+        );
+        lifecycleRepository = MockAccountLifecycleRepository(
+          profileRepository: profileRepository,
+          verificationCodeRepository: verificationCodeRepository,
+        );
+        controller = AuthController(
+          authRepository,
+          profileRepository,
+          lifecycleRepository,
+        );
+
+        await controller.signInWithGoogle();
+        expect(controller.status, AuthStatus.needsOnboarding);
+
+        // Simulate what ProfileController.skipOnboarding does: write
+        // straight through the repository, bypassing AuthController.
+        final current = await profileRepository.getProfile('user-001');
+        await profileRepository.updateProfile(
+          current!.copyWith(profileCompleted: true),
+        );
+
+        // AuthController's cached profile is stale until told to refresh.
+        expect(controller.status, AuthStatus.needsOnboarding);
+
+        await controller.refreshProfile();
+
+        expect(controller.status, AuthStatus.authenticated);
+      },
+    );
 
     test('deactivated user sets status to deactivated', () async {
       profileRepository = MockProfileRepository(
@@ -736,6 +780,43 @@ void main() {
 
         expect(
           () => controller.confirmDeactivation('000000'),
+          throwsA(isA<CodeValidationException>()),
+        );
+        expect(controller.status, AuthStatus.authenticated);
+      },
+    );
+
+    // Phase 9 — Account Deletion (Permanent).
+    test('requestDeletion sends a deletion code', () async {
+      await controller.requestDeletion();
+
+      expect(
+        verificationCodeRepository.activeCode?.purpose,
+        VerificationPurpose.deletion,
+      );
+    });
+
+    test('deleteAccount with valid code signs out', () async {
+      await controller.signInWithGoogle();
+      expect(controller.status, AuthStatus.authenticated);
+
+      await controller.requestDeletion();
+      await controller.deleteAccount(MockVerificationCodeRepository.mockCode);
+
+      expect(controller.status, AuthStatus.signedOut);
+      expect(controller.session, isNull);
+      expect(controller.profile, isNull);
+    });
+
+    test(
+      'deleteAccount with wrong code throws and stays signed in',
+      () async {
+        await controller.signInWithGoogle();
+
+        await controller.requestDeletion();
+
+        expect(
+          () => controller.deleteAccount('000000'),
           throwsA(isA<CodeValidationException>()),
         );
         expect(controller.status, AuthStatus.authenticated);

@@ -1,4 +1,5 @@
 import java.util.Base64
+import java.util.Properties
 
 plugins {
     id("com.android.application")
@@ -26,6 +27,21 @@ fun dartDefine(name: String): String? {
         }
 }
 
+val signingPropertiesFile = rootProject.file("../.local/android-signing.properties")
+val signingProperties = Properties().apply {
+    if (signingPropertiesFile.exists()) {
+        signingPropertiesFile.inputStream().use(::load)
+    }
+}
+val releaseTaskRequested = gradle.startParameter.taskNames.any {
+    it.contains("release", ignoreCase = true)
+}
+
+fun requiredSigningProperty(name: String): String {
+    return signingProperties.getProperty(name)?.takeIf { it.isNotBlank() }
+        ?: error("Missing $name in ${signingPropertiesFile.absolutePath}")
+}
+
 android {
     namespace = "com.tripjournal.tripjournal"
     compileSdk = flutter.compileSdkVersion
@@ -38,7 +54,6 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
         applicationId = "com.tripjournal.tripjournal"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
@@ -53,11 +68,21 @@ android {
             dartDefine("GOOGLE_MAPS_ANDROID_KEY").orEmpty()
     }
 
+    signingConfigs.create("release") {
+        if (releaseTaskRequested) {
+            check(signingPropertiesFile.exists()) {
+                "Release signing configuration is missing: ${signingPropertiesFile.absolutePath}"
+            }
+            storeFile = file(requiredSigningProperty("storeFile"))
+            storePassword = requiredSigningProperty("storePassword")
+            keyAlias = requiredSigningProperty("keyAlias")
+            keyPassword = requiredSigningProperty("keyPassword")
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName("release")
         }
     }
 }

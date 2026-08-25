@@ -24,6 +24,7 @@ class TripMapView extends StatefulWidget {
     super.key,
     required this.entries,
     required this.tripStartDate,
+    required this.tripEndDate,
     required this.mapBuilder,
     required this.onOpenEntry,
     required this.onAddLocation,
@@ -31,6 +32,7 @@ class TripMapView extends StatefulWidget {
 
   final List<JournalEntry> entries;
   final DateTime tripStartDate;
+  final DateTime tripEndDate;
   final TripMapBuilder mapBuilder;
   final ValueChanged<JournalEntry> onOpenEntry;
   final VoidCallback onAddLocation;
@@ -44,10 +46,27 @@ class _TripMapViewState extends State<TripMapView> {
   TripMapMarkerGroup? _selectedGroup;
 
   @override
+  void didUpdateWidget(TripMapView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final selectedDay = _selectedDay;
+    if (selectedDay == null) return;
+    final updatedDays = buildTripMapModel(
+      entries: widget.entries,
+      tripStartDate: widget.tripStartDate,
+      tripEndDate: widget.tripEndDate,
+    ).availableDays;
+    if (!updatedDays.contains(selectedDay)) {
+      _selectedDay = null;
+      _selectedGroup = null;
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     final model = buildTripMapModel(
       entries: widget.entries,
       tripStartDate: widget.tripStartDate,
+      tripEndDate: widget.tripEndDate,
       selectedDay: _selectedDay,
     );
     final selectedGroup = _visibleSelectedGroup(model);
@@ -71,6 +90,26 @@ class _TripMapViewState extends State<TripMapView> {
             availableDays: model.availableDays,
             selectedDay: _selectedDay,
             onSelected: _selectDay,
+          ),
+          if (model.previousDayHasNoMappedEntry)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+              child: Text(
+                'Previous day has no mapped entry',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+            child: Text(
+              'Lines show journal order only — not roads or navigation.',
+              key: const Key('trip-map-route-disclaimer'),
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
           ),
           Expanded(
             child: Padding(
@@ -344,15 +383,40 @@ class TripMapUnavailableSurface extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 8),
+          for (final connector in model.connectors)
+            Card(
+              child: ListTile(
+                key: Key('trip-map-fallback-connector-${connector.id}'),
+                leading: const Icon(Icons.arrow_forward_outlined),
+                title: Text(
+                  'Day ${connector.fromDay} last stop → '
+                  'Day ${connector.toDay} first stop',
+                ),
+                subtitle: Text('${connector.fromLabel} → ${connector.toLabel}'),
+              ),
+            ),
           for (final group in model.groups)
             Card(
               child: ListTile(
                 key: Key('trip-map-fallback-${group.key}'),
                 onTap: () => onSelected(group),
-                leading: const Icon(Icons.location_on_outlined),
-                title: Text(_locationLabel(group.entries.first.location!)),
+                leading: Icon(
+                  group.isPreviousDayContext
+                      ? Icons.history_outlined
+                      : Icons.location_on_outlined,
+                  color: group.isPreviousDayContext
+                      ? Theme.of(context).colorScheme.outline
+                      : null,
+                ),
+                title: Text(
+                  _locationLabel(group.entries.first.location!),
+                  style: group.isPreviousDayContext
+                      ? TextStyle(color: Theme.of(context).colorScheme.outline)
+                      : null,
+                ),
                 subtitle: Text(
-                  'Day ${group.dayNumber} · ${group.entries.length} ${group.entries.length == 1 ? 'entry' : 'entries'}',
+                  'Day ${group.dayNumber}${group.isPreviousDayContext ? ' · Previous day context' : ''} · '
+                  '${group.entries.length} ${group.entries.length == 1 ? 'entry' : 'entries'}',
                 ),
                 trailing: const Icon(Icons.chevron_right),
               ),

@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:printing/printing.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../../data/current_user_id_provider.dart';
 import '../../data/trip_repository_locator.dart';
 import '../../models/journal_entry.dart';
 import '../../models/trip.dart';
 import '../admin/widgets/report_issue_button.dart';
+import '../auth/controller/auth_controller.dart';
 import '../journal/controller/journal_controller.dart';
 import '../journal/journal_filter.dart';
 import '../journal/pdf/journal_pdf_export.dart';
@@ -19,9 +21,11 @@ import '../settings/settings_providers.dart';
 import 'controller/trip_controller.dart';
 import 'map/google_trip_map_surface.dart';
 import 'map/trip_map_view.dart';
+import 'screens/food_showcase_screen.dart';
 import 'screens/trip_photo_slideshow_screen.dart';
 import 'screens/trip_wellness_screen.dart';
 import 'trip_day_groups.dart';
+import 'trip_entry_date_range.dart';
 import 'trip_photos.dart';
 import 'trip_form_screen.dart';
 import 'trip_notes_editor_screen.dart';
@@ -55,8 +59,10 @@ class _TripViewScreenState extends ConsumerState<TripViewScreen>
   String? _resolvedUserId;
   String? _identityError;
   bool _generatingSummary = false;
+  bool _editingSummary = false;
   String? _tripSummary;
   String? _summaryError;
+  TextEditingController? _summaryController;
 
   /// First-use hint dismissal, in-memory only for this screen instance --
   /// reappears next time the trip is opened, which is fine for a low-stakes
@@ -76,6 +82,7 @@ class _TripViewScreenState extends ConsumerState<TripViewScreen>
     _tabController
       ..removeListener(_handleTabSelection)
       ..dispose();
+    _summaryController?.dispose();
     super.dispose();
   }
 
@@ -202,6 +209,69 @@ class _TripViewScreenState extends ConsumerState<TripViewScreen>
     Navigator.pop(context, true);
   }
 
+  Future<void> _publishTrip(Trip trip) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Publish to Community?'),
+        content: const Text(
+          'This trip will be visible to all TripJournal users, '
+          'including your journal entries, health data, and photos. '
+          'You can unpublish it at any time.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Publish'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    final profile = ref.read(authControllerProvider).profile;
+    final error = await ref
+        .read(tripControllerProvider.notifier)
+        .publishTrip(
+          trip,
+          publisherDisplayName: profile?.displayName ?? 'Unknown',
+          publisherAvatarUrl: profile?.avatarUrl,
+        );
+    if (!mounted) return;
+    if (error != null) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error)));
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Trip published to Community!')),
+      );
+    }
+  }
+
+  Future<void> _unpublishTrip(Trip trip) async {
+    final error = await ref
+        .read(tripControllerProvider.notifier)
+        .unpublishTrip(trip);
+    if (!mounted) return;
+    if (error != null) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error)));
+    } else {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Trip unpublished.')));
+    }
+  }
+
+  void _shareTripLink(Trip trip) {
+    final shareText =
+        'Check out my trip "${trip.title}" on TripJournal!\n\n'
+        'Open the app → Community → Search by ID:\n${trip.id}';
+    Share.share(shareText, subject: 'TripJournal: ${trip.title}');
+  }
+
   Future<void> _openEditTrip(Trip trip) async {
     final movedToTrash = await Navigator.push<bool>(
       context,
@@ -255,6 +325,14 @@ class _TripViewScreenState extends ConsumerState<TripViewScreen>
         entries: entries,
       );
       if (!mounted) return;
+      final error = await ref
+          .read(tripControllerProvider.notifier)
+          .editTrip(trip.copyWith(summary: summary, updatedAt: DateTime.now()));
+      if (!mounted) return;
+      if (error != null) {
+        setState(() => _summaryError = error);
+        return;
+      }
       setState(() => _tripSummary = summary);
     } catch (_) {
       if (!mounted) return;
@@ -273,6 +351,52 @@ class _TripViewScreenState extends ConsumerState<TripViewScreen>
     if (selected != null && mounted) {
       ref.read(journalControllerProvider.notifier).setFilter(selected);
     }
+  }
+
+  void _startEditingSummary(String summary) {
+    _summaryController?.dispose();
+    setState(() {
+      _summaryController = TextEditingController(text: summary);
+      _editingSummary = true;
+      _summaryError = null;
+    });
+  }
+
+  void _cancelEditingSummary() {
+    _summaryController?.dispose();
+    setState(() {
+      _summaryController = null;
+      _editingSummary = false;
+    });
+  }
+
+  Future<void> _saveEditedSummary(Trip trip) async {
+    final summary = _summaryController?.text.trim() ?? '';
+    if (summary.isEmpty) {
+      setState(() => _summaryError = 'Trip summary cannot be empty.');
+      return;
+    }
+
+    final updatedTrip = trip.copyWith(
+      summary: summary,
+      updatedAt: DateTime.now(),
+    );
+    final error = await ref
+        .read(tripControllerProvider.notifier)
+        .editTrip(updatedTrip);
+    if (!mounted) return;
+    if (error != null) {
+      setState(() => _summaryError = error);
+      return;
+    }
+
+    _summaryController?.dispose();
+    setState(() {
+      _summaryController = null;
+      _tripSummary = summary;
+      _editingSummary = false;
+      _summaryError = null;
+    });
   }
 
   @override
@@ -294,11 +418,12 @@ class _TripViewScreenState extends ConsumerState<TripViewScreen>
       return const Scaffold(body: Center(child: Text('Trip not found.')));
     }
 
+    final tripEntries = entriesWithinTrip(trip, journalController.entries);
     final stats = computeTripStats(
-      entries: journalController.entries,
+      entries: tripEntries,
       totalDays: trip.durationDays,
     );
-    final dayGroups = buildDayGroups(trip, journalController.entries);
+    final dayGroups = buildDayGroups(trip, tripEntries);
 
     // Deliberately built from the UNFILTERED entries, and built once here so
     // the header and every day tile share one list. A day tile that derived
@@ -306,13 +431,14 @@ class _TripViewScreenState extends ConsumerState<TripViewScreen>
     // line up with the slideshow's, opening the wrong photo whenever a filter
     // is active. It is also what makes "entering a day shows the whole trip"
     // work: the day strip is a view onto this list, not a list of its own.
-    final tripPhotos = buildTripPhotos(trip, journalController.entries);
+    final tripPhotos = buildTripPhotos(trip, tripEntries);
 
     final filter = journalController.filter;
+    final filteredTripEntries = filterJournalEntries(tripEntries, filter);
     final displayDayGroups = filter.isActive
         ? buildDayGroups(
             trip,
-            journalController.filteredEntries,
+            filteredTripEntries,
           ).where((g) => !g.isEmpty).toList()
         : dayGroups;
 
@@ -331,11 +457,83 @@ class _TripViewScreenState extends ConsumerState<TripViewScreen>
             page: 'TripViewScreen',
             userIdProvider: widget.userIdProvider,
           ),
-          IconButton(
-            key: const Key('trip-view-export-pdf-button'),
-            icon: const Icon(Icons.picture_as_pdf_outlined),
-            tooltip: 'Export trip as PDF',
-            onPressed: () => _exportTripPdf(trip, journalController.entries),
+          // A single overflow menu for Export/Food showcase — kept out of
+          // separate always-visible IconButtons so the action row's icon
+          // count stays exactly what it was before Food showcase was added.
+          // One more standalone icon overflowed the AppBar at the 320px
+          // "small phone" breakpoint responsive_layout_test.dart checks;
+          // folding it in keeps the net count unchanged (Export PDF's own
+          // icon is replaced by this menu's icon, not added to).
+          PopupMenuButton<_TripViewMenuAction>(
+            key: const Key('trip-view-more-menu'),
+            icon: const Icon(Icons.more_vert),
+            onSelected: (action) {
+              switch (action) {
+                case _TripViewMenuAction.exportPdf:
+                  _exportTripPdf(trip, tripEntries);
+                case _TripViewMenuAction.foodShowcase:
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => FoodShowcaseScreen(
+                        photos: tripPhotos
+                            .where((photo) => photo.kind == TripPhotoKind.meal)
+                            .toList(),
+                      ),
+                    ),
+                  );
+                case _TripViewMenuAction.publish:
+                  _publishTrip(trip);
+                case _TripViewMenuAction.unpublish:
+                  _unpublishTrip(trip);
+                case _TripViewMenuAction.shareLink:
+                  _shareTripLink(trip);
+              }
+            },
+            itemBuilder: (context) => [
+              const PopupMenuItem(
+                key: Key('trip-view-export-pdf-button'),
+                value: _TripViewMenuAction.exportPdf,
+                child: ListTile(
+                  leading: Icon(Icons.picture_as_pdf_outlined),
+                  title: Text('Export trip as PDF'),
+                ),
+              ),
+              const PopupMenuItem(
+                key: Key('trip-view-food-showcase-button'),
+                value: _TripViewMenuAction.foodShowcase,
+                child: ListTile(
+                  leading: Icon(Icons.restaurant_outlined),
+                  title: Text('Food showcase'),
+                ),
+              ),
+              if (trip.isPublic) ...[
+                const PopupMenuItem(
+                  key: Key('trip-view-unpublish-button'),
+                  value: _TripViewMenuAction.unpublish,
+                  child: ListTile(
+                    leading: Icon(Icons.public_off_outlined),
+                    title: Text('Unpublish'),
+                  ),
+                ),
+                const PopupMenuItem(
+                  key: Key('trip-view-share-link-button'),
+                  value: _TripViewMenuAction.shareLink,
+                  child: ListTile(
+                    leading: Icon(Icons.share_outlined),
+                    title: Text('Share Link'),
+                  ),
+                ),
+              ] else
+                const PopupMenuItem(
+                  key: Key('trip-view-publish-button'),
+                  value: _TripViewMenuAction.publish,
+                  child: ListTile(
+                    leading: Icon(Icons.public_outlined),
+                    title: Text('Publish to Community'),
+                  ),
+                ),
+            ],
           ),
           if (_selectedTabIndex == 0) ...[
             IconButton(
@@ -404,7 +602,7 @@ class _TripViewScreenState extends ConsumerState<TripViewScreen>
                             context,
                             trip,
                             stats,
-                            journalController.entries,
+                            tripEntries,
                             tripPhotos,
                           ),
                           _NoMatchingEntriesState(
@@ -425,7 +623,7 @@ class _TripViewScreenState extends ConsumerState<TripViewScreen>
                               context,
                               trip,
                               stats,
-                              journalController.entries,
+                              tripEntries,
                               tripPhotos,
                             );
                           }
@@ -440,8 +638,9 @@ class _TripViewScreenState extends ConsumerState<TripViewScreen>
             ],
           ),
           TripMapView(
-            entries: journalController.entries,
+            entries: tripEntries,
             tripStartDate: trip.startDate,
+            tripEndDate: trip.endDate,
             mapBuilder: buildConfiguredTripMapSurface,
             onOpenEntry: (entry) => Navigator.push(
               context,
@@ -459,7 +658,11 @@ class _TripViewScreenState extends ConsumerState<TripViewScreen>
   /// Opens the slideshow on [photo], resolving its position in the full list
   /// by identity rather than by the position it occupied in whatever subset
   /// the caller was showing.
-  void _openSlideshow(BuildContext context, List<TripPhoto> photos, TripPhoto photo) {
+  void _openSlideshow(
+    BuildContext context,
+    List<TripPhoto> photos,
+    TripPhoto photo,
+  ) {
     final index = photos.indexWhere((candidate) => identical(candidate, photo));
     Navigator.push(
       context,
@@ -481,8 +684,10 @@ class _TripViewScreenState extends ConsumerState<TripViewScreen>
   ) {
     final notes = trip.notes;
 
-    final showFoodPhotos =
-        ref.watch(settingsControllerProvider).preferences.showFoodPhotosInCarousel;
+    final showFoodPhotos = ref
+        .watch(settingsControllerProvider)
+        .preferences
+        .showFoodPhotosInCarousel;
     final hasFoodPhotos = tripPhotos.any((p) => p.kind == TripPhotoKind.meal);
     // The carousel may show a subset; the slideshow is always opened over the
     // full list, which is why the tap hands back the photo rather than a page
@@ -490,7 +695,7 @@ class _TripViewScreenState extends ConsumerState<TripViewScreen>
     final carouselPhotos = showFoodPhotos
         ? tripPhotos
         : tripPhotos.where((p) => p.kind != TripPhotoKind.meal).toList();
-
+    final summary = _tripSummary ?? trip.summary;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -509,6 +714,16 @@ class _TripViewScreenState extends ConsumerState<TripViewScreen>
                 trip.title,
                 style: Theme.of(context).textTheme.headlineMedium,
               ),
+              if (trip.isPublic)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Chip(
+                    key: const Key('trip-view-public-chip'),
+                    avatar: const Icon(Icons.public, size: 14),
+                    label: const Text('Public'),
+                    visualDensity: VisualDensity.compact,
+                  ),
+                ),
               const SizedBox(height: 4),
               Text(
                 '${formatDate(trip.startDate)} - ${formatDate(trip.endDate)}',
@@ -569,9 +784,16 @@ class _TripViewScreenState extends ConsumerState<TripViewScreen>
               _TripSummaryCard(
                 hasEntries: entries.isNotEmpty,
                 isGenerating: _generatingSummary,
-                summary: _tripSummary,
+                summary: summary,
                 error: _summaryError,
+                isEditing: _editingSummary,
+                summaryController: _summaryController,
                 onGenerate: () => _generateTripSummary(trip, entries),
+                onEdit: summary == null
+                    ? null
+                    : () => _startEditingSummary(summary),
+                onSaveEdit: () => _saveEditedSummary(trip),
+                onCancelEdit: _cancelEditingSummary,
               ),
               const SizedBox(height: 16),
               Card(
@@ -649,7 +871,9 @@ class _DayGroupTile extends StatelessWidget {
   final List<TripPhoto> tripPhotos;
 
   void _openSlideshow(BuildContext context, TripPhoto photo) {
-    final index = tripPhotos.indexWhere((candidate) => identical(candidate, photo));
+    final index = tripPhotos.indexWhere(
+      (candidate) => identical(candidate, photo),
+    );
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -663,8 +887,9 @@ class _DayGroupTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final dayPhotos =
-        tripPhotos.where((photo) => photo.dayNumber == group.dayNumber).toList();
+    final dayPhotos = tripPhotos
+        .where((photo) => photo.dayNumber == group.dayNumber)
+        .toList();
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final isToday = group.date.isAtSameMomentAs(today);
@@ -819,6 +1044,12 @@ class _EntryTile extends StatelessWidget {
                           color: colorScheme.onSurfaceVariant,
                         ),
                       ),
+                      if (entry.location?.locationTag case final tag?)
+                        Text(
+                          tag,
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(color: colorScheme.primary),
+                        ),
                     ],
                   ),
                 ),
@@ -839,14 +1070,24 @@ class _TripSummaryCard extends StatelessWidget {
     required this.isGenerating,
     required this.summary,
     required this.error,
+    required this.isEditing,
+    required this.summaryController,
     required this.onGenerate,
+    required this.onEdit,
+    required this.onSaveEdit,
+    required this.onCancelEdit,
   });
 
   final bool hasEntries;
   final bool isGenerating;
   final String? summary;
   final String? error;
+  final bool isEditing;
+  final TextEditingController? summaryController;
   final VoidCallback onGenerate;
+  final VoidCallback? onEdit;
+  final VoidCallback onSaveEdit;
+  final VoidCallback onCancelEdit;
 
   @override
   Widget build(BuildContext context) {
@@ -879,7 +1120,32 @@ class _TripSummaryCard extends StatelessWidget {
                 ],
               )
             else ...[
-              if (summary != null) Text(summary!),
+              if (summary != null && !isEditing)
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(child: Text(summary!)),
+                    IconButton(
+                      key: const Key('edit-trip-summary-button'),
+                      icon: const Icon(Icons.edit_outlined),
+                      tooltip: 'Edit summary',
+                      onPressed: onEdit,
+                    ),
+                  ],
+                ),
+              if (isEditing)
+                TextField(
+                  key: const Key('trip-summary-editor-field'),
+                  controller: summaryController,
+                  decoration: const InputDecoration(
+                    labelText: 'Trip Summary',
+                    alignLabelWithHint: true,
+                    border: OutlineInputBorder(),
+                  ),
+                  minLines: 4,
+                  maxLines: null,
+                  textAlignVertical: TextAlignVertical.top,
+                ),
               if (error != null)
                 Padding(
                   padding: const EdgeInsets.only(top: 6),
@@ -889,12 +1155,32 @@ class _TripSummaryCard extends StatelessWidget {
                   ),
                 ),
               const SizedBox(height: 4),
-              TextButton.icon(
-                key: const Key('generate-trip-summary-button'),
-                onPressed: onGenerate,
-                icon: const Icon(Icons.auto_awesome_outlined),
-                label: Text(summary == null ? 'Generate summary' : 'Regenerate summary'),
-              ),
+              if (isEditing)
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    TextButton(
+                      key: const Key('cancel-edit-trip-summary-button'),
+                      onPressed: onCancelEdit,
+                      child: const Text('Cancel'),
+                    ),
+                    const SizedBox(width: 8),
+                    FilledButton(
+                      key: const Key('save-trip-summary-button'),
+                      onPressed: onSaveEdit,
+                      child: const Text('Save'),
+                    ),
+                  ],
+                )
+              else
+                TextButton.icon(
+                  key: const Key('generate-trip-summary-button'),
+                  onPressed: onGenerate,
+                  icon: const Icon(Icons.auto_awesome_outlined),
+                  label: Text(
+                    summary == null ? 'Generate summary' : 'Regenerate summary',
+                  ),
+                ),
             ],
           ],
         ),
@@ -1014,4 +1300,12 @@ class _NoMatchingEntriesState extends StatelessWidget {
       ),
     );
   }
+}
+
+enum _TripViewMenuAction {
+  exportPdf,
+  foodShowcase,
+  publish,
+  unpublish,
+  shareLink,
 }

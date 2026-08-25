@@ -20,6 +20,17 @@
       "request": "launch",
       "type": "dart",
       "toolArgs": ["--dart-define-from-file=maps.local.json"]
+    },
+    {
+      // Real Supabase persistence plus Android map tiles. This is the
+      // production-like Android configuration used for acceptance testing.
+      "name": "TripJournal (Supabase + Android Maps)",
+      "request": "launch",
+      "type": "dart",
+      "toolArgs": [
+        "--dart-define=BACKEND_MODE=supabase",
+        "--dart-define-from-file=.local/maps_defines.json"
+      ]
     }
   ]
 }

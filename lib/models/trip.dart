@@ -16,9 +16,16 @@ class Trip {
   final DateTime startDate;
   final DateTime endDate;
   final String? notes;
+
+  /// The generated summary, optionally edited by the user.
+  final String? summary;
   final DateTime createdAt;
   final DateTime updatedAt;
   final DateTime? deletedAt;
+  final bool isPublic;
+  final DateTime? publishedAt;
+  final String? publisherDisplayName;
+  final String? publisherAvatarUrl;
 
   const Trip({
     required this.id,
@@ -29,9 +36,14 @@ class Trip {
     required this.startDate,
     required this.endDate,
     this.notes,
+    this.summary,
     required this.createdAt,
     required this.updatedAt,
     this.deletedAt,
+    this.isPublic = false,
+    this.publishedAt,
+    this.publisherDisplayName,
+    this.publisherAvatarUrl,
   });
 
   DateTime? get trashExpiresAt =>
@@ -90,11 +102,18 @@ class Trip {
       startDate: DateTime.parse(json['startDate'] as String),
       endDate: DateTime.parse(json['endDate'] as String),
       notes: json['notes'] as String?,
+      summary: json['summary'] as String?,
       createdAt: DateTime.parse(json['createdAt'] as String),
       updatedAt: DateTime.parse(json['updatedAt'] as String),
       deletedAt: json['deletedAt'] == null
           ? null
           : DateTime.parse(json['deletedAt'] as String),
+      isPublic: json['isPublic'] as bool? ?? false,
+      publishedAt: json['publishedAt'] == null
+          ? null
+          : DateTime.parse(json['publishedAt'] as String),
+      publisherDisplayName: json['publisherDisplayName'] as String?,
+      publisherAvatarUrl: json['publisherAvatarUrl'] as String?,
     );
   }
 
@@ -108,9 +127,14 @@ class Trip {
       'startDate': startDate.toIso8601String(),
       'endDate': endDate.toIso8601String(),
       'notes': notes,
+      'summary': summary,
       'createdAt': createdAt.toIso8601String(),
       'updatedAt': updatedAt.toIso8601String(),
       'deletedAt': deletedAt?.toIso8601String(),
+      'isPublic': isPublic,
+      'publishedAt': publishedAt?.toIso8601String(),
+      'publisherDisplayName': publisherDisplayName,
+      'publisherAvatarUrl': publisherAvatarUrl,
     };
   }
 
@@ -123,10 +147,18 @@ class Trip {
     DateTime? startDate,
     DateTime? endDate,
     String? notes,
+    String? summary,
     DateTime? createdAt,
     DateTime? updatedAt,
     DateTime? deletedAt,
     bool clearDeletedAt = false,
+    bool? isPublic,
+    DateTime? publishedAt,
+    bool clearPublishedAt = false,
+    String? publisherDisplayName,
+    bool clearPublisherDisplayName = false,
+    String? publisherAvatarUrl,
+    bool clearPublisherAvatarUrl = false,
   }) {
     return Trip(
       id: id ?? this.id,
@@ -137,9 +169,18 @@ class Trip {
       startDate: startDate ?? this.startDate,
       endDate: endDate ?? this.endDate,
       notes: notes ?? this.notes,
+      summary: summary ?? this.summary,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       deletedAt: clearDeletedAt ? null : deletedAt ?? this.deletedAt,
+      isPublic: isPublic ?? this.isPublic,
+      publishedAt: clearPublishedAt ? null : (publishedAt ?? this.publishedAt),
+      publisherDisplayName: clearPublisherDisplayName
+          ? null
+          : (publisherDisplayName ?? this.publisherDisplayName),
+      publisherAvatarUrl: clearPublisherAvatarUrl
+          ? null
+          : (publisherAvatarUrl ?? this.publisherAvatarUrl),
     );
   }
 }

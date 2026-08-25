@@ -442,6 +442,9 @@ final class _RecordingTripRepository implements TripRepository {
 
   @override
   Future<void> restoreTrip(Trip trip) async {}
+
+  @override
+  Future<List<Trip>> getPublicTrips() async => const [];
 }
 
 final class _UploadCall {

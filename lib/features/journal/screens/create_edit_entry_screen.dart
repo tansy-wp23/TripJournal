@@ -23,6 +23,7 @@ import '../../location/place_search_locator.dart' as place_locator;
 import '../../location/place_search_service.dart';
 import '../controller/journal_controller.dart';
 import '../entry_timestamp.dart';
+import '../journal_photo_compensation.dart';
 import '../mock_trip.dart';
 import '../widgets/health_log_form.dart';
 import '../widgets/mood_picker.dart';
@@ -130,6 +131,13 @@ class _CreateEditEntryScreenState extends ConsumerState<CreateEditEntryScreen> {
   late final String _draftEntryId;
   late final String _draftHealthLogId;
 
+  /// The trip this entry belongs to, resolved once in [initState].
+  ///
+  /// Photo uploads need it before the entry is saved — `journal-photos` object
+  /// paths are scoped by trip — so it cannot be worked out at save time the way
+  /// it used to be.
+  late final String _tripId;
+
   @override
   void initState() {
     super.initState();
@@ -148,6 +156,7 @@ class _CreateEditEntryScreenState extends ConsumerState<CreateEditEntryScreen> {
     _photoStorage = widget.photoStorage ?? photo_locator.photoStorage;
     _draftEntryId = entry?.id ?? const Uuid().v4();
     _draftHealthLogId = entry?.healthLog?.id ?? const Uuid().v4();
+    _tripId = entry?.tripId ?? widget.tripId ?? kMockTripId;
 
     if (!_isEditing) {
       _prefillFromHealthData();
@@ -265,7 +274,7 @@ class _CreateEditEntryScreenState extends ConsumerState<CreateEditEntryScreen> {
       // Copy out of the OS cache before storing the path — the picker's own
       // path can be evicted, which is what turns a photo into a broken-image
       // placeholder days later.
-      final stored = await _photoStorage.savePhoto(picked);
+      final stored = await _photoStorage.savePhoto(picked, tripId: _tripId);
       if (!mounted) return;
 
       setState(() {
@@ -312,7 +321,7 @@ class _CreateEditEntryScreenState extends ConsumerState<CreateEditEntryScreen> {
           oversized = true;
           continue;
         }
-        accepted.add(await _photoStorage.savePhoto(file));
+        accepted.add(await _photoStorage.savePhoto(file, tripId: _tripId));
       }
       if (!mounted) return;
 
@@ -424,7 +433,7 @@ class _CreateEditEntryScreenState extends ConsumerState<CreateEditEntryScreen> {
 
       final entry = JournalEntry(
         id: entryId,
-        tripId: existing?.tripId ?? widget.tripId ?? kMockTripId,
+        tripId: _tripId,
         title: title,
         body: body,
         mood: _mood,
@@ -476,7 +485,25 @@ class _CreateEditEntryScreenState extends ConsumerState<CreateEditEntryScreen> {
           ? await controller.edit(entry)
           : await controller.create(entry, trip: widget.trip);
       if (error != null) {
+        final cleaned = await cleanupPhotosAfterFailedJournalSave(
+          before: existing,
+          attempted: entry,
+          storage: _photoStorage,
+        );
         if (!mounted) return;
+        if (cleaned.isNotEmpty) {
+          setState(() {
+            _photoPaths = _photoPaths
+                .where((path) => !cleaned.contains(path))
+                .toList();
+            _meals = [
+              for (final meal in _meals)
+                cleaned.contains(meal.photoPath)
+                    ? meal.copyWith(clearPhotoPath: true)
+                    : meal,
+            ];
+          });
+        }
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text(error)));
@@ -492,6 +519,14 @@ class _CreateEditEntryScreenState extends ConsumerState<CreateEditEntryScreen> {
         _justSaved = true;
         _dirty = false;
       });
+
+      unawaited(
+        cleanupPhotosAfterSuccessfulJournalSave(
+          before: existing,
+          saved: entry,
+          storage: _photoStorage,
+        ),
+      );
 
       unawaited(_generateAdvice(entry));
     } finally {
@@ -700,6 +735,7 @@ class _CreateEditEntryScreenState extends ConsumerState<CreateEditEntryScreen> {
                     initialStepsFromHealth: _stepsFromHealth,
                     initialCaloriesFromHealth: _caloriesFromHealth,
                     initialShowConnectHealthNote: _showConnectHealthNote,
+                    tripId: _tripId,
                     healthDataSource: widget.healthDataSource,
                     onChanged: (data) {
                       _steps = data.steps;

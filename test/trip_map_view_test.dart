@@ -8,6 +8,7 @@ import 'package:tripjournal/models/mood.dart';
 
 void main() {
   final tripStart = DateTime(2026, 8, 15);
+  final tripEnd = tripStart.add(const Duration(days: 30));
 
   JournalEntry entry({
     required String id,
@@ -44,6 +45,7 @@ void main() {
       body: TripMapView(
         entries: entries,
         tripStartDate: tripStart,
+        tripEndDate: tripEnd,
         mapBuilder: mapBuilder ?? _fakeMapSurface,
         onOpenEntry: onOpenEntry ?? (_) {},
         onAddLocation: onAddLocation ?? () {},
@@ -91,6 +93,10 @@ void main() {
     );
 
     expect(find.text('2 mapped · 1 without location'), findsOneWidget);
+    expect(
+      find.text('Lines show journal order only — not roads or navigation.'),
+      findsOneWidget,
+    );
     expect(find.byKey(const Key('trip-map-day-all')), findsOneWidget);
     expect(find.byKey(const Key('trip-map-day-1')), findsOneWidget);
     expect(find.byKey(const Key('trip-map-day-2')), findsOneWidget);
@@ -178,6 +184,10 @@ void main() {
     );
 
     expect(find.text('Map unavailable'), findsOneWidget);
+    expect(
+      find.text('Lines show journal order only — not roads or navigation.'),
+      findsOneWidget,
+    );
     await tester.tap(
       find.byKey(const Key('trip-map-fallback-coord:1.000000,2.000000')),
     );
@@ -185,6 +195,118 @@ void main() {
 
     await tester.tap(find.byKey(const Key('trip-map-preview-mapped')));
     expect(opened, ['mapped']);
+  });
+
+  testWidgets(
+    'selected day explains when the previous day has no mapped stop',
+    (tester) async {
+      await tester.pumpWidget(
+        view(
+          entries: [
+            entry(
+              id: 'day-1',
+              createdAt: tripStart,
+              location: const GeoTag(latitude: 1, longitude: 2),
+            ),
+            entry(
+              id: 'day-3',
+              createdAt: tripStart.add(const Duration(days: 2)),
+              location: const GeoTag(latitude: 3, longitude: 4),
+            ),
+          ],
+        ),
+      );
+
+      expect(find.text('Previous day has no mapped entry'), findsNothing);
+
+      await tester.tap(find.byKey(const Key('trip-map-day-3')));
+      await tester.pump();
+
+      expect(find.text('Previous day has no mapped entry'), findsOneWidget);
+      expect(
+        find.byKey(const Key('fake-map-coord:3.000000,4.000000')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('fake-map-coord:1.000000,2.000000')),
+        findsNothing,
+      );
+    },
+  );
+
+  testWidgets('removing a selected day location returns to all mapped days', (
+    tester,
+  ) async {
+    final dayOne = entry(
+      id: 'day-1',
+      createdAt: tripStart,
+      location: const GeoTag(latitude: 1, longitude: 2),
+    );
+    final dayTwo = entry(
+      id: 'day-2',
+      createdAt: tripStart.add(const Duration(days: 1)),
+      location: const GeoTag(latitude: 3, longitude: 4),
+    );
+    await tester.pumpWidget(view(entries: [dayOne, dayTwo]));
+
+    await tester.tap(find.byKey(const Key('trip-map-day-2')));
+    await tester.pump();
+    expect(
+      find.byKey(const Key('fake-map-coord:3.000000,4.000000')),
+      findsOneWidget,
+    );
+
+    await tester.pumpWidget(
+      view(entries: [dayOne, dayTwo.copyWith(clearLocation: true)]),
+    );
+    await tester.pump();
+
+    expect(find.text('No locations yet'), findsNothing);
+    expect(find.byKey(const Key('trip-map-day-all')), findsOneWidget);
+    expect(
+      find.byKey(const Key('fake-map-coord:1.000000,2.000000')),
+      findsOneWidget,
+    );
+    expect(
+      tester
+          .widget<ChoiceChip>(find.byKey(const Key('trip-map-day-all')))
+          .selected,
+      isTrue,
+    );
+  });
+
+  testWidgets('fallback lists adjacent-day connectors with endpoint labels', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      view(
+        entries: [
+          entry(
+            id: 'day-1',
+            createdAt: tripStart,
+            location: const GeoTag(
+              latitude: 1,
+              longitude: 2,
+              placeName: 'Trailhead',
+            ),
+          ),
+          entry(
+            id: 'day-2',
+            createdAt: tripStart.add(const Duration(days: 1)),
+            location: const GeoTag(latitude: 3, longitude: 4),
+          ),
+        ],
+        mapBuilder: ({required model, required onSelected}) =>
+            TripMapUnavailableSurface(model: model, onSelected: onSelected),
+      ),
+    );
+
+    expect(find.text('Day 1 last stop → Day 2 first stop'), findsOneWidget);
+    expect(find.text('Trailhead → 3.00000, 4.00000'), findsOneWidget);
+    expect(
+      find.byKey(const Key('trip-map-fallback-connector-day-1-to-day-2')),
+      findsOneWidget,
+    );
   });
 
   testWidgets('remains usable at narrow width with larger text', (

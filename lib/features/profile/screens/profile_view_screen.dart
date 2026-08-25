@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../models/profile.dart';
 import '../../../models/verification_code.dart';
 import '../../auth/screens/code_entry_screen.dart';
+import '../../auth/screens/delete_account_screen.dart';
 import '../controller/profile_controller.dart';
 import '../widgets/profile_avatar.dart';
 import 'profile_edit_screen.dart';
@@ -115,6 +116,24 @@ class _ProfileViewScreenState extends ConsumerState<ProfileViewScreen> {
                     value: _formatDate(profile.lastLoginAt!),
                   ),
                 ],
+                if (profile.dateOfBirth != null) ...[
+                  const Divider(),
+                  _InfoRow(
+                    label: 'Date of birth',
+                    value: _formatDate(profile.dateOfBirth!),
+                  ),
+                ],
+                if (profile.country != null) ...[
+                  const Divider(),
+                  _InfoRow(label: 'Country', value: profile.country!),
+                ],
+                if (profile.travelInterests.isNotEmpty) ...[
+                  const Divider(),
+                  _InfoRow(
+                    label: 'Interests',
+                    value: profile.travelInterests.join(', '),
+                  ),
+                ],
               ],
             ),
           ),
@@ -140,6 +159,27 @@ class _ProfileViewScreenState extends ConsumerState<ProfileViewScreen> {
             ),
           ),
         ),
+        const SizedBox(height: 32),
+        OutlinedButton.icon(
+          key: const Key('delete-account-button'),
+          onPressed: () => _openDeletion(context),
+          icon: const Icon(Icons.delete_forever),
+          label: const Text('Delete Account'),
+          style: OutlinedButton.styleFrom(
+            foregroundColor: Theme.of(context).colorScheme.error,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Center(
+          child: Text(
+            'Deleting permanently removes your account and all of your data. '
+            'This cannot be undone.',
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ),
       ],
     );
   }
@@ -158,6 +198,13 @@ class _ProfileViewScreenState extends ConsumerState<ProfileViewScreen> {
         builder: (_) =>
             const CodeEntryScreen(purpose: VerificationPurpose.deactivation),
       ),
+    );
+  }
+
+  Future<void> _openDeletion(BuildContext context) async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const DeleteAccountScreen()),
     );
   }
 

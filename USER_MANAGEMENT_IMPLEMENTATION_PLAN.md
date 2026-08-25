@@ -2,8 +2,10 @@
 
 This plan is written for an AI coding agent (e.g. Claude Code) running on a
 free-tier model with a limited context window. It breaks the module into
-**9 phases**, each small enough to fit in a single working session. Do not
+**10 phases**, each small enough to fit in a single working session. Do not
 skip ahead — later phases assume earlier phases are done and merged.
+Phases 0–8 cover the core module; Phases 9–10 are post-launch enhancements
+added after the initial build was complete and live, one per week.
 
 ## Scope
 
@@ -227,8 +229,10 @@ phase will build against.
    (e.g. `lib/data/user_management_repository_locator.dart`) swaps mock ↔
    real in one line, mirroring `lib/data/repository_locator.dart`.
 3. Define the domain entities matching the (revised) ERD exactly:
-   - `Profile` (userID, email, display_name, role, status, deactivated_at,
-     last_login_at, created_at, updated_at)
+   - `Profile` (userID, email, display_name, avatar_url, role, status,
+     deactivated_at, last_login_at, created_at, updated_at) — `avatar_url`
+     is seeded from Google's profile picture at first sign-in but is a
+     normal editable field afterward, same as `display_name`
    - `VerificationCode` (codeID, code_hash, purpose, attempt_count,
      created_at, expires_at, used_at, userID)
    - A lightweight `AppSession`/`AuthState` concept representing "what
@@ -343,13 +347,17 @@ Maps to PB-09 through PB-12.
 1. Logout Component: button, calls `AuthRepository.signOut()`, returns to
    login screen (driven by the `authStateChanges()` listener from Phase 2,
    not a manual state clear).
-2. Profile view screen: reads from `ProfileRepository.getProfile()`.
-3. Profile edit screen + save flow: `updateProfile()`.
+2. Profile view screen: reads from `ProfileRepository.getProfile()`,
+   including displaying `avatar_url` (seeded from the mock's fake Google
+   photo for now).
+3. Profile edit screen + save flow: `updateProfile()`, including allowing
+   `avatar_url` to be changed (mock can just accept a pasted URL — no need
+   to build real image upload/picker in this phase).
 4. Validation rules for profile fields (decide what's actually editable —
-   likely `display_name`; `email` is owned by Google/Supabase Auth and
-   probably shouldn't be independently editable here — decide and note
-   the decision in `PROGRESS.md`), with inline error display on invalid
-   submission and a cancel option that discards changes.
+   `display_name` and `avatar_url`; `email` is owned by Google/Supabase
+   Auth and probably shouldn't be independently editable here — decide
+   and note the decision in `PROGRESS.md`), with inline error display on
+   invalid submission and a cancel option that discards changes.
 
 **Definition of Done:**
 - [ ] Logout returns user to login screen
@@ -566,6 +574,75 @@ touching UI code.
 - [ ] No plaintext secrets, no missing rate limits
 - [ ] README written
 - [ ] `PROGRESS.md` finalized
+
+---
+
+## Phase 9 — Account Deletion (Permanent)
+
+Post-launch enhancement, built after Phases 0–8 were complete and live.
+Unlike Phases 0–5, there is no mock-first step here — the real backend
+already exists, so this is built directly against it.
+
+**Goal:** A signed-in user can permanently delete their account, distinct
+from the existing reversible deactivation flow. See the earlier discussion
+in `PROGRESS.md`/chat history for the rationale: deactivation is for "I
+want to step away, might come back" (reversible, data intact); deletion is
+for "I want this gone" (irreversible, maps to a real right-to-erasure
+concept given this app stores health/journal data).
+
+**Architecture notes:**
+- Reuses the existing `VerificationCode` infrastructure with a new
+  `purpose: 'deletion'` — no new verification mechanism needed.
+- New Edge Function `account-delete-confirm`, following the exact same
+  two-client pattern as `account-deactivate-confirm`/
+  `account-reactivate-confirm` (user-scoped client for identity via
+  `auth.getUser()`, service-role client — with `Authorization` left
+  untouched — for `validateCode`, the delete itself, and `consumeCode`).
+- Deleting the `auth.users` row cascades to `profiles` and
+  `verification_codes` automatically (both already have
+  `on delete cascade` FKs from the Phase 6 migration) — no separate
+  cleanup needed for this module's own tables.
+- **Cross-module risk, flag to teammates:** deletion only cascades cleanly
+  if *every* module's tables that reference `auth.users.id` also specify
+  `on delete cascade` (or an explicit anonymization strategy) on their own
+  FKs. If Trip/Journal/Health Log don't, deleting a user could either fail
+  outright or leave orphaned rows. This module can't fix that unilaterally
+  — same category of cross-module dependency as the `is_active_user()`
+  flag from Phase 8.
+
+**Tasks:**
+1. Add `'deletion'` to the purpose type/union everywhere `purpose` is
+   validated — the Edge Functions' checks and the Flutter
+   `VerificationPurpose` enum.
+2. New screens: a deletion warning/confirmation screen with real friction
+   (e.g. type "DELETE" into a field to unlock the "Send code" button —
+   deliberately more resistant than the deactivation flow, since this one
+   can't be undone), then the existing code-entry widget with
+   `purpose=deletion`.
+3. New Edge Function `account-delete-confirm`: validate the code
+   (service-role client), call `auth.admin.deleteUser(user.id)`, then
+   `consumeCode()` — only after the delete succeeds, same ordering
+   principle used in the other two confirm functions (so a failed delete
+   leaves the code valid for a retry).
+4. New repository method (e.g. `deleteAccount(code)` on
+   `AccountLifecycleRepository`) plus its Supabase-backed implementation.
+5. After a successful delete, explicitly clear local app state and call
+   `signOut()` client-side — the local Supabase session now points at a
+   user that no longer exists, so don't rely on some later API call
+   failing naturally to catch this; reset proactively and route to login.
+6. Note the cross-module cascade risk (above) in `PROGRESS.md` and flag it
+   to whoever owns Trip/Journal/Trip Recap/Admin.
+
+**Definition of Done:**
+- [ ] `'deletion'` purpose works through send/resend/validate identically
+      to the other two purposes
+- [ ] Confirmation UI has genuine friction, visibly distinct from the
+      deactivation flow's UI
+- [ ] `account-delete-confirm` deletes the `auth.users` row; the code is
+      only consumed after the delete actually succeeds
+- [ ] After deletion, the app lands cleanly on the login screen — no
+      broken "authenticated but the account is gone" state
+- [ ] Cross-module cascade risk documented and flagged to teammates
 
 ---
 

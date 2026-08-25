@@ -317,4 +317,7 @@ final class _RestoreRepository implements TripRepository {
 
   @override
   Future<void> moveToTrash(String id) async {}
+
+  @override
+  Future<List<Trip>> getPublicTrips() async => const [];
 }

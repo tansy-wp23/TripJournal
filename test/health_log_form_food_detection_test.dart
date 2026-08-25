@@ -6,7 +6,7 @@ import 'package:tripjournal/features/journal/widgets/health_log_form.dart';
 void main() {
   testWidgets('the meal dialog offers an optional "Detect from photo" action', (tester) async {
     await tester.pumpWidget(MaterialApp(
-      home: Scaffold(body: HealthLogForm(entryDate: DateTime(2026, 1, 1), onChanged: (_) {})),
+      home: Scaffold(body: HealthLogForm(tripId: 'trip-001', entryDate: DateTime(2026, 1, 1), onChanged: (_) {})),
     ));
     await tester.pumpAndSettle();
 
@@ -21,7 +21,7 @@ void main() {
     tester,
   ) async {
     await tester.pumpWidget(MaterialApp(
-      home: Scaffold(body: HealthLogForm(entryDate: DateTime(2026, 1, 1), onChanged: (_) {})),
+      home: Scaffold(body: HealthLogForm(tripId: 'trip-001', entryDate: DateTime(2026, 1, 1), onChanged: (_) {})),
     ));
     await tester.pumpAndSettle();
 
@@ -40,7 +40,7 @@ void main() {
     (tester) async {
       HealthLogFormData? latest;
       await tester.pumpWidget(MaterialApp(
-        home: Scaffold(body: HealthLogForm(entryDate: DateTime(2026, 1, 1), onChanged: (data) => latest = data)),
+        home: Scaffold(body: HealthLogForm(tripId: 'trip-001', entryDate: DateTime(2026, 1, 1), onChanged: (data) => latest = data)),
       ));
       await tester.pumpAndSettle();
 

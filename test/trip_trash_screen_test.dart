@@ -394,6 +394,9 @@ final class _TrashRepository implements TripRepository {
   Future<void> moveToTrash(String id) async {}
 
   @override
+  Future<List<Trip>> getPublicTrips() async => const [];
+
+  @override
   Future<void> updateTrip(Trip trip) async {
     final index = activeTrips.indexWhere(
       (candidate) => candidate.id == trip.id,

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:tripjournal/data/mock_verification_code_repository.dart';
+import 'package:tripjournal/data/verification_code_repository.dart';
 import 'package:tripjournal/features/auth/controller/auth_controller.dart';
 import 'package:tripjournal/features/auth/screens/code_entry_screen.dart';
 import 'package:tripjournal/models/profile.dart';
@@ -163,6 +164,152 @@ void main() {
       },
     );
   });
+
+  group('CodeEntryScreen (friendly send errors)', () {
+    testWidgets('shows a friendly rate-limit message on send', (tester) async {
+      final failingRepo = _ThrowingVerificationCodeRepository(
+        SendCodeFailureKind.rateLimited,
+      );
+      harness = AuthTestHarness(verificationRepository: failingRepo);
+      await harness.signOut();
+
+      await tester.pumpWidget(wrapped(VerificationPurpose.deactivation));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text(
+          "You've requested a code too recently. Please wait about a minute and try again.",
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('shows a friendly server-error message on send', (
+      tester,
+    ) async {
+      final failingRepo = _ThrowingVerificationCodeRepository(
+        SendCodeFailureKind.serverError,
+      );
+      harness = AuthTestHarness(verificationRepository: failingRepo);
+      await harness.signOut();
+
+      await tester.pumpWidget(wrapped(VerificationPurpose.deactivation));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text("We couldn't send your code. Please try again in a moment."),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('shows a friendly network-error message on send', (
+      tester,
+    ) async {
+      final failingRepo = _ThrowingVerificationCodeRepository(
+        SendCodeFailureKind.networkError,
+      );
+      harness = AuthTestHarness(verificationRepository: failingRepo);
+      await harness.signOut();
+
+      await tester.pumpWidget(wrapped(VerificationPurpose.deactivation));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text(
+          "We couldn't send your code. Please check your connection and try again.",
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('shows a friendly generic message on send', (tester) async {
+      final failingRepo = _ThrowingVerificationCodeRepository(
+        SendCodeFailureKind.other,
+      );
+      harness = AuthTestHarness(verificationRepository: failingRepo);
+      await harness.signOut();
+
+      await tester.pumpWidget(wrapped(VerificationPurpose.deactivation));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text("We couldn't send your code. Please try again."),
+        findsOneWidget,
+      );
+    });
+  });
+
+  group('CodeEntryScreen (deletion)', () {
+    testWidgets('shows deletion title and message', (tester) async {
+      await tester.pumpWidget(wrapped(VerificationPurpose.deletion));
+      await tester.pumpAndSettle();
+
+      // "Delete Account" appears twice: the AppBar title and the confirm
+      // button label.
+      expect(find.text('Delete Account'), findsNWidgets(2));
+      expect(find.text('Resend code'), findsOneWidget);
+      expect(find.text('Back'), findsOneWidget);
+      expect(find.byKey(const Key('code-entry-input')), findsOneWidget);
+    });
+
+    testWidgets('auto-sends a deletion code when the screen opens', (
+      tester,
+    ) async {
+      await tester.pumpWidget(wrapped(VerificationPurpose.deletion));
+      await tester.pumpAndSettle();
+
+      expect(
+        harness.verificationRepository.activeCode?.purpose,
+        VerificationPurpose.deletion,
+      );
+      expect(harness.verificationRepository.activeCode, isNotNull);
+    });
+
+    testWidgets(
+      'confirm with valid code deletes the account and signs out',
+      (tester) async {
+        // Sign in first so the profile exists and the session is active.
+        await harness.signIn();
+
+        await tester.pumpWidget(wrapped(VerificationPurpose.deletion));
+        await tester.pumpAndSettle();
+
+        // The screen auto-sends a code on open (verified above); the mock
+        // already has an active deletion code.
+
+        // Enter the valid mock code.
+        for (var i = 0; i < 6; i++) {
+          await tester.enterText(
+            find.byKey(Key('otp-digit-$i')),
+            MockVerificationCodeRepository.mockCode[i],
+          );
+          await tester.pump();
+        }
+
+        await tester.tap(find.byKey(const Key('code-entry-confirm')));
+        await tester.pumpAndSettle();
+
+        // The account is deleted → the controller signs out.
+        expect(harness.controller.status, AuthStatus.signedOut);
+        expect(harness.controller.session, isNull);
+        expect(harness.controller.profile, isNull);
+      },
+    );
+  });
+}
+
+/// A mock verification-code repository whose `sendCode` always throws a
+/// [SendCodeException] with the given [kind], so widget tests can verify the
+/// friendly error messages render correctly.
+class _ThrowingVerificationCodeRepository extends MockVerificationCodeRepository {
+  _ThrowingVerificationCodeRepository(this.kind);
+
+  final SendCodeFailureKind kind;
+
+  @override
+  Future<void> sendCode(VerificationPurpose purpose) async {
+    throw SendCodeException(kind);
+  }
 }
 
 class _CodeEntrySentinel extends StatelessWidget {

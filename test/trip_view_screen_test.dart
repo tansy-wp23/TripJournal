@@ -11,6 +11,8 @@ import 'package:tripjournal/features/trip/controller/trip_controller.dart';
 import 'package:tripjournal/features/trip/trip_view_screen.dart';
 import 'package:tripjournal/models/trip.dart';
 
+import 'support/auth_test_harness.dart';
+
 Widget _wrapped(String tripId) {
   return ProviderScope(
     child: MaterialApp(home: TripViewScreen(tripId: tripId)),
@@ -37,8 +39,11 @@ void main() {
       expect(find.byKey(const Key('trip-notes-card')), findsOneWidget);
       expect(find.byKey(const Key('trip-view-search-toggle')), findsOneWidget);
       expect(find.byKey(const Key('trip-view-filter-button')), findsOneWidget);
+      // Export PDF/Locations/Food showcase live behind the overflow menu now
+      // — see trip_view_screen.dart's _TripViewMenuAction — so only the menu
+      // trigger itself is on screen until it's opened.
       expect(
-        find.byKey(const Key('trip-view-export-pdf-button')),
+        find.byKey(const Key('trip-view-more-menu')),
         findsOneWidget,
       );
       expect(find.byKey(const Key('report-issue-button')), findsOneWidget);
@@ -51,7 +56,7 @@ void main() {
       expect(find.byKey(const Key('trip-view-search-toggle')), findsNothing);
       expect(find.byKey(const Key('trip-view-filter-button')), findsNothing);
       expect(
-        find.byKey(const Key('trip-view-export-pdf-button')),
+        find.byKey(const Key('trip-view-more-menu')),
         findsOneWidget,
       );
       expect(find.byKey(const Key('report-issue-button')), findsOneWidget);
@@ -180,6 +185,84 @@ void main() {
       expect(repository.getTripsCalls, 4);
     },
   );
+
+  testWidgets(
+    'publishing a trip from the overflow menu shows the Public chip; unpublishing removes it',
+    (tester) async {
+      tester.view.physicalSize = const Size(1200, 2600);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final harness = AuthTestHarness();
+      addTearDown(harness.dispose);
+      await tester.pumpWidget(
+        harness.wrap(const TripViewScreen(tripId: 'trip-001')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('trip-view-public-chip')), findsNothing);
+
+      await tester.tap(find.byKey(const Key('trip-view-more-menu')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('trip-view-publish-button')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Publish'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Trip published to Community!'), findsOneWidget);
+      expect(find.byKey(const Key('trip-view-public-chip')), findsOneWidget);
+
+      // Let the first SnackBar's display duration fully elapse so the second
+      // one (queued behind it by ScaffoldMessenger) isn't left waiting.
+      await tester.pump(const Duration(seconds: 5));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('trip-view-more-menu')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('trip-view-unpublish-button')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Trip unpublished.'), findsOneWidget);
+      expect(find.byKey(const Key('trip-view-public-chip')), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'Share Link only appears in the overflow menu once the trip is public',
+    (tester) async {
+      tester.view.physicalSize = const Size(1200, 2600);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final harness = AuthTestHarness();
+      addTearDown(harness.dispose);
+      await tester.pumpWidget(
+        harness.wrap(const TripViewScreen(tripId: 'trip-001')),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('trip-view-more-menu')));
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const Key('trip-view-share-link-button')),
+        findsNothing,
+      );
+      await tester.tap(find.byKey(const Key('trip-view-publish-button')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Publish'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('trip-view-more-menu')));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const Key('trip-view-share-link-button')),
+        findsOneWidget,
+      );
+    },
+  );
 }
 
 final class _CountingTripRepository extends MockTripRepository {
@@ -231,4 +314,8 @@ final class _EmptyCountingTripRepository implements TripRepository {
 
   @override
   Future<void> restoreTrip(Trip trip) async => trips.add(trip);
+
+  @override
+  Future<List<Trip>> getPublicTrips() async =>
+      trips.where((trip) => trip.isPublic && trip.deletedAt == null).toList();
 }

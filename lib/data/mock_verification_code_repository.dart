@@ -5,8 +5,7 @@ import 'verification_code_repository.dart';
 /// never blocks on a backend.
 ///
 /// Generates a fixed code (`"123456"` in mock mode, printed to console),
-/// tracks `attempt_count`, enforces expiry via a short configurable timer,
-/// and invalidates the previous code on resend.
+/// tracks `attempt_count`, enforces expiry via a short configurable timer.
 class MockVerificationCodeRepository implements VerificationCodeRepository {
   /// The fixed code used in mock mode.
   static const String mockCode = '123456';
@@ -47,6 +46,9 @@ class MockVerificationCodeRepository implements VerificationCodeRepository {
   Future<void> sendCode(VerificationPurpose purpose) async {
     final now = DateTime.now();
     _codeCounter++;
+    // Resend reuses sendCode — calling it again invalidates the prior code
+    // (a fresh one with a new codeID replaces it), which is the same
+    // behavior the real verification-send function has server-side.
     _activeCode = VerificationCode(
       codeID: 'code-${now.millisecondsSinceEpoch}-$_codeCounter',
       codeHash: mockCode, // mock: store plaintext for simplicity; real impl hashes
@@ -90,11 +92,5 @@ class MockVerificationCodeRepository implements VerificationCodeRepository {
     // Valid: mark used.
     _activeCode = active.copyWith(usedAt: DateTime.now());
     return CodeValidationResult.valid;
-  }
-
-  @override
-  Future<void> resendCode(VerificationPurpose purpose) async {
-    // Resend invalidates the previous code (a fresh one replaces it).
-    await sendCode(purpose);
   }
 }

@@ -597,6 +597,11 @@ The real backend, deployed directly to the Supabase project
   - `verification-validate` — checks a code without consuming it; returns
     `valid`/`invalid`/`expired`/`locked`/`not_found`.
   - `verification-resend` — same as send (invalidates prior + sends fresh).
+    **Later removed as dead code** (post-Phase 8): the app's "Resend code" button
+    routes through `verification-send` only (see `SupabaseVerificationCodeRepository`),
+    so `verification-resend` was never invoked. Removed from `config.toml`, the
+    function directory was deleted, and the deployed function was dropped from
+    Supabase. See "Dead code removal" below.
   - `account-deactivate-confirm` — validates the code, sets
     `status = deactivated` + `deactivated_at`, then
     `auth.admin.signOut(userId)` (Architecture Decision 3 — terminates all
@@ -616,7 +621,7 @@ The real backend, deployed directly to the Supabase project
 - `supabase/functions/_shared/email.ts` (new)
 - `supabase/functions/verification-send/index.ts` (new)
 - `supabase/functions/verification-validate/index.ts` (new)
-- `supabase/functions/verification-resend/index.ts` (new)
+- `supabase/functions/verification-resend/index.ts` (new — later deleted as dead code)
 - `supabase/functions/account-deactivate-confirm/index.ts` (new)
 - `supabase/functions/account-reactivate-confirm/index.ts` (new)
 - `supabase/config.toml` (modified — registered the 5 new functions)
@@ -732,8 +737,8 @@ changed.
   maps `Profile` model ↔ `profiles` table (camelCase ↔ snake_case), mirroring
   `trip_supabase_mapper.dart`.
 - **`SupabaseVerificationCodeRepository`** (`lib/data/supabase_verification_code_repository.dart`)
-  — calls the Phase 6 Edge Functions (`verification-send` / `verification-validate` /
-  `verification-resend`), mapping the server's `result` string to
+  — calls the Phase 6 Edge Functions (`verification-send` / `verification-validate`),
+  mapping the server's `result` string to
   `CodeValidationResult` (`valid`→valid, `expired`→expired, anything else
   including `invalid`/`locked`/`not_found`→invalid).
 - **`SupabaseAccountLifecycleRepository`**
@@ -769,7 +774,7 @@ changed.
     `connection:` key. The API drifted between Phase 6 authoring and Phase 7
     running; fixed to compile against the live version.
   - All 5 Edge Functions (`verification-send`, `verification-validate`,
-    `verification-resend`, `account-deactivate-confirm`,
+    `verification-resend` (later removed as dead code), `account-deactivate-confirm`,
     `account-reactivate-confirm`): fixed a **critical client-architecture bug**.
     Phase 6 built a single client with the service-role key *and* the user's JWT
     overriding `Authorization` — which silently defeated the RLS bypass (the
@@ -832,7 +837,7 @@ Modified:
 - `supabase/functions/_shared/email.ts` (denomailer API fix)
 - `supabase/functions/verification-send/index.ts` (user + service-role client split)
 - `supabase/functions/verification-validate/index.ts` (client split)
-- `supabase/functions/verification-resend/index.ts` (client split)
+- `supabase/functions/verification-resend/index.ts` (client split - later deleted as dead code)
 - `supabase/functions/account-deactivate-confirm/index.ts` (client split + `consumeCode`)
 - `supabase/functions/account-reactivate-confirm/index.ts` (client split + `consumeCode`)
 - `supabase/migrations/202608140001_user_management.sql` (`handle_new_user` → `SECURITY DEFINER`)
@@ -923,7 +928,7 @@ Modified:
   (Architecture Decision 7).
 - **`profiles` UPDATE policy hardened** with `is_active_user()` (defense in depth;
   reactivation is server-side, so the client flow is unaffected).
-- **Rate limiting** (`codes.ts` + `verification-send` + `verification-resend`) —
+- **Rate limiting** (`codes.ts` + `verification-send`) —
   `isRateLimited()` blocks a send per user+purpose within `RATE_LIMIT_WINDOW_SECONDS`
   (60s) -> HTTP 429. Complements the `attempt_count` lockout on `validateCode()`
   (which guards *guessing*, not *sending*). Fail-open on a read error.
@@ -940,7 +945,7 @@ Modified:
 - `supabase/functions/_shared/codes.ts` (`RATE_LIMIT_WINDOW_SECONDS`, `isRateLimited()`,
   `gt` on `QueryBuilderLike`)
 - `supabase/functions/verification-send/index.ts` (rate-limit -> 429)
-- `supabase/functions/verification-resend/index.ts` (rate-limit -> 429)
+- `supabase/functions/verification-resend/index.ts` (rate-limit -> 429 - later deleted as dead code)
 - `docs/user-management/PROGRESS.md` (this entry)
 
 > These are SQL / TypeScript / Markdown only — **no Dart changed**, so
@@ -1000,4 +1005,357 @@ Modified:
 - OTP entropy (6 digits ≈ 20 bits) is a known limitation; consider 8 digits / TOTP.
 - Auth Hook (server-side token rejection for deactivated users) is deferred.
 - `202608160001` migration + the `verification-*` function edits require
-  `supabase db push` / `supabase functions deploy` to reach the live project.
+  `supabase db push` / `supabase functions deploy` to reach the live project (now deploys 4 functions, not 5).
+
+
+---
+
+## Phase 9 — Account Deletion (Permanent) (complete)
+
+### What was built
+
+A signed-in user can now permanently delete their account, distinct from the
+existing reversible deactivation flow. Deactivation is for "I want to step
+away, might come back" (reversible, data intact); deletion is for "I want
+this gone" (irreversible, right-to-erasure). Built directly against the real
+backend (no mock-first step — Phases 0–8 were already live).
+
+- **`'deletion'` purpose** added to the `VerificationCode` infrastructure:
+  - `VerificationPurpose.deletion` enum value (`lib/models/verification_code.dart`).
+  - `verification-send` Edge Function now accepts `purpose: "deletion"`.
+  - `email.ts` sends a "Your TripJournal account deletion code" subject.
+  - Migration `202608200001_account_deletion.sql` adds `'deletion'` to the
+    `verification_codes.purpose` check constraint.
+- **New Edge Function `account-delete-confirm`**
+  (`supabase/functions/account-delete-confirm/index.ts`) — follows the exact
+  same two-client pattern as `account-deactivate-confirm` /
+  `account-reactivate-confirm`: user-scoped client (anon key + caller JWT)
+  for `auth.getUser()` identity verification only; service-role client
+  (Authorization left default) for `validateCode`, `auth.admin.deleteUser`,
+  and `consumeCode`. The code is only consumed **after** the delete succeeds,
+  so a failed delete leaves the code valid for a retry without a resend.
+  Deleting the `auth.users` row cascades to `profiles` and
+  `verification_codes` automatically (both have `on delete cascade` FKs from
+  the Phase 6 migration).
+- **Repository methods** — `requestDeletion()` and `deleteAccount(code)` on
+  `AccountLifecycleRepository`, implemented in both
+  `SupabaseAccountLifecycleRepository` (calls `account-delete-confirm`) and
+  `MockAccountLifecycleRepository` (validates the mock code; the controller's
+  `signOut()` clears local state).
+- **`AuthController`** — `requestDeletion()` and `deleteAccount(code)`. On
+  success, `deleteAccount` explicitly calls `signOut()` to clear local app
+  state — the local Supabase session now points at a user that no longer
+  exists, so we reset proactively rather than relying on a later API call
+  failing naturally.
+- **`CodeEntryScreen`** — now handles `purpose: deletion`: auto-sends a
+  deletion code on open, deletion-specific title/message/icon/button text,
+  calls `deleteAccount` on confirm, and pops to root on success.
+- **New `DeleteAccountScreen`**
+  (`lib/features/auth/screens/delete_account_screen.dart`) — the deletion
+  warning/confirmation screen with **real friction**: the user must type
+  "DELETE" into a field to unlock the "Send code" button, deliberately more
+  resistant than the deactivation flow since this can't be undone. Routes to
+  `CodeEntryScreen` with `purpose: deletion`.
+- **`ProfileViewScreen`** — added a "Delete Account" button (with explanatory
+  caption) below the deactivation button, opening `DeleteAccountScreen`.
+
+### Files touched (Phase 9)
+
+New:
+- `supabase/migrations/202608200001_account_deletion.sql`
+- `supabase/functions/account-delete-confirm/index.ts`
+- `lib/features/auth/screens/delete_account_screen.dart`
+- `test/delete_account_screen_test.dart`
+
+Modified:
+- `supabase/functions/verification-send/index.ts` (accept `deletion` purpose)
+- `supabase/functions/_shared/email.ts` (deletion subject)
+- `supabase/config.toml` (register `account-delete-confirm`)
+- `lib/models/verification_code.dart` (`VerificationPurpose.deletion`)
+- `lib/data/account_lifecycle_repository.dart` (`requestDeletion`/`deleteAccount`)
+- `lib/data/supabase_account_lifecycle_repository.dart` (deletion impl)
+- `lib/data/mock_account_lifecycle_repository.dart` (deletion impl)
+- `lib/features/auth/controller/auth_controller.dart` (`requestDeletion`/`deleteAccount`)
+- `lib/features/auth/screens/code_entry_screen.dart` (deletion handling)
+- `lib/features/profile/screens/profile_view_screen.dart` (Delete Account button)
+- `test/mock_account_lifecycle_repository_test.dart` (3 deletion tests)
+- `test/auth_controller_test.dart` (3 deletion tests)
+- `test/code_entry_screen_test.dart` (3 deletion tests)
+- `docs/user-management/PROGRESS.md` (this entry)
+
+### Deployment (completed 2026-08-20)
+
+- `supabase db push` — applied `202608200001_account_deletion.sql` (and
+  `202608190001_journal_entry_location_and_meal_photo.sql`, an un-pushed
+  migration from another module).
+- `supabase functions deploy account-delete-confirm` — deployed.
+- `supabase functions deploy verification-send` — deployed (accepts
+  `deletion` purpose).
+- `supabase functions deploy verification-validate` — deployed (accepts
+  `deletion` purpose; caught during manual review — the initial Phase 9
+  pass updated `verification-send` but missed `verification-validate`,
+  which would have returned 400 for `purpose: "deletion"`).
+- Verified via `supabase projects list` — project `wfuxyatvnztybsaajsfa`
+  (TripJournal) is linked and all four deployments succeeded.
+
+### Cross-module risk (flagged to teammates)
+
+Deletion only cascades cleanly if **every** module's tables that reference
+`auth.users.id` also specify `on delete cascade` (or an explicit
+anonymization strategy) on their own FKs. If Trip/Journal/Health Log don't,
+deleting a user could either fail outright or leave orphaned rows. This
+module can't fix that unilaterally — same category of cross-module dependency
+as the `is_active_user()` flag from Phase 8. **Flag to Trip/Journal/Trip
+Recap/Admin module owners.**
+
+### UX improvement: friendly send/resend error messages (post-manual-test)
+
+After manual testing confirmed the deletion flow works, the raw error strings
+shown on send/resend failure were replaced with plain-language messages so a
+non-technical user gets an honest reason without seeing exception types.
+
+- **`SendCodeException` + `SendCodeFailureKind`** (`lib/data/verification_code_repository.dart`)
+  — a domain exception with a `rateLimited` / `serverError` / `networkError` /
+  `other` kind, mirroring the existing `CodeValidationException` pattern.
+- **`SupabaseVerificationCodeRepository.sendCode()`** now maps:
+  - HTTP 429 → `rateLimited`
+  - HTTP 5xx → `serverError`
+  - `http.ClientException` / `SocketException` / `TimeoutException` → `networkError`
+  - anything else → `other`
+- **`CodeEntryScreen`** shows a friendly message per kind (applies to send +
+  resend, and the generic confirm catch no longer leaks `$e`):
+  - rate limited: *"You've requested a code too recently. Please wait about a minute and try again."*
+  - server error: *"We couldn't send your code. Please try again in a moment."*
+  - network error: *"We couldn't send your code. Please check your connection and try again."*
+  - other: *"We couldn't send your code. Please try again."*
+  - confirm generic: *"Something went wrong. Please try again."*
+- Raw exceptions are still logged via `debugPrint` for debugging.
+- **Tests**: 4 new unit tests in `supabase_verification_code_repository_test.dart`
+  (429/500/400/network mapping) and 4 new widget tests in
+  `code_entry_screen_test.dart` (friendly message per kind). `AuthTestHarness`
+  gained an optional `verificationRepository` parameter to inject a throwing mock.
+
+### Post-Phase-9 fix: `last_login_at` was never written (2026-08-23)
+
+**Problem:** `last_login_at` in `public.profiles` was always `NULL`. The
+column was defined in the Phase 6 migration and mapped in the Dart code, but
+**nothing ever wrote to it** — it was planned for the Phase 10 `record-sign-in`
+Edge Function, which was removed due to time constraints.
+
+**Fix:** Stamp `last_login_at` on **every sign-in** (interactive Google
+sign-in and passive session restore) in
+`ProfileRepository.createProfileIfMissing()`, which is called from both
+sign-in paths in `AuthController`:
+
+- `SupabaseProfileRepository.createProfileIfMissing()` — for an existing
+  profile, calls `updateProfile(existing.copyWith(lastLoginAt: DateTime.now()))`;
+  for a new profile, sets `lastLoginAt: now` at creation.
+- `MockProfileRepository.createProfileIfMissing()` — mirrors the same
+  behavior so mock-mode and tests behave consistently.
+
+No backend deployment or new Edge Function was needed — `last_login_at` was
+already in `profileEditableFieldsToSupabaseRow()`, so `updateProfile` persists
+it via RLS-protected direct table access.
+
+**Tests:** updated `supabase_profile_repository_test.dart` (existing-profile
+path now issues a PATCH stamping `last_login_at`, no insert) and
+`mock_profile_repository_test.dart` (stamps `last_login_at` on an existing
+profile). `flutter analyze` clean; full `flutter test` suite passes.
+
+**Note on existing data:** this stamps `last_login_at` going forward. Rows
+that are already `NULL` are left as-is (their true last-login time is
+unknowable); the next sign-in populates the column.
+
+### Manual test checklist
+
+The automated tests cover the mock/unit layer; these need a real end-to-end
+run against the live backend. **Use a throwaway Google account** — this
+deletes real data.
+
+1. **Happy path** — Profile → Delete Account → verify the "type DELETE"
+   friction field (case-sensitive; `delete` must NOT enable the button) →
+   "Send code" → real email arrives with subject "Your TripJournal account
+   deletion code" → enter code → confirm → lands on login. Signing back in
+   with the same Google account creates a **fresh** account, not a restore.
+2. **"Account is gone" state (most important)** — after deleting, verify no
+   broken "authenticated but the account is gone" state; restart the app and
+   confirm it stays on login (no crash, no stale session).
+3. **Wrong / expired code** — wrong 6-digit code → "Incorrect code. Please
+   try again."; expired code → "This code has expired…".
+4. **Cancel / back** — Cancel on the DELETE screen returns to Profile with no
+   side effects; Back on the code-entry screen returns to the DELETE screen.
+5. **Cross-module cascade (flag to teammates)** — create a trip + journal
+   entry + health log on the test account, delete the account, then query
+   `trips` / `journal_entries` / `health_logs` in Supabase for that user ID.
+   Gone = cascade works; still present = orphaned rows (or the delete failed)
+   — Trip/Journal/Health Log owners need `on delete cascade` on their FKs.
+6. **Regression: deactivation + reactivation** — verify the shared
+   `CodeEntryScreen` changes didn't break the deactivate → sign out →
+   reactivate → back in flow.
+
+### Verification
+
+- `flutter analyze` — no issues found.
+- `flutter test` (mock_account_lifecycle_repository 10, auth_controller 17,
+  code_entry_screen 9, delete_account_screen 4) — all passed.
+- `flutter test test/responsive_layout_test.dart` — all passed (the new
+  "Delete Account" button doesn't overflow at any screen size).
+
+### Definition of Done
+
+- [x] `'deletion'` purpose works through send/resend/validate identically to
+      the other two purposes
+- [x] Confirmation UI has genuine friction (type "DELETE"), visibly distinct
+      from the deactivation flow's UI
+- [x] `account-delete-confirm` deletes the `auth.users` row; the code is only
+      consumed after the delete actually succeeds
+- [x] After deletion, the app lands cleanly on the login screen — no broken
+      "authenticated but the account is gone" state
+- [x] Cross-module cascade risk documented and flagged to teammates
+
+---
+
+## Dead code removal: verification-resend (post-Phase 8)
+
+### What was done
+
+The `verification-resend` Edge Function and all client-side references to it
+were removed as dead code. It was never invoked by any code path:
+
+- The app's "Resend code" button (`CodeEntryScreen._resend`) routes through
+  `AccountLifecycleRepository.requestReactivation()` / `requestDeactivation()`
+  -> `VerificationCodeRepository.sendCode()` -> the `verification-send` Edge
+  Function. The `resendCode()` method (on the interface + both
+  `Supabase*`/`Mock*` implementations) that would have called
+  `verification-resend` was the only consumer, and it was never wired to the
+  UI.
+
+### Files changed
+
+- `supabase/config.toml` - removed the `[functions.verification-resend]`
+  registration block.
+- `supabase/functions/verification-resend/` - directory deleted (was:
+  `index.ts` + any bundled deps).
+- `lib/data/verification_code_repository.dart` - removed
+  `resendCode()` from the interface.
+- `lib/data/supabase_verification_code_repository.dart` - removed
+  `resendCode()`.
+- `lib/data/mock_verification_code_repository.dart` - removed
+  `resendCode()`; `sendCode()` already handles resend (invalidates prior
+  codes + sends a fresh one), so the mock comment was updated to note resend
+  reuses `sendCode()`.
+- `test/supabase_verification_code_repository_test.dart` - removed
+  `resendCode` test group.
+- `test/mock_verification_code_repository_test.dart` - replaced
+  `resendCode` test with a `sendCode again (resend)` test.
+- `lib/features/auth/README.md` - updated the "Security notes" section to
+  reference only `verification-send` (not `verification-send`/`resend`).
+- `docs/user-management/PROGRESS.md` - this file; Phase 6/7/8 entries
+  annotated with dead-code-removal notes.
+
+### Deployment
+
+- `supabase functions delete verification-resend` - dropped the deployed
+  function from the live Supabase project.
+- No new function deploy needed (the remaining 4 functions are unchanged by
+  this cleanup; their rate-limiting edits from Phase 8 are already live).
+
+### Tests
+
+- Dart: `flutter analyze` + `flutter test` - clean (the `resendCode` method
+  was only referenced in the 2 test files that were updated).
+
+---
+
+## Profile Onboarding (post-registration)
+
+Built against `IMPLEMENTATION_PLAN_PROFILE_ONBOARDING.md` (repo root), with
+module-owner sign-off obtained before starting per that plan's "Prerequisites
+& Coordination" section. A first-login welcome screen collecting avatar,
+name, travel interests, date of birth, and country, wired through the
+existing `profiles` table / `ProfileRepository` / `AuthController` rather
+than a parallel mechanism.
+
+### What was done
+
+- **Schema** (`supabase/migrations/202608250002_profile_onboarding.sql`):
+  additive columns on `public.profiles` - `date_of_birth date`,
+  `country text`, `travel_interests text[] not null default '{}'`,
+  `profile_completed boolean not null default false`. No RLS change needed
+  (the existing `auth.uid() = user_id` policies aren't column-scoped).
+  Backfilled `profile_completed = true` for every row that existed before
+  this migration - onboarding is for genuinely new signups only, not a
+  retroactive nag for users already using the app.
+- **First-login routing**: `AuthController.status` gained
+  `AuthStatus.needsOnboarding`, checked after suspended/deactivated but
+  before authenticated. `AuthGate` routes it to the new
+  `ProfileOnboardingScreen`. A new `AuthController.refreshProfile()` (renamed
+  out of the former `onReactivated()` body, which now just calls it) lets
+  `ProfileController` - which saves through its own `ProfileRepository`
+  reference, not through `AuthController` - tell `AuthController` its cached
+  profile is stale once onboarding finishes or is skipped, so `AuthGate`
+  actually swaps the screen out.
+- **`Profile.profileCompleted` defaults to `true` in the Dart model**
+  (deliberately the opposite of the DB column's own `false` default) so
+  every pre-existing call site constructing a `Profile` - test fixtures,
+  `MockProfileRepository`'s active/deactivated seeds - keeps reading as
+  "already onboarded" without being touched. Only the two `createProfileIfMissing`
+  "no profile yet" branches (mock + Supabase) pass `profileCompleted: false`
+  explicitly, since those are the only two places a genuinely new account is
+  created.
+- **Onboarding screen** (`lib/features/profile/screens/profile_onboarding_screen.dart`):
+  pre-fills the Google-derived display name, then avatar / name / interests
+  (chip multi-select) / date of birth / country, all optional except name -
+  and even name is bypassed by "Skip for now". Skipping never loses data the
+  user already had; it only flips `profile_completed`.
+- **Reused, not duplicated**, onto the profile edit screen too
+  (`ProfileEditScreen` gained the same three fields via the same widgets -
+  `TravelInterestSelector`, `DateOfBirthField`, `CountrySelector` - through a
+  new `ProfileController.updateTravelDetails`, kept separate from
+  `completeOnboarding` since editing an already-onboarded profile must never
+  touch `profileCompleted`).
+- **Country list**: a plain static `lib/data/countries.dart` (~195 names),
+  not a new package dependency - the column is free-text, so a
+  flags/ISO-codes package would be more than this needed.
+- Checked `kMockUserDisplayName` (flagged in the plan as a homepage
+  hardcoded name to replace) - confirmed still dead code, referenced nowhere
+  outside its own declaration (`lib/features/trip/mock_user.dart`). Nothing
+  to change there.
+- Travel interests are currently write-only (stored, shown on the profile
+  view screen, not yet consumed by any recommendation/summary feature) - the
+  plan flagged this as acceptable for now; noting it again here rather than
+  building a consumer that wasn't asked for.
+
+### Files changed
+
+- New: the migration above; `lib/data/countries.dart`;
+  `lib/features/profile/widgets/{travel_interest_selector,date_of_birth_field,country_selector}.dart`;
+  `lib/features/profile/screens/profile_onboarding_screen.dart`;
+  `test/profile_onboarding_screen_test.dart`.
+- Modified: `lib/models/profile.dart`, `lib/data/profile_supabase_mapper.dart`,
+  `lib/data/{mock,supabase}_profile_repository.dart`,
+  `lib/validation/profile_validation.dart`,
+  `lib/features/auth/controller/auth_controller.dart`,
+  `lib/features/auth/auth_gate.dart`,
+  `lib/features/profile/controller/profile_controller.dart`,
+  `lib/features/profile/screens/{profile_view_screen,profile_edit_screen}.dart`.
+- Tests extended: `profile_supabase_mapper_test.dart`,
+  `mock_profile_repository_test.dart`, `supabase_profile_repository_test.dart`,
+  `profile_validation_test.dart`, `auth_controller_test.dart`,
+  `profile_controller_test.dart`, `profile_edit_screen_test.dart`.
+
+### Tests
+
+- `flutter analyze` - clean. `flutter test` - all passing (1060 tests,
+  up from 1038 before this feature).
+- The one deliberately-changed pre-existing expectation:
+  `auth_controller_test.dart`'s "first-time user gets a profile created on
+  sign-in" now expects `AuthStatus.needsOnboarding`, not `authenticated` -
+  that is the actual new behaviour, not a regression.
+- New widget tests found and required a fix unrelated to this feature's
+  logic: the onboarding/edit screens' `ListView` is sliver-backed, so fields
+  below the fold (country selector, Continue button) aren't mounted until
+  scrolled into range under `flutter test`'s fixed viewport. Fixed with
+  `tester.scrollUntilVisible`, matching the existing pattern in
+  `place_picker_screen_test.dart` - not a bug in the shipped screens
+  themselves, real devices scroll normally.

@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../models/geo_tag.dart';
+import 'current_location_locator.dart' as current_location_locator;
+import 'current_location_service.dart';
 import 'google_place_picker_map.dart';
 import 'place_search_service.dart';
 
@@ -12,11 +14,13 @@ class PlacePickerScreen extends StatefulWidget {
     required this.service,
     this.mapBuilder = buildConfiguredGooglePlacePickerMap,
     this.initialLocation,
+    this.currentLocationService,
   });
 
   final PlaceSearchService service;
   final PlacePickerMapBuilder mapBuilder;
   final GeoTag? initialLocation;
+  final CurrentLocationService? currentLocationService;
 
   @override
   State<PlacePickerScreen> createState() => _PlacePickerScreenState();
@@ -29,6 +33,10 @@ class _PlacePickerScreenState extends State<PlacePickerScreen> {
   bool _busy = false;
   String? _error;
   Future<void> Function()? _retry;
+  Future<void> Function()? _settingsAction;
+  String? _settingsLabel;
+  Key? _settingsKey;
+  double? _accuracyMeters;
   int _operationGeneration = 0;
 
   @override
@@ -52,6 +60,7 @@ class _PlacePickerScreenState extends State<PlacePickerScreen> {
       _busy = true;
       _error = null;
       _retry = null;
+      _clearSettingsAction();
     });
     try {
       final suggestions = await widget.service.search(query);
@@ -76,12 +85,14 @@ class _PlacePickerScreenState extends State<PlacePickerScreen> {
       _busy = true;
       _error = null;
       _retry = null;
+      _clearSettingsAction();
     });
     try {
       final location = await widget.service.resolvePlace(suggestion.placeId);
       if (!mounted || generation != _operationGeneration) return;
       setState(() {
         _selected = location;
+        _accuracyMeters = null;
         _busy = false;
       });
     } catch (error) {
@@ -102,7 +113,10 @@ class _PlacePickerScreenState extends State<PlacePickerScreen> {
       longitude: longitude,
       placeName: _coordinateLabel(latitude, longitude),
     );
-    setState(() => _selected = coordinate);
+    setState(() {
+      _selected = coordinate;
+      _accuracyMeters = null;
+    });
     unawaited(_reverseGeocode(latitude: latitude, longitude: longitude));
   }
 
@@ -115,6 +129,7 @@ class _PlacePickerScreenState extends State<PlacePickerScreen> {
       _busy = true;
       _error = null;
       _retry = null;
+      _clearSettingsAction();
     });
     try {
       final location = await widget.service.reverseGeocode(
@@ -137,6 +152,87 @@ class _PlacePickerScreenState extends State<PlacePickerScreen> {
     }
   }
 
+  Future<void> _useCurrentLocation() async {
+    if (_busy) return;
+    final generation = ++_operationGeneration;
+    setState(() {
+      _busy = true;
+      _error = null;
+      _retry = null;
+      _clearSettingsAction();
+    });
+    try {
+      final location =
+          await (widget.currentLocationService ??
+                  current_location_locator.currentLocationService)
+              .locate();
+      if (!mounted || generation != _operationGeneration) return;
+      setState(() {
+        _selected = GeoTag(
+          latitude: location.latitude,
+          longitude: location.longitude,
+          placeName: _coordinateLabel(location.latitude, location.longitude),
+        );
+        _accuracyMeters = location.accuracyMeters;
+      });
+      await _reverseGeocode(
+        latitude: location.latitude,
+        longitude: location.longitude,
+      );
+    } catch (error) {
+      if (!mounted || generation != _operationGeneration) return;
+      final currentLocationService =
+          widget.currentLocationService ??
+          current_location_locator.currentLocationService;
+      setState(() {
+        _busy = false;
+        _error = _currentLocationErrorMessage(error);
+        _retry = _useCurrentLocation;
+        _setSettingsAction(error, currentLocationService);
+      });
+    }
+  }
+
+  void _setSettingsAction(
+    Object error,
+    CurrentLocationService currentLocationService,
+  ) {
+    if (error is! CurrentLocationException) return;
+    switch (error.failure) {
+      case CurrentLocationFailure.permissionDeniedForever:
+        if (currentLocationService.supportsAppSettings) {
+          _settingsAction = () =>
+              _openSettings(currentLocationService.openAppSettings);
+          _settingsLabel = 'App settings';
+          _settingsKey = const Key('place-picker-open-app-settings');
+        }
+        return;
+      case CurrentLocationFailure.serviceDisabled:
+        if (currentLocationService.supportsLocationSettings) {
+          _settingsAction = () =>
+              _openSettings(currentLocationService.openLocationSettings);
+          _settingsLabel = 'Location settings';
+          _settingsKey = const Key('place-picker-open-location-settings');
+        }
+        return;
+      case CurrentLocationFailure.permissionDenied ||
+          CurrentLocationFailure.unavailable ||
+          CurrentLocationFailure.unsupportedPlatform ||
+          CurrentLocationFailure.insecureOrigin:
+        return;
+    }
+  }
+
+  Future<void> _openSettings(Future<bool> Function() open) async {
+    await open();
+  }
+
+  void _clearSettingsAction() {
+    _settingsAction = null;
+    _settingsLabel = null;
+    _settingsKey = null;
+  }
+
   @override
   Widget build(BuildContext context) {
     final selected = _selected;
@@ -149,6 +245,14 @@ class _PlacePickerScreenState extends State<PlacePickerScreen> {
           icon: const Icon(Icons.close),
         ),
         title: const Text('Choose location'),
+        actions: [
+          TextButton.icon(
+            key: const Key('place-picker-current-location'),
+            onPressed: _busy ? null : () => unawaited(_useCurrentLocation()),
+            icon: const Icon(Icons.my_location),
+            label: const Text('Use my location'),
+          ),
+        ],
       ),
       body: SafeArea(
         child: ListView(
@@ -168,6 +272,13 @@ class _PlacePickerScreenState extends State<PlacePickerScreen> {
                   icon: const Icon(Icons.search),
                 ),
               ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Location is saved only when you confirm. Place lookup is '
+              'processed securely through TripJournal.',
+              key: const Key('place-picker-privacy-note'),
+              style: Theme.of(context).textTheme.bodySmall,
             ),
             if (_busy) ...[
               const SizedBox(height: 8),
@@ -194,6 +305,14 @@ class _PlacePickerScreenState extends State<PlacePickerScreen> {
                             : () => unawaited(_retry!()),
                         child: const Text('Retry'),
                       ),
+                      if (_settingsAction != null)
+                        TextButton(
+                          key: _settingsKey,
+                          onPressed: _busy
+                              ? null
+                              : () => unawaited(_settingsAction!()),
+                          child: Text(_settingsLabel!),
+                        ),
                     ],
                   ),
                 ),
@@ -229,6 +348,25 @@ class _PlacePickerScreenState extends State<PlacePickerScreen> {
             ),
             const SizedBox(height: 12),
             _SelectionCard(selected: selected),
+            if (_accuracyMeters != null) ...[
+              const SizedBox(height: 8),
+              Text(
+                'Accuracy: approximately ±${_accuracyMeters!.round()} m',
+                key: const Key('place-picker-location-accuracy'),
+              ),
+              if (_accuracyMeters! > 200)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text(
+                    'Location accuracy is low. You can move the pin before '
+                    'confirming.',
+                    key: const Key('place-picker-location-accuracy-warning'),
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.error,
+                    ),
+                  ),
+                ),
+            ],
             const SizedBox(height: 16),
             FilledButton.icon(
               key: const Key('place-picker-confirm'),
@@ -290,4 +428,24 @@ String? _nonEmpty(String? value) {
 String _errorMessage(Object error) {
   if (error is PlaceSearchException) return error.message;
   return 'Place search is temporarily unavailable. Please try again.';
+}
+
+String _currentLocationErrorMessage(Object error) {
+  if (error is! CurrentLocationException) {
+    return 'Current location is unavailable. Please try again.';
+  }
+  return switch (error.failure) {
+    CurrentLocationFailure.permissionDenied =>
+      'Location permission was denied.',
+    CurrentLocationFailure.permissionDeniedForever =>
+      'Location permission is permanently denied.',
+    CurrentLocationFailure.serviceDisabled =>
+      'Location services are turned off.',
+    CurrentLocationFailure.unavailable =>
+      'Current location is unavailable. Please try again.',
+    CurrentLocationFailure.unsupportedPlatform =>
+      'Current location is not supported on this device.',
+    CurrentLocationFailure.insecureOrigin =>
+      'Current location requires a secure HTTPS connection.',
+  };
 }

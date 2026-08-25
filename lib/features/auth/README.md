@@ -11,13 +11,13 @@ tables**. This module owns only the two things Supabase Auth has no concept of:
 | Entity | Where it lives | Why it's custom |
 |---|---|---|
 | `Profile` | `public.profiles` | Holds `status` (active/deactivated/suspended) and app-specific fields (display name, avatar, role). Supabase Auth only knows email + identity. |
-| `VerificationCode` | `public.verification_codes` | One-time codes emailed to confirm an action (deactivation/reactivation). Supabase Auth has no OTP feature. |
+| `VerificationCode` | `public.verification_codes` | One-time codes emailed to confirm an action (deactivation/reactivation/deletion). Supabase Auth has no OTP feature. |
 
 **`LinkedProvider` and `Session` are deliberately NOT built as custom tables** —
 Supabase Auth's `auth.identities` (linked providers) and its own session/JWT/refresh
 token handling replace them. We don't duplicate what Supabase Auth does correctly.
 
-## How sign-in / deactivation / reactivation work
+## How sign-in / deactivation / reactivation / deletion work
 
 1. **Sign-in** — `SupabaseAuthRepository` uses the **native ID-token flow**
    (`GoogleSignIn().signIn()` → `supabase.auth.signInWithIdToken(...)`), *not*
@@ -31,12 +31,20 @@ token handling replace them. We don't duplicate what Supabase Auth does correctl
    - `deactivated` → `AuthStatus.deactivated` → reactivation code-entry screen.
    - `suspended` (admin-imposed) → `AuthStatus.suspended` → blocked (self-service
      reactivation must not clear an admin action).
-4. **Code entry** — `CodeEntryScreen` is reusable for both purposes
-   (`VerificationPurpose.deactivation` / `.reactivation`). Wrong code vs. expired
-   code are distinct UI states via the `CodeValidationResult` enum.
+4. **Code entry** — `CodeEntryScreen` is reusable for all three purposes
+   (`VerificationPurpose.deactivation` / `.reactivation` / `.deletion`). Wrong
+   code vs. expired code are distinct UI states via the `CodeValidationResult`
+   enum.
 5. **Confirm** — `account-deactivate-confirm` (sets `deactivated`, then
-   `auth.admin.signOut()` everywhere) and `account-reactivate-confirm` (sets
-   `active`, clears `deactivated_at` — no sign-out, the session was only gated).
+   `auth.admin.signOut()` everywhere), `account-reactivate-confirm` (sets
+   `active`, clears `deactivated_at` — no sign-out, the session was only gated),
+   and `account-delete-confirm` (permanently deletes the `auth.users` row, which
+   cascades to `profiles` + `verification_codes`).
+6. **Deletion friction** — `DeleteAccountScreen` requires typing "DELETE" to
+   unlock the "Send code" button, deliberately more resistant than deactivation
+   since it can't be undone. After a successful delete, `AuthController`
+   explicitly signs out client-side (the local session now points at a user that
+   no longer exists).
 
 ## Client-side vs. server-side responsibility
 
@@ -71,6 +79,15 @@ Codes are **sha256-hashed** before storage (never plaintext). `validateCode()` i
 non-destructive; only the `account-*-confirm` functions call `consumeCode()`
 *after* their side effects succeed.
 
+## Cross-module: account deletion cascade risk
+
+Deleting a user (`account-delete-confirm`) only cascades cleanly if **every**
+module's tables that reference `auth.users.id` also specify `on delete cascade`
+(or an explicit anonymization strategy) on their own FKs. If Trip/Journal/Health
+Log don't, deleting a user could either fail outright or leave orphaned rows.
+This module can't fix that unilaterally — **module owners, please ensure your
+tables cascade (or anonymize) on `auth.users` delete.**
+
 ## Cross-module: excluding deactivated / suspended users
 
 A deactivated user still holds a valid Supabase session/JWT (Supabase Auth doesn't
@@ -95,8 +112,8 @@ reactivation is server-side).
 - OTP: 6 digits (10^6 ≈ 20 bits of entropy), 10-minute TTL — see "Open issues"
   below for the entropy trade-off.
 - `attempt_count` lockout after 5 wrong attempts on `verification-validate`.
-- `verification-send` / `verification-resend` are **rate-limited** (one code per
-  user+purpose per 60s) to prevent email spamming.
+- `verification-send` is **rate-limited** (one code per user+purpose per 60s)
+  to prevent email spamming.
 
 ## Testing
 

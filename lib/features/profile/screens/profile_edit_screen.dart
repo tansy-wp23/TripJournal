@@ -7,7 +7,10 @@ import 'package:image_picker/image_picker.dart';
 import '../../../validation/photo_validation.dart';
 import '../../../validation/profile_validation.dart';
 import '../controller/profile_controller.dart';
+import '../widgets/country_selector.dart';
+import '../widgets/date_of_birth_field.dart';
 import '../widgets/profile_avatar.dart';
+import '../widgets/travel_interest_selector.dart';
 
 class ProfileEditScreen extends ConsumerStatefulWidget {
   const ProfileEditScreen({super.key});
@@ -23,6 +26,9 @@ class _ProfileEditScreenState extends ConsumerState<ProfileEditScreen> {
   XFile? _pickedAvatar;
   Uint8List? _pickedAvatarBytes;
   bool _avatarRemoved = false;
+  late DateTime? _dateOfBirth;
+  late String? _country;
+  late final Set<String> _selectedInterests;
 
   @override
   void initState() {
@@ -31,6 +37,9 @@ class _ProfileEditScreenState extends ConsumerState<ProfileEditScreen> {
     _displayNameController = TextEditingController(
       text: profile?.displayName ?? '',
     );
+    _dateOfBirth = profile?.dateOfBirth;
+    _country = profile?.country;
+    _selectedInterests = {...?profile?.travelInterests};
   }
 
   @override
@@ -131,12 +140,25 @@ class _ProfileEditScreenState extends ConsumerState<ProfileEditScreen> {
       avatarError = await controller.removeAvatar();
     }
     if (!mounted) return;
-    setState(() => _saving = false);
-
     if (avatarError != null) {
+      setState(() => _saving = false);
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text(avatarError)));
+      return;
+    }
+
+    final detailsError = await controller.updateTravelDetails(
+      dateOfBirth: _dateOfBirth,
+      country: _country,
+      travelInterests: _selectedInterests,
+    );
+    if (!mounted) return;
+    setState(() => _saving = false);
+    if (detailsError != null) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(detailsError)));
       return;
     }
 
@@ -238,6 +260,31 @@ class _ProfileEditScreenState extends ConsumerState<ProfileEditScreen> {
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
                       color: Theme.of(context).colorScheme.onSurfaceVariant,
                     ),
+              ),
+              const SizedBox(height: 24),
+              Text(
+                'Travel interests',
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+              const SizedBox(height: 8),
+              TravelInterestSelector(
+                selected: _selectedInterests,
+                onChanged: (next) => setState(() {
+                  _selectedInterests
+                    ..clear()
+                    ..addAll(next);
+                }),
+              ),
+              const SizedBox(height: 16),
+              DateOfBirthField(
+                value: _dateOfBirth,
+                onChanged: (date) => setState(() => _dateOfBirth = date),
+                errorText: validateDateOfBirth(_dateOfBirth),
+              ),
+              const SizedBox(height: 16),
+              CountrySelector(
+                value: _country,
+                onChanged: (country) => setState(() => _country = country),
               ),
               const SizedBox(height: 24),
               OutlinedButton(

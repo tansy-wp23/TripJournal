@@ -7,6 +7,7 @@ import '../../data/current_user_id_provider.dart';
 import '../../data/trip_repository_locator.dart';
 import '../admin/widgets/report_issue_button.dart';
 import '../auth/controller/auth_controller.dart';
+import '../community/community_screen.dart';
 import '../profile/screens/profile_view_screen.dart';
 import '../settings/settings_providers.dart';
 import '../settings/settings_screen.dart';
@@ -121,7 +122,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   Future<void> _openTripView(Trip trip) async {
-    final movedToTrash = await Navigator.push<bool>(
+    await Navigator.push<bool>(
       context,
       MaterialPageRoute(
         builder: (_) => TripViewScreen(
@@ -130,9 +131,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         ),
       ),
     );
-    if (movedToTrash == true) {
-      await _loadDashboardData();
-    }
+    if (!mounted) return;
+    await _loadDashboardData();
   }
 
   Future<void> _openCreateTrip() async {
@@ -193,7 +193,19 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       appBar: AppBar(
         title: const Text('TripJournal'),
         actions: [
-          ReportIssueButton(page: 'HomeScreen', userIdProvider: widget.userIdProvider),
+          IconButton(
+            key: const Key('community-button'),
+            icon: const Icon(Icons.public),
+            tooltip: 'Community',
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const CommunityScreen()),
+            ),
+          ),
+          ReportIssueButton(
+            page: 'HomeScreen',
+            userIdProvider: widget.userIdProvider,
+          ),
           PopupMenuButton<String>(
             onSelected: _onProfileMenuSelected,
             itemBuilder: (context) => const [
@@ -285,12 +297,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         const SizedBox(height: 8),
         if (orderedTrips.isEmpty)
           TripListNoMatchesState(
-            onClearFilter: () =>
-                setState(() {
-                  _statusFilter = TripStatusFilter.all;
-                  _tripQuery = '';
-                  _tripSearchVisible = false;
-                }),
+            onClearFilter: () => setState(() {
+              _statusFilter = TripStatusFilter.all;
+              _tripQuery = '';
+              _tripSearchVisible = false;
+            }),
           )
         else
           for (final trip in orderedTrips)

@@ -19,6 +19,20 @@ class Profile {
   final DateTime? lastLoginAt;
   final DateTime createdAt;
   final DateTime updatedAt;
+  final DateTime? dateOfBirth;
+  final String? country;
+  final List<String> travelInterests;
+
+  /// Drives first-login onboarding routing — see [AuthStatus.needsOnboarding]
+  /// in `auth_controller.dart`. Defaults to `true` here (not `false`) so
+  /// every existing call site that builds a [Profile] without naming this
+  /// field — test fixtures, `MockProfileRepository`'s active/deactivated
+  /// seeds, anything constructed before this field existed — keeps behaving
+  /// as "already onboarded". Only the two call sites that create a genuinely
+  /// new profile (`MockProfileRepository`/`SupabaseProfileRepository`'s
+  /// `createProfileIfMissing` "no profile yet" branch) pass `false`
+  /// explicitly.
+  final bool profileCompleted;
 
   const Profile({
     required this.userID,
@@ -31,6 +45,10 @@ class Profile {
     this.lastLoginAt,
     required this.createdAt,
     required this.updatedAt,
+    this.dateOfBirth,
+    this.country,
+    this.travelInterests = const [],
+    this.profileCompleted = true,
   });
 
   bool get isActive => status == AccountStatus.active;
@@ -59,6 +77,16 @@ class Profile {
           : null,
       createdAt: DateTime.parse(json['createdAt'] as String),
       updatedAt: DateTime.parse(json['updatedAt'] as String),
+      dateOfBirth: json['dateOfBirth'] != null
+          ? DateTime.parse(json['dateOfBirth'] as String)
+          : null,
+      country: json['country'] as String?,
+      travelInterests:
+          (json['travelInterests'] as List<dynamic>?)
+              ?.map((e) => e as String)
+              .toList() ??
+          const [],
+      profileCompleted: json['profileCompleted'] as bool? ?? true,
     );
   }
 
@@ -74,6 +102,10 @@ class Profile {
       'lastLoginAt': lastLoginAt?.toIso8601String(),
       'createdAt': createdAt.toIso8601String(),
       'updatedAt': updatedAt.toIso8601String(),
+      'dateOfBirth': dateOfBirth?.toIso8601String(),
+      'country': country,
+      'travelInterests': travelInterests,
+      'profileCompleted': profileCompleted,
     };
   }
 
@@ -90,6 +122,12 @@ class Profile {
     DateTime? lastLoginAt,
     DateTime? createdAt,
     DateTime? updatedAt,
+    DateTime? dateOfBirth,
+    bool clearDateOfBirth = false,
+    String? country,
+    bool clearCountry = false,
+    List<String>? travelInterests,
+    bool? profileCompleted,
   }) {
     return Profile(
       userID: userID ?? this.userID,
@@ -103,6 +141,10 @@ class Profile {
       lastLoginAt: lastLoginAt ?? this.lastLoginAt,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
+      dateOfBirth: clearDateOfBirth ? null : (dateOfBirth ?? this.dateOfBirth),
+      country: clearCountry ? null : (country ?? this.country),
+      travelInterests: travelInterests ?? this.travelInterests,
+      profileCompleted: profileCompleted ?? this.profileCompleted,
     );
   }
 }

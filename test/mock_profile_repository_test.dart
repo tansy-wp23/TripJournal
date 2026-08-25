@@ -14,6 +14,9 @@ void main() {
       expect(profile!.status, AccountStatus.active);
       expect(profile.isActive, isTrue);
       expect(profile.email, 'sangyou@example.com');
+      // An already-existing seeded user, not a brand-new signup — must not
+      // be routed to onboarding.
+      expect(profile.profileCompleted, isTrue);
     });
 
     test('deactivated state seeds a deactivated profile', () async {
@@ -42,22 +45,27 @@ void main() {
       expect(created.status, AccountStatus.active);
       expect(created.userID, 'user-001');
       expect((await repo.getProfile('user-001'))?.displayName, 'Sang You');
+      // Genuinely new profile — routes through onboarding once.
+      expect(created.profileCompleted, isFalse);
     });
 
-    test('createProfileIfMissing is a no-op when a profile already exists',
+    test('createProfileIfMissing stamps last_login_at on an existing profile',
         () async {
       final repo = MockProfileRepository(state: MockProfileState.active);
 
       final existing = await repo.getProfile('user-001');
+      expect(existing!.lastLoginAt, isNull);
+
       final result = await repo.createProfileIfMissing(
         userId: 'user-001',
         email: 'other@example.com',
         displayName: 'Other',
       );
 
-      expect(result.userID, existing!.userID);
+      expect(result.userID, existing.userID);
       expect(result.email, existing.email);
       expect(result.displayName, existing.displayName);
+      expect(result.lastLoginAt, isNotNull);
     });
 
     test('getProfile returns null for an unknown user', () async {

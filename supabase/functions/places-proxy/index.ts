@@ -9,24 +9,23 @@ type AuthenticatedUser = { id: string };
 type Authenticate = (
   authorization: string | null,
 ) => Promise<AuthenticatedUser | null>;
+type RateLimitDecision = {
+  allowed: boolean;
+  remaining: number;
+  retryAfterSeconds: number;
+};
+type ConsumeRateLimit = (
+  authorization: string,
+) => Promise<RateLimitDecision>;
 
 interface PlacesProxyDependencies {
   fetch?: FetchImplementation;
   authenticate?: Authenticate;
+  consumeRateLimit?: ConsumeRateLimit;
   readEnv?: (name: string) => string | undefined;
-  now?: () => number;
   scheduleTimeout?: (callback: () => void, delayMs: number) => unknown;
   cancelTimeout?: (handle: unknown) => void;
-  rateLimit?: {
-    maxRequests: number;
-    windowMs: number;
-  };
   providerTimeoutMs?: number;
-}
-
-interface RateLimitEntry {
-  count: number;
-  windowStartedAt: number;
 }
 
 const corsHeaders = {
@@ -40,7 +39,6 @@ const corsHeaders = {
 const googlePlacesBaseUrl = "https://places.googleapis.com/v1";
 const googleGeocodingUrl = "https://maps.googleapis.com/maps/api/geocode/json";
 const defaultProviderTimeoutMs = 8_000;
-const defaultRateLimit = { maxRequests: 20, windowMs: 60_000 };
 
 const publicErrors = {
   unauthorized: {
@@ -54,6 +52,10 @@ const publicErrors = {
   rate_limited: {
     status: 429,
     message: "Too many requests. Please try again shortly.",
+  },
+  rate_limit_unavailable: {
+    status: 503,
+    message: "Location search is temporarily unavailable. Please try again.",
   },
   timeout: {
     status: 504,
@@ -147,6 +149,49 @@ function createSupabaseAuthenticator(
     } = await client.auth.getUser(token);
     if (error != null || user == null || !nonEmptyString(user.id)) return null;
     return { id: user.id };
+  };
+}
+
+function createSupabaseRateLimiter(
+  readEnv: (name: string) => string | undefined,
+  fetchImplementation: FetchImplementation,
+): ConsumeRateLimit {
+  return async (authorization) => {
+    try {
+      const supabaseUrl = requireEnvironment(readEnv, "SUPABASE_URL");
+      const anonKey = requireEnvironment(readEnv, "SUPABASE_ANON_KEY");
+      const response = await fetchImplementation(
+        `${supabaseUrl}/rest/v1/rpc/consume_places_rate_limit`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: authorization,
+            apikey: anonKey,
+            "Content-Type": "application/json",
+          },
+          body: "{}",
+        },
+      );
+      if (!response.ok) throw new ProxyError("rate_limit_unavailable");
+
+      const raw = await response.json();
+      const value = Array.isArray(raw) ? raw[0] : raw;
+      if (
+        !isRecord(value) || typeof value.allowed !== "boolean" ||
+        typeof value.remaining !== "number" ||
+        typeof value.retry_after_seconds !== "number"
+      ) {
+        throw new ProxyError("rate_limit_unavailable");
+      }
+      return {
+        allowed: value.allowed,
+        remaining: value.remaining,
+        retryAfterSeconds: value.retry_after_seconds,
+      };
+    } catch (error) {
+      if (error instanceof ProxyError) throw error;
+      throw new ProxyError("rate_limit_unavailable");
+    }
   };
 }
 
@@ -295,30 +340,14 @@ export function createPlacesProxyHandler(
   const readEnv = dependencies.readEnv ?? ((name) => Deno.env.get(name));
   const authenticate = dependencies.authenticate ??
     createSupabaseAuthenticator(readEnv, fetchImplementation);
-  const now = dependencies.now ?? Date.now;
+  const consumeRateLimit = dependencies.consumeRateLimit ??
+    createSupabaseRateLimiter(readEnv, fetchImplementation);
   const scheduleTimeout = dependencies.scheduleTimeout ??
     ((callback, delayMs) => setTimeout(callback, delayMs));
   const cancelTimeout = dependencies.cancelTimeout ??
     ((handle) => clearTimeout(handle as ReturnType<typeof setTimeout>));
-  const rateLimit = dependencies.rateLimit ?? defaultRateLimit;
   const providerTimeoutMs = dependencies.providerTimeoutMs ??
     defaultProviderTimeoutMs;
-  const requestsByUser = new Map<string, RateLimitEntry>();
-
-  function consumeRateLimit(userId: string) {
-    const currentTime = now();
-    const existing = requestsByUser.get(userId);
-    if (
-      existing == null ||
-      currentTime - existing.windowStartedAt >= rateLimit.windowMs
-    ) {
-      requestsByUser.set(userId, { count: 1, windowStartedAt: currentTime });
-      return true;
-    }
-    if (existing.count >= rateLimit.maxRequests) return false;
-    existing.count += 1;
-    return true;
-  }
 
   async function googleJson(
     input: RequestInfo | URL,
@@ -404,7 +433,14 @@ export function createPlacesProxyHandler(
         };
       }
 
-      if (!consumeRateLimit(user.id)) return errorResponse("rate_limited");
+      const authorization = request.headers.get("Authorization") ?? "";
+      let limitDecision: RateLimitDecision;
+      try {
+        limitDecision = await consumeRateLimit(authorization);
+      } catch {
+        throw new ProxyError("rate_limit_unavailable");
+      }
+      if (!limitDecision.allowed) return errorResponse("rate_limited");
 
       const serverKey = requireEnvironment(
         readEnv,

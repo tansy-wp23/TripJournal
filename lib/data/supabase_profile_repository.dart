@@ -33,7 +33,12 @@ class SupabaseProfileRepository implements ProfileRepository {
     // this is a defensive fallback for profiles created before the trigger
     // existed or in edge cases where the trigger didn't fire.
     final existing = await getProfile(userId);
-    if (existing != null) return existing;
+    if (existing != null) {
+      // Stamp last_login_at on every sign-in (interactive or restored).
+      // Nothing else writes this column, so without this it stays NULL
+      // forever. See docs/user-management/PROGRESS.md.
+      return updateProfile(existing.copyWith(lastLoginAt: DateTime.now()));
+    }
 
     final now = DateTime.now();
     final profile = Profile(
@@ -41,8 +46,13 @@ class SupabaseProfileRepository implements ProfileRepository {
       email: email,
       displayName: displayName,
       status: AccountStatus.active,
+      lastLoginAt: now,
       createdAt: now,
       updatedAt: now,
+      // Genuinely new account (this is the defensive fallback path — the
+      // handle_new_user trigger is primary and relies on the column's own
+      // `false` default instead). Routes through onboarding once.
+      profileCompleted: false,
     );
 
     final row = await _client

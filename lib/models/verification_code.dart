@@ -84,5 +84,6 @@ class VerificationCode {
 }
 
 /// What a verification code is for. The shared OTP widget (Phase 4) takes a
-/// [VerificationPurpose] so it can be reused for both flows.
-enum VerificationPurpose { deactivation, reactivation }
+/// [VerificationPurpose] so it can be reused for all flows: deactivation,
+/// reactivation, and (Phase 9) permanent account deletion.
+enum VerificationPurpose { deactivation, reactivation, deletion }

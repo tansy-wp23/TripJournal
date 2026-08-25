@@ -95,6 +95,27 @@ class SupabaseAccountLifecycleRepository implements AccountLifecycleRepository {
     }
   }
 
+  @override
+  Future<void> requestDeletion() async {
+    await _verificationCodeRepository.sendCode(VerificationPurpose.deletion);
+  }
+
+  @override
+  Future<void> deleteAccount(String code) async {
+    try {
+      // The Edge Function validates the code server-side (and consumes it
+      // on success) and deletes the auth.users row, which cascades to
+      // profiles and verification_codes. Same rule as the other confirm
+      // functions — no client-side pre-validate call.
+      await _client.functions.invoke(
+        'account-delete-confirm',
+        body: {'code': code},
+      );
+    } on FunctionException catch (e) {
+      throw _mapConfirmError(e);
+    }
+  }
+
   /// Maps a 400 `{"error": "invalid_code:<reason>"}` response from either
   /// confirm function into the same [CodeValidationException] shape the
   /// rest of the app already expects. Any other status/shape is rethrown

@@ -10,7 +10,7 @@ void main() {
   testWidgets('adding a meal defaults its portion to Regular', (tester) async {
     HealthLogFormData? latest;
     await tester.pumpWidget(MaterialApp(
-      home: Scaffold(body: HealthLogForm(entryDate: DateTime(2026, 1, 1), onChanged: (data) => latest = data)),
+      home: Scaffold(body: HealthLogForm(tripId: 'trip-001', entryDate: DateTime(2026, 1, 1), onChanged: (data) => latest = data)),
     ));
     await tester.pumpAndSettle();
 
@@ -28,7 +28,7 @@ void main() {
   testWidgets('selecting a different portion in the add-meal dialog is reflected on save', (tester) async {
     HealthLogFormData? latest;
     await tester.pumpWidget(MaterialApp(
-      home: Scaffold(body: HealthLogForm(entryDate: DateTime(2026, 1, 1), onChanged: (data) => latest = data)),
+      home: Scaffold(body: HealthLogForm(tripId: 'trip-001', entryDate: DateTime(2026, 1, 1), onChanged: (data) => latest = data)),
     ));
     await tester.pumpAndSettle();
 
@@ -58,7 +58,7 @@ void main() {
     );
 
     await tester.pumpWidget(MaterialApp(
-      home: Scaffold(body: HealthLogForm(entryDate: DateTime(2026, 1, 1), initialMeals: const [seedMeal], onChanged: (_) {})),
+      home: Scaffold(body: HealthLogForm(tripId: 'trip-001', entryDate: DateTime(2026, 1, 1), initialMeals: const [seedMeal], onChanged: (_) {})),
     ));
     await tester.pumpAndSettle();
 
@@ -81,7 +81,7 @@ void main() {
     );
 
     await tester.pumpWidget(MaterialApp(
-      home: Scaffold(body: HealthLogForm(entryDate: DateTime(2026, 1, 1), initialMeals: const [seedMeal], onChanged: (_) {})),
+      home: Scaffold(body: HealthLogForm(tripId: 'trip-001', entryDate: DateTime(2026, 1, 1), initialMeals: const [seedMeal], onChanged: (_) {})),
     ));
     await tester.pumpAndSettle();
 
@@ -92,7 +92,7 @@ void main() {
   group('portion scales the calorie estimate (IMPLEMENTATION_PLAN_UX_POLISH.md §1)', () {
     testWidgets('changing portion auto-fills a scaled calorie suggestion', (tester) async {
       await tester.pumpWidget(MaterialApp(
-        home: Scaffold(body: HealthLogForm(entryDate: DateTime(2026, 1, 1), onChanged: (_) {})),
+        home: Scaffold(body: HealthLogForm(tripId: 'trip-001', entryDate: DateTime(2026, 1, 1), onChanged: (_) {})),
       ));
       await tester.pumpAndSettle();
 
@@ -114,7 +114,7 @@ void main() {
     testWidgets('the auto-filled suggestion remains fully editable', (tester) async {
       HealthLogFormData? latest;
       await tester.pumpWidget(MaterialApp(
-        home: Scaffold(body: HealthLogForm(entryDate: DateTime(2026, 1, 1), onChanged: (data) => latest = data)),
+        home: Scaffold(body: HealthLogForm(tripId: 'trip-001', entryDate: DateTime(2026, 1, 1), onChanged: (data) => latest = data)),
       ));
       await tester.pumpAndSettle();
 
@@ -141,7 +141,7 @@ void main() {
       tester,
     ) async {
       await tester.pumpWidget(MaterialApp(
-        home: Scaffold(body: HealthLogForm(entryDate: DateTime(2026, 1, 1), onChanged: (_) {})),
+        home: Scaffold(body: HealthLogForm(tripId: 'trip-001', entryDate: DateTime(2026, 1, 1), onChanged: (_) {})),
       ));
       await tester.pumpAndSettle();
 
@@ -172,7 +172,7 @@ void main() {
 
     testWidgets('changing portion with no calories entered yet leaves the field untouched', (tester) async {
       await tester.pumpWidget(MaterialApp(
-        home: Scaffold(body: HealthLogForm(entryDate: DateTime(2026, 1, 1), onChanged: (_) {})),
+        home: Scaffold(body: HealthLogForm(tripId: 'trip-001', entryDate: DateTime(2026, 1, 1), onChanged: (_) {})),
       ));
       await tester.pumpAndSettle();
 
@@ -202,7 +202,7 @@ void main() {
       );
 
       await tester.pumpWidget(MaterialApp(
-        home: Scaffold(body: HealthLogForm(entryDate: DateTime(2026, 1, 1), initialMeals: const [seedMeal], onChanged: (_) {})),
+        home: Scaffold(body: HealthLogForm(tripId: 'trip-001', entryDate: DateTime(2026, 1, 1), initialMeals: const [seedMeal], onChanged: (_) {})),
       ));
       await tester.pumpAndSettle();
 

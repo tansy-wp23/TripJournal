@@ -75,4 +75,15 @@ class SupabaseTripRepository implements TripRepository {
       },
     );
   }
+
+  @override
+  Future<List<Trip>> getPublicTrips() async {
+    final rows = await _client
+        .from('trips')
+        .select()
+        .eq('is_public', true)
+        .isFilter('deleted_at', null)
+        .order('published_at', ascending: false);
+    return rows.map(tripFromSupabaseRow).toList();
+  }
 }
