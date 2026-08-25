@@ -236,6 +236,18 @@ void main() {
   });
 
   group('buildTripPdf', () {
+    test('includes a non-empty trip summary in the exported PDF', () async {
+      final bytes = await buildTripPdf(
+        _trip(
+          notes: 'Renew rail pass.',
+        ).copyWith(summary: 'A thoughtful summary of the trip.'),
+        const [],
+      );
+
+      expect(bytes, isNotEmpty);
+      expect(_looksLikePdf(bytes), isTrue);
+    });
+
     test(
       'produces valid PDF bytes for a trip with entries across multiple days',
       () async {
