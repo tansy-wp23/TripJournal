@@ -578,6 +578,12 @@ class _EntryTile extends StatelessWidget {
                           color: colorScheme.onSurfaceVariant,
                         ),
                       ),
+                      if (entry.location?.locationTag case final tag?)
+                        Text(
+                          tag,
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(color: colorScheme.primary),
+                        ),
                     ],
                   ),
                 ),
