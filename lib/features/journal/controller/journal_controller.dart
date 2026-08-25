@@ -11,12 +11,18 @@ import '../../../validation/steps_validation.dart';
 import '../ai/daily_advice_locator.dart';
 import '../ai/daily_advice_service.dart';
 import '../journal_filter.dart';
+import '../location/location_tag_service.dart';
 
 class JournalController extends ChangeNotifier {
-  JournalController(this._repository, this._dailyAdviceService);
+  JournalController(
+    this._repository,
+    this._dailyAdviceService, {
+    this._locationTagService = const NoopLocationTagService(),
+  });
 
   final JournalRepository _repository;
   final DailyAdviceService _dailyAdviceService;
+  final LocationTagService _locationTagService;
 
   String? _tripId;
   List<JournalEntry> _entries = [];
@@ -142,7 +148,7 @@ class JournalController extends ChangeNotifier {
 
     _error = null;
     try {
-      await _repository.addEntry(entry);
+      await _repository.addEntry(await _autoTagLocation(entry));
       await _refresh();
       return null;
     } catch (e) {
@@ -160,7 +166,7 @@ class JournalController extends ChangeNotifier {
 
     _error = null;
     try {
-      await _repository.updateEntry(entry);
+      await _repository.updateEntry(await _autoTagLocation(entry));
       await _refresh();
       return null;
     } catch (e) {
@@ -218,10 +224,26 @@ class JournalController extends ChangeNotifier {
     _entries = await _repository.getEntries(tripId);
     notifyListeners();
   }
+
+  Future<JournalEntry> _autoTagLocation(JournalEntry entry) async {
+    final location = entry.location;
+    if (location == null) return entry;
+
+    try {
+      final enrichedLocation = await _locationTagService.enrich(location);
+      return entry.copyWith(location: enrichedLocation);
+    } catch (_) {
+      return entry;
+    }
+  }
 }
 
 /// The single place the app resolves its [JournalController] from — mirrors
 /// the repository/service locators so the wiring stays in one spot.
 final journalControllerProvider = ChangeNotifierProvider<JournalController>(
-  (ref) => JournalController(journalRepository, dailyAdviceService),
+  (ref) => JournalController(
+    journalRepository,
+    dailyAdviceService,
+    locationTagService: locationTagService,
+  ),
 );

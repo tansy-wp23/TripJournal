@@ -112,6 +112,16 @@ class EntryDetailScreen extends ConsumerWidget {
           ),
           const SizedBox(height: 16),
           Text(entry.body, style: Theme.of(context).textTheme.bodyLarge),
+          if (entry.location?.locationTag case final tag?) ...[
+            const SizedBox(height: 12),
+            Text(
+              tag,
+              key: const Key('entry-location-tag'),
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                color: Theme.of(context).colorScheme.primary,
+              ),
+            ),
+          ],
           if (entry.photoPaths.isNotEmpty) ...[
             const SizedBox(height: 16),
             Wrap(

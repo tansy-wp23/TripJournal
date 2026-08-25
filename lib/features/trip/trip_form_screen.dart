@@ -56,7 +56,9 @@ class _TripFormScreenState extends ConsumerState<TripFormScreen> {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     _titleController = TextEditingController(text: trip?.title ?? '');
-    _destinationController = TextEditingController(text: trip?.destination ?? '');
+    _destinationController = TextEditingController(
+      text: trip?.destination ?? '',
+    );
     _notesController = TextEditingController(text: trip?.notes ?? '');
     _startDate = trip == null
         ? today
@@ -215,6 +217,7 @@ class _TripFormScreenState extends ConsumerState<TripFormScreen> {
       startDate: _startDate,
       endDate: _endDate,
       notes: notes.isEmpty ? null : notes,
+      summary: existing?.summary,
       createdAt: existing?.createdAt ?? now,
       updatedAt: now,
       deletedAt: existing?.deletedAt,

@@ -44,6 +44,7 @@ create table public.trips (
   start_date     date not null,
   end_date       date not null,
   notes          text,                              -- trip-level Notes/Reminders; optional
+  summary        text,                              -- generated summary, optionally user-edited
   created_at     timestamptz not null default now(),
   updated_at     timestamptz not null default now(),
   deleted_at     timestamptz,
