@@ -233,12 +233,11 @@ bool _sameMappedLocation(GeoTag a, GeoTag b) {
       aPlaceId.isNotEmpty &&
       bPlaceId != null &&
       bPlaceId.isNotEmpty &&
-      aPlaceId == bPlaceId) {
+      aPlaceId == bPlaceId &&
+      _coordinateKey(a) == _coordinateKey(b)) {
     return true;
   }
-  return a.latitude.toStringAsFixed(6) == b.latitude.toStringAsFixed(6) &&
-      _normalizedLongitude(a.longitude).toStringAsFixed(6) ==
-          _normalizedLongitude(b.longitude).toStringAsFixed(6);
+  return _coordinateKey(a) == _coordinateKey(b);
 }
 
 double _normalizedLongitude(double longitude) {
@@ -256,13 +255,17 @@ String _locationLabel(GeoTag location) {
 }
 
 String _groupKey(GeoTag location) {
+  final coordinateKey = _coordinateKey(location);
   final placeId = location.placeId?.trim();
   if (placeId != null && placeId.isNotEmpty) {
-    return 'place:$placeId';
+    return 'place:$placeId:$coordinateKey';
   }
-  return 'coord:${location.latitude.toStringAsFixed(6)},'
-      '${location.longitude.toStringAsFixed(6)}';
+  return 'coord:$coordinateKey';
 }
+
+String _coordinateKey(GeoTag location) =>
+    '${location.latitude.toStringAsFixed(6)},'
+    '${_normalizedLongitude(location.longitude).toStringAsFixed(6)}';
 
 int _dayNumber(DateTime entryDate, DateTime tripStartDate) {
   final entryDay = _dateOnly(entryDate);

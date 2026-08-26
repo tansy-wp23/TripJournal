@@ -68,6 +68,34 @@ void main() {
     expect(selected.single.key, model.groups.single.key);
   });
 
+  test('different coordinates keep distinct native marker IDs', () {
+    final model = modelFor([
+      entry(
+        id: 'day-2-second',
+        createdAt: tripStart.add(const Duration(days: 1, hours: 2)),
+        latitude: 3.1579,
+        longitude: 101.7123,
+        placeId: 'broad-place-id',
+      ),
+      entry(
+        id: 'day-3',
+        createdAt: tripStart.add(const Duration(days: 2)),
+        latitude: 3.1390,
+        longitude: 101.6869,
+        placeId: 'broad-place-id',
+      ),
+    ]);
+
+    final markers = googleTripMapMarkers(model: model, onSelected: (_) {});
+
+    expect(markers, hasLength(2));
+    expect(markers.map((marker) => marker.markerId).toSet(), hasLength(2));
+    expect(markers.map((marker) => marker.position).toSet(), {
+      const LatLng(3.1579, 101.7123),
+      const LatLng(3.1390, 101.6869),
+    });
+  });
+
   test('clustering starts only above twenty entry marker groups', () {
     TripMapModel groups(int count) => modelFor([
       for (var index = 0; index < count; index++)

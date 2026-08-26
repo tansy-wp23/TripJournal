@@ -108,8 +108,8 @@ void main() {
             id: 'later',
             createdAt: tripStart.add(const Duration(hours: 2)),
             location: const GeoTag(
-              latitude: 35.0001,
-              longitude: 135.0001,
+              latitude: 35.0000001,
+              longitude: 135.0000001,
               placeId: '  shrine-1  ',
             ),
           ),
@@ -128,7 +128,7 @@ void main() {
       );
 
       expect(model.groups, hasLength(1));
-      expect(model.groups.single.key, 'place:shrine-1');
+      expect(model.groups.single.key, 'place:shrine-1:35.000000,135.000000');
       expect(model.groups.single.entries.map((entry) => entry.id), [
         'earlier',
         'later',
@@ -138,6 +138,40 @@ void main() {
       expect(model.mappedEntryCount, 2);
     },
   );
+
+  test('keeps different coordinates separate when Place IDs match', () {
+    final model = buildTripMapModel(
+      entries: [
+        journalEntry(
+          id: 'day-2-second',
+          createdAt: tripStart.add(const Duration(days: 1, hours: 2)),
+          location: const GeoTag(
+            latitude: 3.1579,
+            longitude: 101.7123,
+            placeId: 'broad-place-id',
+          ),
+        ),
+        journalEntry(
+          id: 'day-3',
+          createdAt: tripStart.add(const Duration(days: 2)),
+          location: const GeoTag(
+            latitude: 3.1390,
+            longitude: 101.6869,
+            placeId: 'broad-place-id',
+          ),
+        ),
+      ],
+      tripStartDate: tripStart,
+      tripEndDate: tripEnd,
+    );
+
+    expect(model.groups, hasLength(2));
+    expect(model.groups.map((group) => group.entries.single.id), [
+      'day-2-second',
+      'day-3',
+    ]);
+    expect(model.groups.map((group) => group.key).toSet(), hasLength(2));
+  });
 
   test('groups no-ID coordinates by six-decimal rounded coordinates', () {
     final model = buildTripMapModel(
@@ -441,8 +475,8 @@ void main() {
           id: 'day-2',
           createdAt: tripStart.add(const Duration(days: 1)),
           location: const GeoTag(
-            latitude: 9,
-            longitude: 10,
+            latitude: 1,
+            longitude: 2,
             placeId: 'shared-place',
           ),
         ),
