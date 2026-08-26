@@ -90,7 +90,6 @@ void main() {
       mappedEntryCount: 0,
       unmappedEntryCount: 0,
       bounds: null,
-      previousDayHasNoMappedEntry: false,
     );
 
     source.clear();
@@ -219,7 +218,7 @@ void main() {
 
       expect(model.availableDays, [1, 2]);
       final selectedDayGroup = model.groups.singleWhere(
-        (group) => !group.isPreviousDayContext,
+        (group) => group.dayNumber == 2,
       );
       expect(selectedDayGroup.dayNumber, 2);
       expect(selectedDayGroup.entries.single.id, 'day-2');
@@ -526,109 +525,142 @@ void main() {
     expect(model.connectors, isEmpty);
   });
 
-  test(
-    'selected day includes the previous final stop as muted context only',
-    () {
-      final model = buildTripMapModel(
-        entries: [
-          journalEntry(
-            id: 'day-1-first',
-            createdAt: tripStart,
-            location: const GeoTag(latitude: 1, longitude: 2),
-          ),
-          journalEntry(
-            id: 'day-1-last',
-            createdAt: tripStart.add(const Duration(hours: 2)),
-            location: const GeoTag(latitude: -8, longitude: 120),
-          ),
-          journalEntry(
-            id: 'day-2-first',
-            createdAt: tripStart.add(const Duration(days: 1)),
-            location: const GeoTag(latitude: 3, longitude: 4),
-          ),
-          journalEntry(
-            id: 'day-2-last',
-            createdAt: tripStart.add(const Duration(days: 1, hours: 2)),
-            location: const GeoTag(latitude: 5, longitude: 6),
-          ),
-          journalEntry(
-            id: 'day-3',
-            createdAt: tripStart.add(const Duration(days: 2)),
-            location: const GeoTag(latitude: 7, longitude: 8),
-          ),
-        ],
-        tripStartDate: tripStart,
-        tripEndDate: tripEnd,
-        selectedDay: 2,
-      );
+  test('Day N includes the cumulative route through that day', () {
+    final entries = [
+      journalEntry(
+        id: 'day-1-first',
+        createdAt: tripStart,
+        location: const GeoTag(latitude: 1, longitude: 2),
+      ),
+      journalEntry(
+        id: 'day-1-last',
+        createdAt: tripStart.add(const Duration(hours: 2)),
+        location: const GeoTag(latitude: 2, longitude: 3),
+      ),
+      journalEntry(
+        id: 'day-2-first',
+        createdAt: tripStart.add(const Duration(days: 1)),
+        location: const GeoTag(latitude: 3, longitude: 4),
+      ),
+      journalEntry(
+        id: 'day-2-second',
+        createdAt: tripStart.add(const Duration(days: 1, hours: 2)),
+        location: const GeoTag(latitude: 4, longitude: 5),
+      ),
+      journalEntry(
+        id: 'day-3',
+        createdAt: tripStart.add(const Duration(days: 2)),
+        location: const GeoTag(latitude: 5, longitude: 6),
+      ),
+    ];
 
-      expect(model.groups, hasLength(3));
-      final context = model.groups.singleWhere(
-        (group) => group.isPreviousDayContext,
-      );
-      expect(context.dayNumber, 1);
-      expect(context.entries.map((entry) => entry.id), ['day-1-last']);
-      expect(
-        model.groups
-            .where((group) => !group.isPreviousDayContext)
-            .expand((group) => group.entries)
-            .map((entry) => entry.id),
-        ['day-2-first', 'day-2-last'],
-      );
-      expect(model.connectors.map((connector) => connector.id), [
-        'day-1-to-day-2',
-      ]);
-      expect(model.previousDayHasNoMappedEntry, isFalse);
-      expect(model.bounds?.southWestLatitude, -8);
-      expect(model.bounds?.northEastLongitude, 120);
-    },
-  );
+    final day2 = buildTripMapModel(
+      entries: entries,
+      tripStartDate: tripStart,
+      tripEndDate: tripEnd,
+      selectedDay: 2,
+    );
+    expect(
+      day2.groups.expand((group) => group.entries).map((entry) => entry.id),
+      ['day-1-first', 'day-1-last', 'day-2-first', 'day-2-second'],
+    );
+    expect(day2.connectors.map((connector) => connector.id), [
+      'day-1-to-day-2',
+    ]);
 
-  test(
-    'selected mapped day reports a missing previous stop without showing context',
-    () {
-      final model = buildTripMapModel(
-        entries: [
-          journalEntry(
-            id: 'day-3',
-            createdAt: tripStart.add(const Duration(days: 2)),
-            location: const GeoTag(latitude: 7, longitude: 8),
-          ),
-        ],
-        tripStartDate: tripStart,
-        tripEndDate: tripEnd,
-        selectedDay: 3,
-      );
+    final day3 = buildTripMapModel(
+      entries: entries,
+      tripStartDate: tripStart,
+      tripEndDate: tripEnd,
+      selectedDay: 3,
+    );
+    final all = buildTripMapModel(
+      entries: entries,
+      tripStartDate: tripStart,
+      tripEndDate: tripEnd,
+    );
+    expect(
+      day3.groups.map((group) => group.key),
+      all.groups.map((group) => group.key),
+    );
+    expect(day3.connectors.map((connector) => connector.id), [
+      'day-1-to-day-2',
+      'day-2-to-day-3',
+    ]);
+  });
 
-      expect(model.groups.map((group) => group.entries.single.id), ['day-3']);
-      expect(model.groups.single.isPreviousDayContext, isFalse);
-      expect(model.connectors, isEmpty);
-      expect(model.previousDayHasNoMappedEntry, isTrue);
-    },
-  );
+  test('removing a Day 2 marker keeps the Day 3 marker and route target', () {
+    final remaining = [
+      journalEntry(
+        id: 'day-1',
+        createdAt: tripStart,
+        location: const GeoTag(latitude: 1, longitude: 2),
+      ),
+      journalEntry(
+        id: 'day-2-first',
+        createdAt: tripStart.add(const Duration(days: 1)),
+        location: const GeoTag(latitude: 3, longitude: 4),
+      ),
+      journalEntry(
+        id: 'day-3',
+        createdAt: tripStart.add(const Duration(days: 2)),
+        location: const GeoTag(latitude: 5, longitude: 6),
+      ),
+    ];
 
-  test(
-    'missing selected day stays empty instead of borrowing previous context',
-    () {
-      final model = buildTripMapModel(
-        entries: [
-          journalEntry(
-            id: 'day-1',
-            createdAt: tripStart,
-            location: const GeoTag(latitude: 1, longitude: 2),
-          ),
-        ],
-        tripStartDate: tripStart,
-        tripEndDate: tripEnd,
-        selectedDay: 2,
-      );
+    final model = buildTripMapModel(
+      entries: remaining,
+      tripStartDate: tripStart,
+      tripEndDate: tripEnd,
+      selectedDay: 3,
+    );
 
-      expect(model.groups, isEmpty);
-      expect(model.connectors, isEmpty);
-      expect(model.previousDayHasNoMappedEntry, isFalse);
-      expect(model.bounds, isNull);
-    },
-  );
+    expect(
+      model.groups.expand((group) => group.entries).map((entry) => entry.id),
+      contains('day-3'),
+    );
+    final connector = model.connectors.singleWhere(
+      (candidate) => candidate.id == 'day-2-to-day-3',
+    );
+    expect((connector.toLatitude, connector.toLongitude), (5, 6));
+  });
+
+  test('selected day does not bridge a missing previous day', () {
+    final model = buildTripMapModel(
+      entries: [
+        journalEntry(
+          id: 'day-3',
+          createdAt: tripStart.add(const Duration(days: 2)),
+          location: const GeoTag(latitude: 7, longitude: 8),
+        ),
+      ],
+      tripStartDate: tripStart,
+      tripEndDate: tripEnd,
+      selectedDay: 3,
+    );
+
+    expect(model.groups.map((group) => group.entries.single.id), ['day-3']);
+    expect(model.connectors, isEmpty);
+  });
+
+  test('missing selected day keeps earlier cumulative route history', () {
+    final model = buildTripMapModel(
+      entries: [
+        journalEntry(
+          id: 'day-1',
+          createdAt: tripStart,
+          location: const GeoTag(latitude: 1, longitude: 2),
+        ),
+      ],
+      tripStartDate: tripStart,
+      tripEndDate: tripEnd,
+      selectedDay: 2,
+    );
+
+    expect(model.groups.map((group) => group.entries.single.id), ['day-1']);
+    expect(model.connectors, isEmpty);
+    expect(model.bounds, isNull);
+  });
 
   test('pre-trip day zero never connects to day one in selected or All', () {
     final entries = [

@@ -25,7 +25,6 @@ class TripMapMarkerGroup {
     required this.longitude,
     required this.entries,
     required this.dayNumber,
-    this.isPreviousDayContext = false,
   });
 
   final String key;
@@ -33,7 +32,6 @@ class TripMapMarkerGroup {
   final double longitude;
   final List<JournalEntry> entries;
   final int dayNumber;
-  final bool isPreviousDayContext;
 }
 
 /// The final mapped stop on one day linked to the first mapped stop on the
@@ -72,7 +70,6 @@ class TripMapModel {
     required this.mappedEntryCount,
     required this.unmappedEntryCount,
     required this.bounds,
-    required this.previousDayHasNoMappedEntry,
   }) : connectors = List.unmodifiable(connectors);
 
   final List<TripMapMarkerGroup> groups;
@@ -81,7 +78,6 @@ class TripMapModel {
   final int mappedEntryCount;
   final int unmappedEntryCount;
   final TripMapBounds? bounds;
-  final bool previousDayHasNoMappedEntry;
 }
 
 /// Derives chronologically ordered marker groups for a trip.
@@ -121,7 +117,12 @@ TripMapModel buildTripMapModel({
 
   final visible = selectedDay == null
       ? mapped
-      : List<JournalEntry>.of(mappedByDay[selectedDay] ?? const []);
+      : [
+          for (final entry in mapped)
+            if (_dayNumber(entry.createdAt, tripStartDate) >= 1 &&
+                _dayNumber(entry.createdAt, tripStartDate) <= selectedDay)
+              entry,
+        ];
 
   final grouped = <String, List<JournalEntry>>{};
   for (final entry in visible) {
@@ -146,23 +147,6 @@ TripMapModel buildTripMapModel({
     );
   }
 
-  if (selectedDay != null && visible.isNotEmpty && selectedDay > 1) {
-    final previousDayEntries = mappedByDay[selectedDay - 1];
-    if (previousDayEntries != null && previousDayEntries.isNotEmpty) {
-      final previousEntry = previousDayEntries.last;
-      final previousLocation = previousEntry.location!;
-      groups.add(
-        TripMapMarkerGroup(
-          key: 'context:day-${selectedDay - 1}:${_groupKey(previousLocation)}',
-          latitude: previousLocation.latitude,
-          longitude: previousLocation.longitude,
-          entries: List.unmodifiable([previousEntry]),
-          dayNumber: selectedDay - 1,
-          isPreviousDayContext: true,
-        ),
-      );
-    }
-  }
   groups.sort(_compareGroups);
 
   final connectors = _connectorsFor(
@@ -170,12 +154,6 @@ TripMapModel buildTripMapModel({
     availableDays: availableDays,
     selectedDay: selectedDay,
   );
-  final previousDayHasNoMappedEntry =
-      selectedDay != null &&
-      selectedDay > 1 &&
-      visible.isNotEmpty &&
-      (mappedByDay[selectedDay - 1]?.isEmpty ?? true);
-
   return TripMapModel(
     groups: List.unmodifiable(groups),
     connectors: List.unmodifiable(connectors),
@@ -183,7 +161,6 @@ TripMapModel buildTripMapModel({
     mappedEntryCount: mapped.length,
     unmappedEntryCount: tripEntries.length - mapped.length,
     bounds: _boundsFor(groups, connectors),
-    previousDayHasNoMappedEntry: previousDayHasNoMappedEntry,
   );
 }
 
@@ -194,9 +171,7 @@ List<TripMapDayConnector> _connectorsFor({
 }) {
   final fromDays = selectedDay == null
       ? availableDays.where((day) => day >= 1)
-      : selectedDay > 1
-      ? <int>[selectedDay - 1]
-      : const <int>[];
+      : availableDays.where((day) => day >= 1 && day < selectedDay);
   final connectors = <TripMapDayConnector>[];
   for (final fromDay in fromDays) {
     final fromEntries = mappedByDay[fromDay];
