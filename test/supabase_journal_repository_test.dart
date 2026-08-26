@@ -83,6 +83,8 @@ Map<String, dynamic> _mealRow({
     'portion': portion,
     'photo_url': 'https://cdn.example/ramen.jpg',
     'rating': rating,
+    'restaurant_name': 'Ichiran',
+    'food_review': 'Rich broth.',
   };
 }
 
@@ -122,6 +124,8 @@ Meal _meal() {
     portion: PortionSize.large,
     photoPath: 'https://cdn.example/ramen.jpg',
     rating: 4,
+    restaurantName: 'Ichiran',
+    foodReview: 'Rich broth.',
   );
 }
 
@@ -238,6 +242,8 @@ void main() {
       expect(log.meals.single.portion, PortionSize.large);
       expect(log.meals.single.photoPath, 'https://cdn.example/ramen.jpg');
       expect(log.meals.single.rating, 4);
+      expect(log.meals.single.restaurantName, 'Ichiran');
+      expect(log.meals.single.foodReview, 'Rich broth.');
     });
 
     test(
@@ -410,6 +416,8 @@ void main() {
       expect(mealBody['portion'], 'large');
       expect(mealBody['photo_url'], 'https://cdn.example/ramen.jpg');
       expect(mealBody['rating'], 4);
+      expect(mealBody['restaurant_name'], 'Ichiran');
+      expect(mealBody['food_review'], 'Rich broth.');
       expect(mealBody, isNot(contains('user_id')));
     });
 

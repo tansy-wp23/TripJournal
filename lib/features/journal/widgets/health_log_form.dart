@@ -386,6 +386,26 @@ class _HealthLogFormState extends State<HealthLogForm> {
                         '${mealTypeLabel(_meals[i].mealType)} · ${portionSizeLabel(_meals[i].portion)} · '
                         '~${_meals[i].calories} kcal',
                       ),
+                      if (_meals[i].restaurantName != null)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 2),
+                          child: Text(
+                            _meals[i].restaurantName!,
+                            key: Key('meal-row-restaurant-$i'),
+                            style: Theme.of(context).textTheme.bodySmall,
+                          ),
+                        ),
+                      if (_meals[i].foodReview != null)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 2),
+                          child: Text(
+                            _meals[i].foodReview!,
+                            key: Key('meal-row-review-$i'),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context).textTheme.bodySmall,
+                          ),
+                        ),
                       if (_meals[i].rating != null)
                         Padding(
                           padding: const EdgeInsets.only(top: 2),
@@ -449,10 +469,14 @@ class _MealDialog extends StatefulWidget {
 class _MealDialogState extends State<_MealDialog> {
   late final TextEditingController _nameController;
   late final TextEditingController _caloriesController;
+  late final TextEditingController _restaurantController;
+  late final TextEditingController _reviewController;
   late MealType _mealType;
   late PortionSize _portion;
   String? _nameError;
   String? _caloriesError;
+  String? _restaurantError;
+  String? _reviewError;
 
   // The calorie estimate normalized to a "regular" portion — the reference
   // point that suggestions are scaled from when the portion changes. Kept
@@ -479,6 +503,8 @@ class _MealDialogState extends State<_MealDialog> {
     _photoPath = initial?.photoPath;
     _nameController = TextEditingController(text: initial?.name ?? '');
     _caloriesController = TextEditingController(text: initial?.calories.toString() ?? '');
+    _restaurantController = TextEditingController(text: initial?.restaurantName ?? '');
+    _reviewController = TextEditingController(text: initial?.foodReview ?? '');
     _mealType = initial?.mealType ?? MealType.breakfast;
     _portion = initial?.portion ?? PortionSize.regular;
     _rating = initial?.rating;
@@ -489,6 +515,8 @@ class _MealDialogState extends State<_MealDialog> {
   void dispose() {
     _nameController.dispose();
     _caloriesController.dispose();
+    _restaurantController.dispose();
+    _reviewController.dispose();
     super.dispose();
   }
 
@@ -617,11 +645,23 @@ class _MealDialogState extends State<_MealDialog> {
       }
     }
 
+    final restaurantName = _restaurantController.text.trim();
+    final restaurantError = validateMealRestaurantName(restaurantName);
+    final review = _reviewController.text.trim();
+    final reviewError = validateMealReview(review);
+
     setState(() {
       _nameError = nameError;
       _caloriesError = caloriesError;
+      _restaurantError = restaurantError;
+      _reviewError = reviewError;
     });
-    if (nameError != null || caloriesError != null) return;
+    if (nameError != null ||
+        caloriesError != null ||
+        restaurantError != null ||
+        reviewError != null) {
+      return;
+    }
 
     Navigator.pop(
       context,
@@ -636,6 +676,10 @@ class _MealDialogState extends State<_MealDialog> {
         portion: _portion,
         photoPath: _photoPath,
         rating: _rating,
+        // Blank means "not provided", not an empty string — same convention
+        // as every other optional meal field.
+        restaurantName: restaurantName.isEmpty ? null : restaurantName,
+        foodReview: review.isEmpty ? null : review,
       ),
     );
   }
@@ -674,6 +718,17 @@ class _MealDialogState extends State<_MealDialog> {
             Padding(
               padding: const EdgeInsets.only(top: 4),
               child: Text(_nameError!, style: TextStyle(color: errorColor)),
+            ),
+          TextField(
+            key: const Key('meal-restaurant-field'),
+            controller: _restaurantController,
+            maxLength: kMealRestaurantNameMaxLength,
+            decoration: const InputDecoration(labelText: 'Restaurant (optional)'),
+          ),
+          if (_restaurantError != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(_restaurantError!, style: TextStyle(color: errorColor)),
             ),
           Align(
             alignment: Alignment.centerLeft,
@@ -756,6 +811,19 @@ class _MealDialogState extends State<_MealDialog> {
               onChanged: (rating) => setState(() => _rating = rating),
             ),
           ),
+          const SizedBox(height: 12),
+          TextField(
+            key: const Key('meal-review-field'),
+            controller: _reviewController,
+            maxLength: kMealReviewMaxLength,
+            maxLines: 3,
+            decoration: const InputDecoration(labelText: 'Review (optional)'),
+          ),
+          if (_reviewError != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(_reviewError!, style: TextStyle(color: errorColor)),
+            ),
         ],
       ),
       actions: [

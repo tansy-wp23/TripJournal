@@ -24,6 +24,16 @@ class Meal {
   /// (`IMPLEMENTATION_PLAN_RATING_LOCATION_SHOWCASE.md` §1).
   final int? rating;
 
+  /// Where this meal was eaten. Null means not recorded — optional, exactly
+  /// like [rating]; nothing requires it to save a meal.
+  final String? restaurantName;
+
+  /// The user's own note about the meal. Null means no review. Unlike
+  /// [rating], a too-long value is a validation outcome to show the user
+  /// (see `validateMealReview`), not a programming error, so there is no
+  /// constructor assert for it.
+  final String? foodReview;
+
   const Meal({
     required this.id,
     required this.name,
@@ -32,6 +42,8 @@ class Meal {
     this.portion = PortionSize.regular,
     this.photoPath,
     this.rating,
+    this.restaurantName,
+    this.foodReview,
   }) : assert(
          rating == null || (rating >= 1 && rating <= 5),
          'rating must be null or between 1 and 5',
@@ -48,6 +60,8 @@ class Meal {
           : PortionSize.values.byName(json['portion'] as String),
       photoPath: json['photoPath'] as String?,
       rating: json['rating'] as int?,
+      restaurantName: json['restaurantName'] as String?,
+      foodReview: json['foodReview'] as String?,
     );
   }
 
@@ -60,13 +74,16 @@ class Meal {
       'portion': portion.name,
       'photoPath': photoPath,
       'rating': rating,
+      'restaurantName': restaurantName,
+      'foodReview': foodReview,
     };
   }
 
   /// [clearPhotoPath] removes an existing photo — without it a null
   /// [photoPath] means "leave unchanged", the same convention as
-  /// `HealthLog.clearCaloriesBurned` and `Profile.clearAvatarUrl`. [clearRating]
-  /// follows the same convention for [rating].
+  /// `HealthLog.clearCaloriesBurned` and `Profile.clearAvatarUrl`.
+  /// [clearRating], [clearRestaurantName] and [clearFoodReview] follow the
+  /// same convention for their respective fields.
   Meal copyWith({
     String? id,
     String? name,
@@ -77,6 +94,10 @@ class Meal {
     bool clearPhotoPath = false,
     int? rating,
     bool clearRating = false,
+    String? restaurantName,
+    bool clearRestaurantName = false,
+    String? foodReview,
+    bool clearFoodReview = false,
   }) {
     return Meal(
       id: id ?? this.id,
@@ -86,6 +107,10 @@ class Meal {
       portion: portion ?? this.portion,
       photoPath: clearPhotoPath ? null : (photoPath ?? this.photoPath),
       rating: clearRating ? null : (rating ?? this.rating),
+      restaurantName: clearRestaurantName
+          ? null
+          : (restaurantName ?? this.restaurantName),
+      foodReview: clearFoodReview ? null : (foodReview ?? this.foodReview),
     );
   }
 }

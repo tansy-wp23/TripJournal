@@ -4,9 +4,14 @@ import 'package:share_plus/share_plus.dart';
 
 import '../../data/repository_locator.dart';
 import '../../models/journal_entry.dart';
+import '../../models/meal.dart';
 import '../../models/trip.dart';
+import '../journal/screens/photo_viewer_screen.dart';
 import '../journal/widgets/format_utils.dart';
+import '../journal/widgets/meal_display.dart';
+import '../journal/widgets/meal_rating_stars.dart';
 import '../journal/widgets/mood_display.dart';
+import '../journal/widgets/photo_thumbnail.dart';
 import '../trip/trip_day_groups.dart';
 import '../trip/trip_summary_stats.dart';
 import '../trip/widgets/trip_cover_photo.dart';
@@ -234,6 +239,33 @@ class _PublicTripViewScreenState extends ConsumerState<PublicTripViewScreen> {
                           const SizedBox(height: 6),
                           Text(entry.body),
                         ],
+                        if (entry.photoPaths.isNotEmpty) ...[
+                          const SizedBox(height: 12),
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: [
+                              for (
+                                var i = 0;
+                                i < entry.photoPaths.length;
+                                i++
+                              )
+                                PhotoThumbnail(
+                                  key: Key('public-entry-photo-${entry.id}-$i'),
+                                  photoPath: entry.photoPaths[i],
+                                  onTap: () => Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) => PhotoViewerScreen(
+                                        photoPaths: entry.photoPaths,
+                                        initialIndex: i,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ],
                         if (entry.healthLog != null) ...[
                           const SizedBox(height: 8),
                           Wrap(
@@ -268,12 +300,13 @@ class _PublicTripViewScreenState extends ConsumerState<PublicTripViewScreen> {
                             ],
                           ),
                           if (entry.healthLog!.meals.isNotEmpty) ...[
-                            const SizedBox(height: 4),
+                            const SizedBox(height: 8),
                             Text(
-                              'Meals: ${entry.healthLog!.meals.map((m) => m.name).join(', ')}',
-                              style: Theme.of(context).textTheme.bodySmall
-                                  ?.copyWith(color: colorScheme.outline),
+                              'Meals',
+                              style: Theme.of(context).textTheme.labelLarge,
                             ),
+                            for (final meal in entry.healthLog!.meals)
+                              _PublicMealTile(meal: meal),
                           ],
                         ],
                         if (entry.location?.locationTag != null) ...[
@@ -306,5 +339,88 @@ class _PublicTripViewScreenState extends ConsumerState<PublicTripViewScreen> {
     }
 
     return widgets;
+  }
+}
+
+/// One meal's full detail — photo, name, type/portion/calories, restaurant,
+/// review, and rating — read-only. Mirrors the meal row on
+/// `EntryDetailScreen`, since a public trip should show a visitor everything
+/// the owner logged, not just a name.
+class _PublicMealTile extends StatelessWidget {
+  const _PublicMealTile({required this.meal});
+
+  final Meal meal;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (meal.photoPath != null) ...[
+            PhotoThumbnail(
+              key: Key('public-meal-photo-${meal.id}'),
+              photoPath: meal.photoPath!,
+              size: 56,
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => PhotoViewerScreen(
+                    photoPaths: [meal.photoPath!],
+                    initialIndex: 0,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+          ],
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(meal.name, style: Theme.of(context).textTheme.bodyMedium),
+                Text(
+                  '${mealTypeLabel(meal.mealType)} · ${portionSizeLabel(meal.portion)} · '
+                  '~${meal.calories} kcal',
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodySmall?.copyWith(color: colorScheme.outline),
+                ),
+                if (meal.restaurantName != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: Text(
+                      meal.restaurantName!,
+                      key: Key('public-meal-restaurant-${meal.id}'),
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ),
+                if (meal.foodReview != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: Text(
+                      meal.foodReview!,
+                      key: Key('public-meal-review-${meal.id}'),
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ),
+                if (meal.rating != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: MealRatingStars(
+                      key: Key('public-meal-rating-${meal.id}'),
+                      rating: meal.rating,
+                      size: 14,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }

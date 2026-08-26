@@ -189,6 +189,22 @@ class EntryDetailScreen extends ConsumerWidget {
                               '${mealTypeLabel(meal.mealType)} · ${portionSizeLabel(meal.portion)} · '
                               '~${meal.calories} kcal',
                             ),
+                            if (meal.restaurantName != null)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 2),
+                                child: Text(
+                                  meal.restaurantName!,
+                                  key: Key('meal-restaurant-display-${meal.id}'),
+                                ),
+                              ),
+                            if (meal.foodReview != null)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 2),
+                                child: Text(
+                                  meal.foodReview!,
+                                  key: Key('meal-review-display-${meal.id}'),
+                                ),
+                              ),
                             if (meal.rating != null)
                               Padding(
                                 padding: const EdgeInsets.only(top: 2),

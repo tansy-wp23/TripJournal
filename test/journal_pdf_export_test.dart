@@ -233,6 +233,37 @@ void main() {
         expect(_looksLikePdf(bytes), isTrue);
       },
     );
+
+    test(
+      'a meal with a restaurant name and review still exports a valid PDF',
+      () async {
+        final entry = _entry(
+          id: 'e-restaurant-review',
+          healthLog: const HealthLog(
+            id: 'h1',
+            entryId: 'e-restaurant-review',
+            steps: 5000,
+            caloriesEaten: 600,
+            meals: [
+              Meal(
+                id: 'm1',
+                name: 'Ramen',
+                calories: 600,
+                mealType: MealType.lunch,
+                rating: 4,
+                restaurantName: 'Ichiran Gion',
+                foodReview: 'Rich broth, could use less salt.',
+              ),
+            ],
+          ),
+        );
+
+        final bytes = await buildEntryPdf(entry);
+
+        expect(bytes, isNotEmpty);
+        expect(_looksLikePdf(bytes), isTrue);
+      },
+    );
   });
 
   group('buildTripPdf', () {

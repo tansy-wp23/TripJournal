@@ -62,6 +62,7 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.enterText(find.byKey(const Key('meal-name-field')), 'Ramen');
+    await tester.ensureVisible(find.byKey(const Key('meal-rating-star-4')));
     await tester.tap(find.byKey(const Key('meal-rating-star-4')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('confirm-meal-button')));
@@ -90,6 +91,7 @@ void main() {
     await tester.tap(find.byKey(const Key('add-meal-button')));
     await tester.pumpAndSettle();
     await tester.enterText(find.byKey(const Key('meal-name-field')), 'Ramen');
+    await tester.ensureVisible(find.byKey(const Key('meal-rating-star-3')));
     await tester.tap(find.byKey(const Key('meal-rating-star-3')));
     await tester.pumpAndSettle();
     // Tap the same star again — a mis-tap should be fixable.

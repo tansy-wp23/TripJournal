@@ -113,8 +113,11 @@ class GeminiDailyAdviceService implements DailyAdviceService {
     } else {
       buffer.writeln('Meals logged:');
       for (final meal in meals) {
+        final review = meal.foodReview == null
+            ? ''
+            : ' — user\'s note: "${meal.foodReview}"';
         buffer.writeln(
-          '- ${meal.name} (${meal.mealType.name}, ~${meal.calories} kcal)',
+          '- ${meal.name} (${meal.mealType.name}, ~${meal.calories} kcal)$review',
         );
       }
     }

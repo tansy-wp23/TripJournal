@@ -87,6 +87,10 @@ class MockJournalRepository implements JournalRepository {
               // Seeded so the star-rating display path is visible without
               // rating a meal by hand.
               rating: 5,
+              // Seeded so the restaurant/review display paths are visible
+              // without entering them by hand.
+              restaurantName: 'Ichiran Gion',
+              foodReview: 'Rich tonkotsu broth, could\'ve used less salt.',
             ),
             Meal(
               id: 'meal-1c',

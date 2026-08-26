@@ -150,6 +150,8 @@ create table public.meals (
   meal_type     text check (meal_type in ('breakfast','lunch','dinner','snack')),
   photo_url     text,                              -- Storage URL; null if typed by hand
   rating        smallint check (rating is null or (rating between 1 and 5)),  -- 1-5 stars; null = not rated
+  restaurant_name text check (restaurant_name is null or char_length(restaurant_name) <= 100),  -- optional
+  food_review     text check (food_review is null or char_length(food_review) <= 250),  -- optional
   created_at    timestamptz not null default now(),
   updated_at    timestamptz not null default now()
 );
@@ -157,6 +159,8 @@ create table public.meals (
 comment on table public.meals is 'Meals for a health log. Food photos ARE stored as a Storage URL on photo_url.';
 comment on column public.meals.photo_url is 'Storage URL of the photo this meal was logged from. Null for a meal typed in by hand. Kept even when AI detection failed to recognise the food.';
 comment on column public.meals.portion is 'small/regular/large. Used to scale the calorie estimate (editable).';
+comment on column public.meals.restaurant_name is 'Where the meal was eaten. Null = not recorded. Max 100 chars.';
+comment on column public.meals.food_review is 'Free-text note about the meal. Null = no review. Max 250 chars.';
 
 create index meals_health_log_id_idx on public.meals (health_log_id);
 create index meals_user_id_idx on public.meals (user_id);
@@ -1059,7 +1063,8 @@ begin
         raise exception 'meal_health_log_mismatch' using errcode = '22023';
       end if;
       insert into public.meals (
-        id, health_log_id, user_id, name, calories, meal_type, portion, photo_url
+        id, health_log_id, user_id, name, calories, meal_type, portion, photo_url,
+        rating, restaurant_name, food_review
       ) values (
         (v_meal ->> 'id')::uuid,
         v_health_log_id,
@@ -1068,7 +1073,10 @@ begin
         (v_meal ->> 'calories')::integer,
         v_meal ->> 'meal_type',
         coalesce(v_meal ->> 'portion', 'regular'),
-        v_meal ->> 'photo_url'
+        v_meal ->> 'photo_url',
+        (v_meal ->> 'rating')::smallint,
+        v_meal ->> 'restaurant_name',
+        v_meal ->> 'food_review'
       );
     end loop;
   end if;

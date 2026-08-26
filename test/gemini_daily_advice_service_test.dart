@@ -235,4 +235,53 @@ void main() {
     expect(promptText, isNot(contains('Calories eaten')));
     expect(promptText, isNot(contains('Calories burned')));
   });
+
+  test('includes a meal\'s food review in the prompt when present', () async {
+    Map<String, dynamic>? capturedBody;
+    final client = MockClient((request) async {
+      capturedBody = jsonDecode(request.body) as Map<String, dynamic>;
+      return _geminiResponseWithText('ok');
+    });
+    final service = GeminiDailyAdviceService(apiKey: 'test-key', client: client);
+
+    await service.adviceFor(
+      meals: const [
+        Meal(
+          id: 'm1',
+          name: 'Ramen',
+          calories: 650,
+          mealType: MealType.lunch,
+          restaurantName: 'Ichiran Gion',
+          foodReview: 'Rich broth, too salty.',
+        ),
+      ],
+      steps: 6000,
+      mood: Mood.happy,
+    );
+
+    final promptText =
+        (capturedBody!['contents'] as List<dynamic>)[0]['parts'][0]['text']
+            as String;
+    expect(promptText, contains('Rich broth, too salty.'));
+  });
+
+  test('omits the review note from the prompt when a meal has none', () async {
+    Map<String, dynamic>? capturedBody;
+    final client = MockClient((request) async {
+      capturedBody = jsonDecode(request.body) as Map<String, dynamic>;
+      return _geminiResponseWithText('ok');
+    });
+    final service = GeminiDailyAdviceService(apiKey: 'test-key', client: client);
+
+    await service.adviceFor(
+      meals: _balancedMeals,
+      steps: 6000,
+      mood: Mood.happy,
+    );
+
+    final promptText =
+        (capturedBody!['contents'] as List<dynamic>)[0]['parts'][0]['text']
+            as String;
+    expect(promptText, isNot(contains("user's note")));
+  });
 }

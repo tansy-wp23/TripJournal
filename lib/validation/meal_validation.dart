@@ -19,3 +19,25 @@ String? validateMealRating(int? rating) {
   if (rating < 1 || rating > 5) return 'Rating must be between 1 and 5 stars.';
   return null;
 }
+
+const kMealRestaurantNameMaxLength = 100;
+
+/// Optional — a blank or null restaurant name is always valid.
+String? validateMealRestaurantName(String? name) {
+  final trimmed = name?.trim() ?? '';
+  if (trimmed.length > kMealRestaurantNameMaxLength) {
+    return 'Restaurant name must be $kMealRestaurantNameMaxLength characters or fewer.';
+  }
+  return null;
+}
+
+const kMealReviewMaxLength = 250;
+
+/// Optional — a blank or null review is always valid.
+String? validateMealReview(String? review) {
+  final trimmed = review?.trim() ?? '';
+  if (trimmed.length > kMealReviewMaxLength) {
+    return 'Review must be $kMealReviewMaxLength characters or fewer.';
+  }
+  return null;
+}

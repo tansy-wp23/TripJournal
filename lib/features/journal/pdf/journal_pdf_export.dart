@@ -172,7 +172,12 @@ pw.Widget _healthSection(
 // than failing loudly — a numeric rating degrades gracefully everywhere.
 String _mealLine(Meal meal) {
   final rating = meal.rating == null ? '' : ', ${meal.rating}/5';
-  return '${meal.name} (${mealTypeLabel(meal.mealType)}, ~${meal.calories} kcal$rating)';
+  final restaurant =
+      meal.restaurantName == null ? '' : ' — ${meal.restaurantName}';
+  final line =
+      '${meal.name} (${mealTypeLabel(meal.mealType)}, ~${meal.calories} kcal$rating)$restaurant';
+  if (meal.foodReview == null) return line;
+  return '$line\n${meal.foodReview}';
 }
 
 /// One meal line, with its photo alongside when the user logged the meal from

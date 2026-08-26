@@ -44,4 +44,42 @@ void main() {
       expect(validateMealRating(6), isNotNull);
     });
   });
+
+  group('validateMealRestaurantName', () {
+    test('null or blank is always accepted', () {
+      expect(validateMealRestaurantName(null), isNull);
+      expect(validateMealRestaurantName(''), isNull);
+      expect(validateMealRestaurantName('   '), isNull);
+    });
+
+    test('exactly at the cap is accepted', () {
+      expect(validateMealRestaurantName('a' * kMealRestaurantNameMaxLength), isNull);
+    });
+
+    test('over the cap is rejected', () {
+      expect(
+        validateMealRestaurantName('a' * (kMealRestaurantNameMaxLength + 1)),
+        'Restaurant name must be $kMealRestaurantNameMaxLength characters or fewer.',
+      );
+    });
+  });
+
+  group('validateMealReview', () {
+    test('null or blank is always accepted', () {
+      expect(validateMealReview(null), isNull);
+      expect(validateMealReview(''), isNull);
+      expect(validateMealReview('   '), isNull);
+    });
+
+    test('exactly at the cap is accepted', () {
+      expect(validateMealReview('a' * kMealReviewMaxLength), isNull);
+    });
+
+    test('over the cap is rejected', () {
+      expect(
+        validateMealReview('a' * (kMealReviewMaxLength + 1)),
+        'Review must be $kMealReviewMaxLength characters or fewer.',
+      );
+    });
+  });
 }
