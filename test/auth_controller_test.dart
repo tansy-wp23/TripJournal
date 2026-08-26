@@ -234,6 +234,59 @@ void main() {
       expect(verificationCodeRepository.activeCode, isNull);
     });
 
+    // Found and fixed 2026-08-26 (see AuthController.status's doc comment):
+    // `role` was never checked here at all, so a `role == admin` profile —
+    // meant to be a dedicated account that never signs in on the traveler
+    // side (docs/admin/PROGRESS.md's 2026-08-12 identity-model decision) —
+    // fell straight through to `authenticated` if it ever reached this
+    // controller, e.g. an existing traveler account promoted to admin in
+    // place rather than a fresh dedicated account being created.
+    test(
+      'an admin-role profile sets status to adminAccount, not authenticated',
+      () async {
+        await controller.signInWithGoogle();
+        expect(controller.status, AuthStatus.authenticated);
+
+        await profileRepository.updateProfile(
+          controller.profile!.copyWith(role: UserRole.admin),
+        );
+        await controller.onReactivated(); // re-fetches the profile
+
+        expect(controller.status, AuthStatus.adminAccount);
+        expect(controller.profile!.role, UserRole.admin);
+      },
+    );
+
+    test('signing in as an already-admin profile goes straight to '
+        'adminAccount, never authenticated', () async {
+      final existing = (await profileRepository.getProfile('user-001'))!;
+      await profileRepository.updateProfile(
+        existing.copyWith(role: UserRole.admin),
+      );
+
+      await controller.signInWithGoogle();
+
+      expect(controller.status, AuthStatus.adminAccount);
+    });
+
+    test(
+      'adminAccount wins over suspended — the redirect off the traveler '
+      'side is categorical, not just another traveler account state',
+      () async {
+        final existing = (await profileRepository.getProfile('user-001'))!;
+        await profileRepository.updateProfile(
+          existing.copyWith(
+            role: UserRole.admin,
+            status: AccountStatus.suspended,
+          ),
+        );
+
+        await controller.signInWithGoogle();
+
+        expect(controller.status, AuthStatus.adminAccount);
+      },
+    );
+
     test('failed sign-in sets error and stays signedOut', () async {
       authRepository = MockAuthRepository(result: MockAuthResult.failure);
       controller = AuthController(

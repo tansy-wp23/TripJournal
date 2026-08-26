@@ -67,6 +67,22 @@ class AuthController extends ChangeNotifier {
 
   /// The current auth status, derived from [session] and [profile].
   ///
+  /// Checks [Profile.role] before anything else — `docs/admin/PROGRESS.md`'s
+  /// confirmed identity-model decision (2026-08-12) says an admin profile is
+  /// always a *dedicated* account, never one that also signs in as a
+  /// traveler, so `AuthGate`/`AdminGate` are supposed to be "two
+  /// independent, non-overlapping entry points" by construction. That was
+  /// never actually enforced here, though: nothing in this getter looked at
+  /// `role` at all, so a `role == admin` profile that *did* reach this
+  /// controller (e.g. an existing traveler account promoted to admin
+  /// in-place, rather than a fresh dedicated account) fell straight through
+  /// to `authenticated` — silently letting one sign-in resolve to both
+  /// sides. Found and fixed 2026-08-26. Checked ahead of
+  /// suspended/deactivated/onboarding, not after: this is a categorical
+  /// redirect off the traveler side entirely, not a traveler-specific
+  /// account state, so it should win regardless of what the profile's other
+  /// fields say.
+  ///
   /// Checks [Profile.isSuspended] before [Profile.isDeactivated] — an
   /// admin-imposed suspension (Admin Module) is a distinct status from a
   /// self-service deactivation and must not fall through to
@@ -80,6 +96,7 @@ class AuthController extends ChangeNotifier {
     if (_session == null || !_session!.isSignedIn) return AuthStatus.signedOut;
     final profile = _profile;
     if (profile == null) return AuthStatus.signedOut;
+    if (profile.role == UserRole.admin) return AuthStatus.adminAccount;
     if (profile.isSuspended) return AuthStatus.suspended;
     if (profile.isDeactivated) return AuthStatus.deactivated;
     // Checked after suspended/deactivated (an admin-imposed or self-service
@@ -368,7 +385,10 @@ class AuthController extends ChangeNotifier {
 /// admin-imposed suspension) is distinct from `deactivated` (self-service)
 /// — see [AuthController.status]'s doc comment. `needsOnboarding` is a
 /// genuinely new profile (`Profile.profileCompleted == false`) that hasn't
-/// seen the Profile Onboarding screen yet.
+/// seen the Profile Onboarding screen yet. `adminAccount` is a
+/// `role == admin` profile — the traveler side (`AuthGate`) refuses to
+/// treat it as a normal signed-in user; see [AuthController.status]'s doc
+/// comment and `AdminAccountScreen`.
 enum AuthStatus {
   signedOut,
   loading,
@@ -376,6 +396,7 @@ enum AuthStatus {
   deactivated,
   suspended,
   needsOnboarding,
+  adminAccount,
 }
 
 /// The single place the app resolves its [AuthController] from — mirrors

@@ -11,6 +11,7 @@ import 'admin_issue_report_list_screen.dart';
 import 'admin_user_detail_screen.dart';
 import 'admin_user_list_screen.dart';
 import 'audit_log_screen.dart';
+import 'system_monitoring_screen.dart';
 
 /// PB-02: View Admin Dashboard. Loads `AdminDashboardStats` on first build
 /// and renders it as a grid of tappable cards, organized into "Overview"
@@ -22,7 +23,16 @@ import 'audit_log_screen.dart';
 /// addition), so a non-admin trying the admin portal is actually visible
 /// to an admin, not just recorded.
 class AdminDashboardScreen extends ConsumerStatefulWidget {
-  const AdminDashboardScreen({super.key});
+  const AdminDashboardScreen({super.key, this.userDetailScreenBuilder});
+
+  /// Test-only override for the screen pushed when an access-attempt tile
+  /// is tapped — mirrors the constructor-injection pattern
+  /// `AdminUserDetailScreen`/`IssueReportDetailScreen` themselves use.
+  /// Internal navigation like this can't be reached by a provider override
+  /// the way this screen's own controller can, since the pushed screen
+  /// constructs its controller locally (see `AdminUserDetailScreen`'s doc
+  /// comment) — defaults to the real `AdminUserDetailScreen(userId: ...)`.
+  final Widget Function(String userId)? userDetailScreenBuilder;
 
   @override
   ConsumerState<AdminDashboardScreen> createState() => _AdminDashboardScreenState();
@@ -96,6 +106,14 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
             icon: const Icon(Icons.history),
             onPressed: () => Navigator.of(context).push(
               MaterialPageRoute(builder: (_) => const AuditLogScreen()),
+            ),
+          ),
+          IconButton(
+            key: const Key('admin-monitoring'),
+            tooltip: 'Monitoring',
+            icon: const Icon(Icons.monitor_heart_outlined),
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const SystemMonitoringScreen()),
             ),
           ),
           IconButton(
@@ -281,7 +299,10 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
             child: Column(
               children: [
                 for (final attempt in dashboard.recentAttempts)
-                  _AccessAttemptTile(attempt: attempt),
+                  _AccessAttemptTile(
+                    attempt: attempt,
+                    userDetailScreenBuilder: widget.userDetailScreenBuilder,
+                  ),
               ],
             ),
           ),
@@ -352,7 +373,9 @@ class _DashboardStatCard extends StatelessWidget {
 }
 
 class _AccessAttemptTile extends StatelessWidget {
-  const _AccessAttemptTile({required this.attempt});
+  const _AccessAttemptTile({required this.attempt, this.userDetailScreenBuilder});
+
+  final Widget Function(String userId)? userDetailScreenBuilder;
 
   final AdminAccessAttemptLog attempt;
 
@@ -384,7 +407,9 @@ class _AccessAttemptTile extends StatelessWidget {
       onTap: canReview
           ? () => Navigator.of(context).push(
                 MaterialPageRoute(
-                  builder: (_) => AdminUserDetailScreen(userId: attempt.attemptedUserId),
+                  builder: (_) => userDetailScreenBuilder != null
+                      ? userDetailScreenBuilder!(attempt.attemptedUserId)
+                      : AdminUserDetailScreen(userId: attempt.attemptedUserId),
                 ),
               )
           : null,

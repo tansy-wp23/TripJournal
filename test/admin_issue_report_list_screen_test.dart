@@ -10,12 +10,15 @@ import 'package:tripjournal/features/admin/screens/admin_issue_report_list_scree
 import 'package:tripjournal/features/admin/screens/issue_report_detail_screen.dart';
 import 'package:tripjournal/models/issue_report.dart';
 
+import 'support/admin_test_harness.dart';
+
 void main() {
   group('AdminIssueReportListScreen', () {
     testWidgets('loads and shows every seeded report on open', (tester) async {
-      await tester.pumpWidget(
-        const ProviderScope(child: MaterialApp(home: AdminIssueReportListScreen())),
-      );
+      final harness = AdminTestHarness();
+      addTearDown(harness.dispose);
+
+      await tester.pumpWidget(harness.wrap(const AdminIssueReportListScreen()));
       await tester.pump(); // triggers the post-frame load callback
       await tester.pumpAndSettle();
 
@@ -31,8 +34,19 @@ void main() {
     });
 
     testWidgets('tapping a report opens IssueReportDetailScreen', (tester) async {
+      final harness = AdminTestHarness();
+      addTearDown(harness.dispose);
+
       await tester.pumpWidget(
-        const ProviderScope(child: MaterialApp(home: AdminIssueReportListScreen())),
+        harness.wrap(
+          AdminIssueReportListScreen(
+            detailScreenBuilder: (reportId) => IssueReportDetailScreen(
+              reportId: reportId,
+              controller: harness.issueReportDetailController(),
+              issueReportRepositoryOverride: harness.issueReportRepository,
+            ),
+          ),
+        ),
       );
       await tester.pump();
       await tester.pumpAndSettle();
@@ -45,9 +59,10 @@ void main() {
 
     testWidgets('tapping the Resolved chip narrows to resolved reports only',
         (tester) async {
-      await tester.pumpWidget(
-        const ProviderScope(child: MaterialApp(home: AdminIssueReportListScreen())),
-      );
+      final harness = AdminTestHarness();
+      addTearDown(harness.dispose);
+
+      await tester.pumpWidget(harness.wrap(const AdminIssueReportListScreen()));
       await tester.pump();
       await tester.pumpAndSettle();
 
@@ -66,9 +81,10 @@ void main() {
 
     testWidgets('tapping All after a filter restores the full list',
         (tester) async {
-      await tester.pumpWidget(
-        const ProviderScope(child: MaterialApp(home: AdminIssueReportListScreen())),
-      );
+      final harness = AdminTestHarness();
+      addTearDown(harness.dispose);
+
+      await tester.pumpWidget(harness.wrap(const AdminIssueReportListScreen()));
       await tester.pump();
       await tester.pumpAndSettle();
 

@@ -1,12 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:tripjournal/data/admin_repository_locator.dart';
-import 'package:tripjournal/features/admin/controller/admin_auth_controller.dart';
 import 'package:tripjournal/features/admin/screens/admin_user_detail_screen.dart';
 import 'package:tripjournal/models/admin_access_attempt_log.dart';
 import 'package:tripjournal/models/admin_audit_log.dart';
+
+import 'support/admin_test_harness.dart';
 
 void main() {
   // A tall virtual screen so the status-history/access-attempt sections
@@ -21,34 +20,48 @@ void main() {
     addTearDown(tester.view.resetDevicePixelRatio);
   }
 
-  // Suspend/Reactivate need ref.read(adminAuthControllerProvider) to know
-  // which admin is acting, so these tests sign in against a real
-  // ProviderContainer first (the mock always resolves to admin-001, per
-  // admin_repository_locator.dart) and pump the widget tree against that
-  // same container via UncontrolledProviderScope.
-  Future<void> pumpSignedInDetailScreen(WidgetTester tester, String userId) async {
+  // Builds a fresh AdminTestHarness (mocks, isolated per test — see
+  // AdminTestHarness's doc comment for why this is needed once
+  // admin_repository_locator.dart is wired to the real Supabase backend,
+  // Phase 7/14) and pumps AdminUserDetailScreen against it, with its
+  // controller and account-actions repository injected directly (the
+  // screen constructs its controller locally rather than resolving one
+  // from a global provider — see AdminUserDetailScreen's doc comment).
+  Future<AdminTestHarness> pumpDetailScreen(
+    WidgetTester tester,
+    String userId, {
+    bool signedIn = false,
+  }) async {
     useTallViewport(tester);
-    final container = ProviderContainer();
-    addTearDown(container.dispose);
-    await container.read(adminAuthControllerProvider.notifier).signInWithGoogle();
+    final harness = AdminTestHarness();
+    addTearDown(harness.dispose);
+    if (signedIn) {
+      await harness.signIn();
+    }
 
     await tester.pumpWidget(
-      UncontrolledProviderScope(
-        container: container,
-        child: MaterialApp(home: AdminUserDetailScreen(userId: userId)),
+      harness.wrap(
+        AdminUserDetailScreen(
+          userId: userId,
+          controller: harness.userDetailController(),
+          accountActionsRepository: harness.accountActionsRepository,
+        ),
       ),
     );
     await tester.pumpAndSettle();
+    return harness;
   }
+
+  // Suspend/Reactivate need ref.read(adminAuthControllerProvider) to know
+  // which admin is acting, so these tests additionally sign in first.
+  Future<AdminTestHarness> pumpSignedInDetailScreen(
+    WidgetTester tester,
+    String userId,
+  ) => pumpDetailScreen(tester, userId, signedIn: true);
 
   group('AdminUserDetailScreen', () {
     testWidgets('shows the profile fields for a known user', (tester) async {
-      useTallViewport(tester);
-
-      await tester.pumpWidget(
-        const MaterialApp(home: AdminUserDetailScreen(userId: 'user-101')),
-      );
-      await tester.pumpAndSettle();
+      await pumpDetailScreen(tester, 'user-101');
 
       expect(find.text('Alice Tan'), findsOneWidget);
       expect(find.text('alice.tan@example.com'), findsOneWidget);
@@ -58,23 +71,13 @@ void main() {
 
     testWidgets('shows the administrator role for an admin profile',
         (tester) async {
-      useTallViewport(tester);
-
-      await tester.pumpWidget(
-        const MaterialApp(home: AdminUserDetailScreen(userId: 'admin-001')),
-      );
-      await tester.pumpAndSettle();
+      await pumpDetailScreen(tester, 'admin-001');
 
       expect(find.text('Administrator'), findsOneWidget);
     });
 
     testWidgets('shows empty states when there is no history', (tester) async {
-      useTallViewport(tester);
-
-      await tester.pumpWidget(
-        const MaterialApp(home: AdminUserDetailScreen(userId: 'user-105')),
-      );
-      await tester.pumpAndSettle();
+      await pumpDetailScreen(tester, 'user-105');
 
       expect(find.text('No status changes recorded.'), findsOneWidget);
       expect(find.text('No attempts recorded.'), findsOneWidget);
@@ -82,7 +85,9 @@ void main() {
 
     testWidgets('shows a recorded audit history entry', (tester) async {
       useTallViewport(tester);
-      await adminAuditLogRepository.recordAction(
+      final harness = AdminTestHarness();
+      addTearDown(harness.dispose);
+      await harness.auditLogRepository.recordAction(
         AdminAuditLog(
           logId: 'test-audit-1',
           adminUserId: 'admin-001',
@@ -95,7 +100,13 @@ void main() {
       );
 
       await tester.pumpWidget(
-        const MaterialApp(home: AdminUserDetailScreen(userId: 'user-102')),
+        harness.wrap(
+          AdminUserDetailScreen(
+            userId: 'user-102',
+            controller: harness.userDetailController(),
+            accountActionsRepository: harness.accountActionsRepository,
+          ),
+        ),
       );
       await tester.pumpAndSettle();
 
@@ -105,7 +116,9 @@ void main() {
 
     testWidgets('shows a recorded access-attempt entry', (tester) async {
       useTallViewport(tester);
-      await adminAccessAttemptLogRepository.recordAttempt(
+      final harness = AdminTestHarness();
+      addTearDown(harness.dispose);
+      await harness.accessAttemptLogRepository.recordAttempt(
         AdminAccessAttemptLog(
           logId: 'test-attempt-detail-1',
           attemptedUserId: 'user-103',
@@ -116,7 +129,13 @@ void main() {
       );
 
       await tester.pumpWidget(
-        const MaterialApp(home: AdminUserDetailScreen(userId: 'user-103')),
+        harness.wrap(
+          AdminUserDetailScreen(
+            userId: 'user-103',
+            controller: harness.userDetailController(),
+            accountActionsRepository: harness.accountActionsRepository,
+          ),
+        ),
       );
       await tester.pumpAndSettle();
 
@@ -125,12 +144,7 @@ void main() {
 
     testWidgets('an unknown user id shows an error with a retry button',
         (tester) async {
-      useTallViewport(tester);
-
-      await tester.pumpWidget(
-        const MaterialApp(home: AdminUserDetailScreen(userId: 'nonexistent-999')),
-      );
-      await tester.pumpAndSettle();
+      await pumpDetailScreen(tester, 'nonexistent-999');
 
       expect(find.byKey(const Key('admin-user-detail-retry')), findsOneWidget);
       expect(find.byKey(const Key('admin-user-detail-content')), findsNothing);

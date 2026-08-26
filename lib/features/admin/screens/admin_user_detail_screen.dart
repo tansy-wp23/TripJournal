@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../data/admin_account_actions_repository.dart';
 import '../../../data/admin_repository_locator.dart';
 import '../../../models/admin_audit_log.dart';
 import '../../../models/profile.dart';
@@ -23,21 +24,39 @@ import '../widgets/suspend_confirmation_dialog.dart';
 /// `AdminUserDetailController` is still constructed locally per-instance
 /// rather than resolved from a global Riverpod provider; see that
 /// controller's doc comment for why.
+///
+/// [controller] / [accountActionsRepository] mirror `ReportIssueButton`'s
+/// `userIdProvider` constructor-injection pattern — an optional override
+/// used only by tests, defaulting to the real global instances (Phase 7,
+/// `ADMIN_MODULE_IMPLEMENTATION_PLAN.md`), so widget tests never touch
+/// `Supabase.instance` once `admin_repository_locator.dart` is wired to
+/// the real backend.
 class AdminUserDetailScreen extends ConsumerStatefulWidget {
-  const AdminUserDetailScreen({super.key, required this.userId});
+  const AdminUserDetailScreen({
+    super.key,
+    required this.userId,
+    this.controller,
+    this.accountActionsRepository,
+  });
 
   final String userId;
+  final AdminUserDetailController? controller;
+  final AdminAccountActionsRepository? accountActionsRepository;
 
   @override
   ConsumerState<AdminUserDetailScreen> createState() => _AdminUserDetailScreenState();
 }
 
 class _AdminUserDetailScreenState extends ConsumerState<AdminUserDetailScreen> {
-  late final AdminUserDetailController _controller = AdminUserDetailController(
-    adminUserDirectoryRepository,
-    adminAuditLogRepository,
-    adminAccessAttemptLogRepository,
-  );
+  late final AdminUserDetailController _controller =
+      widget.controller ??
+      AdminUserDetailController(
+        adminUserDirectoryRepository,
+        adminAuditLogRepository,
+        adminAccessAttemptLogRepository,
+      );
+  late final AdminAccountActionsRepository _accountActionsRepository =
+      widget.accountActionsRepository ?? adminAccountActionsRepository;
 
   @override
   void initState() {
@@ -83,7 +102,7 @@ class _AdminUserDetailScreenState extends ConsumerState<AdminUserDetailScreen> {
     if (reason == null || !mounted) return; // cancelled
 
     try {
-      await adminAccountActionsRepository.suspendUser(
+      await _accountActionsRepository.suspendUser(
         adminUserId: admin.userID,
         targetUserId: target.userID,
         reason: reason,
@@ -112,7 +131,7 @@ class _AdminUserDetailScreenState extends ConsumerState<AdminUserDetailScreen> {
     if (!confirmed || !mounted) return;
 
     try {
-      await adminAccountActionsRepository.reactivateUser(
+      await _accountActionsRepository.reactivateUser(
         adminUserId: admin.userID,
         targetUserId: target.userID,
       );

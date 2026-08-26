@@ -1,17 +1,19 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:tripjournal/features/admin/screens/admin_user_detail_screen.dart';
 import 'package:tripjournal/features/admin/screens/admin_user_list_screen.dart';
 import 'package:tripjournal/models/profile.dart';
 
+import 'support/admin_test_harness.dart';
+
 void main() {
   group('AdminUserListScreen', () {
     testWidgets('loads and shows every seeded user on open', (tester) async {
-      await tester.pumpWidget(
-        const ProviderScope(child: MaterialApp(home: AdminUserListScreen())),
-      );
+      final harness = AdminTestHarness();
+      addTearDown(harness.dispose);
+
+      await tester.pumpWidget(harness.wrap(const AdminUserListScreen()));
       await tester.pump(); // triggers the post-frame loadAll callback
       await tester.pumpAndSettle();
 
@@ -22,9 +24,10 @@ void main() {
 
     testWidgets('typing a query narrows results to matching users after '
         'the debounce', (tester) async {
-      await tester.pumpWidget(
-        const ProviderScope(child: MaterialApp(home: AdminUserListScreen())),
-      );
+      final harness = AdminTestHarness();
+      addTearDown(harness.dispose);
+
+      await tester.pumpWidget(harness.wrap(const AdminUserListScreen()));
       await tester.pump();
       await tester.pumpAndSettle();
 
@@ -38,9 +41,10 @@ void main() {
 
     testWidgets('a query matching nobody shows the empty state, not a '
         'blank list', (tester) async {
-      await tester.pumpWidget(
-        const ProviderScope(child: MaterialApp(home: AdminUserListScreen())),
-      );
+      final harness = AdminTestHarness();
+      addTearDown(harness.dispose);
+
+      await tester.pumpWidget(harness.wrap(const AdminUserListScreen()));
       await tester.pump();
       await tester.pumpAndSettle();
 
@@ -57,8 +61,19 @@ void main() {
 
     testWidgets('tapping a user navigates to AdminUserDetailScreen',
         (tester) async {
+      final harness = AdminTestHarness();
+      addTearDown(harness.dispose);
+
       await tester.pumpWidget(
-        const ProviderScope(child: MaterialApp(home: AdminUserListScreen())),
+        harness.wrap(
+          AdminUserListScreen(
+            userDetailScreenBuilder: (userId) => AdminUserDetailScreen(
+              userId: userId,
+              controller: harness.userDetailController(),
+              accountActionsRepository: harness.accountActionsRepository,
+            ),
+          ),
+        ),
       );
       await tester.pump();
       await tester.pumpAndSettle();
@@ -71,13 +86,14 @@ void main() {
 
     testWidgets('an initial status filter narrows results and shows a '
         'filter chip', (tester) async {
+      final harness = AdminTestHarness();
+      addTearDown(harness.dispose);
+
       await tester.pumpWidget(
-        const ProviderScope(
-          child: MaterialApp(
-            home: AdminUserListScreen(
-              title: 'Suspended Users',
-              initialStatusFilter: AccountStatus.suspended,
-            ),
+        harness.wrap(
+          const AdminUserListScreen(
+            title: 'Suspended Users',
+            initialStatusFilter: AccountStatus.suspended,
           ),
         ),
       );
@@ -92,13 +108,14 @@ void main() {
 
     testWidgets('an initial role filter narrows to admins only',
         (tester) async {
+      final harness = AdminTestHarness();
+      addTearDown(harness.dispose);
+
       await tester.pumpWidget(
-        const ProviderScope(
-          child: MaterialApp(
-            home: AdminUserListScreen(
-              title: 'Administrators',
-              initialRoleFilter: UserRole.admin,
-            ),
+        harness.wrap(
+          const AdminUserListScreen(
+            title: 'Administrators',
+            initialRoleFilter: UserRole.admin,
           ),
         ),
       );
@@ -111,9 +128,10 @@ void main() {
 
     testWidgets('with no initial filter, no filter chip is shown',
         (tester) async {
-      await tester.pumpWidget(
-        const ProviderScope(child: MaterialApp(home: AdminUserListScreen())),
-      );
+      final harness = AdminTestHarness();
+      addTearDown(harness.dispose);
+
+      await tester.pumpWidget(harness.wrap(const AdminUserListScreen()));
       await tester.pump();
       await tester.pumpAndSettle();
 
@@ -122,13 +140,14 @@ void main() {
 
     testWidgets('deleting the filter chip clears the filter and shows '
         'everyone', (tester) async {
+      final harness = AdminTestHarness();
+      addTearDown(harness.dispose);
+
       await tester.pumpWidget(
-        const ProviderScope(
-          child: MaterialApp(
-            home: AdminUserListScreen(
-              title: 'Suspended Users',
-              initialStatusFilter: AccountStatus.suspended,
-            ),
+        harness.wrap(
+          const AdminUserListScreen(
+            title: 'Suspended Users',
+            initialStatusFilter: AccountStatus.suspended,
           ),
         ),
       );
@@ -148,15 +167,16 @@ void main() {
 
     testWidgets('a filter matching nobody shows a filter-specific empty '
         'state', (tester) async {
+      final harness = AdminTestHarness();
+      addTearDown(harness.dispose);
+
       // No profile in the default seed is both suspended AND an admin.
       await tester.pumpWidget(
-        const ProviderScope(
-          child: MaterialApp(
-            home: AdminUserListScreen(
-              title: 'Impossible Filter',
-              initialStatusFilter: AccountStatus.suspended,
-              initialRoleFilter: UserRole.admin,
-            ),
+        harness.wrap(
+          const AdminUserListScreen(
+            title: 'Impossible Filter',
+            initialStatusFilter: AccountStatus.suspended,
+            initialRoleFilter: UserRole.admin,
           ),
         ),
       );

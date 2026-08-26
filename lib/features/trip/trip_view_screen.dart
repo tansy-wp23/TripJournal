@@ -320,7 +320,7 @@ class _TripViewScreenState extends ConsumerState<TripViewScreen>
       _summaryError = null;
     });
     try {
-      final summary = await tripSummaryService.summaryFor(
+      final summary = await loggedTripSummaryService.summaryFor(
         trip: trip,
         entries: entries,
       );

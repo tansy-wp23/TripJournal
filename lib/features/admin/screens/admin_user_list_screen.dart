@@ -18,12 +18,18 @@ class AdminUserListScreen extends ConsumerStatefulWidget {
     this.initialStatusFilter,
     this.initialRoleFilter,
     this.initialNewThisWeek = false,
+    this.userDetailScreenBuilder,
   });
 
   final String title;
   final AccountStatus? initialStatusFilter;
   final UserRole? initialRoleFilter;
   final bool initialNewThisWeek;
+
+  /// Test-only override for the screen pushed on tapping a user — see
+  /// `AdminDashboardScreen.userDetailScreenBuilder`'s doc comment for why
+  /// this exists.
+  final Widget Function(String userId)? userDetailScreenBuilder;
 
   @override
   ConsumerState<AdminUserListScreen> createState() => _AdminUserListScreenState();
@@ -180,16 +186,20 @@ class _AdminUserListScreenState extends ConsumerState<AdminUserListScreen> {
       itemCount: management.results.length,
       itemBuilder: (context, index) {
         final profile = management.results[index];
-        return _UserResultTile(profile: profile);
+        return _UserResultTile(
+          profile: profile,
+          userDetailScreenBuilder: widget.userDetailScreenBuilder,
+        );
       },
     );
   }
 }
 
 class _UserResultTile extends StatelessWidget {
-  const _UserResultTile({required this.profile});
+  const _UserResultTile({required this.profile, this.userDetailScreenBuilder});
 
   final Profile profile;
+  final Widget Function(String userId)? userDetailScreenBuilder;
 
   @override
   Widget build(BuildContext context) {
@@ -204,7 +214,11 @@ class _UserResultTile extends StatelessWidget {
       subtitle: Text('${profile.email} · ${_statusLabel(profile.status)}'),
       trailing: profile.role == UserRole.admin ? const Icon(Icons.admin_panel_settings) : null,
       onTap: () => Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => AdminUserDetailScreen(userId: profile.userID)),
+        MaterialPageRoute(
+          builder: (_) => userDetailScreenBuilder != null
+              ? userDetailScreenBuilder!(profile.userID)
+              : AdminUserDetailScreen(userId: profile.userID),
+        ),
       ),
     );
   }

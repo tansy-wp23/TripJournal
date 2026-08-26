@@ -884,6 +884,142 @@ do this; not attempted here.
 
 ---
 
+## Phase 7 — Real Backend (complete, built 2026-08-19 alongside Phase 14)
+
+### Context / how this got unblocked
+
+Phase 7 sat as an outline-only "next sprint" placeholder until 2026-08-19,
+when this branch (`admin-module`) fast-forward-merged `main`, which had
+already picked up the User Management module's own real-backend work
+(`USER_MANAGEMENT_IMPLEMENTATION_PLAN.md` Phases 6–8, merged via PRs #7–#9):
+the real `profiles`/`verification_codes` tables, RLS, `is_active_user()`,
+and `Supabase*` repositories. That's exactly the schema Phase 7 needed to
+build against (`Profile.role`, `AccountStatus.suspended` — confirmed
+already shipped for real, matching Open Decision 2's recommended default
+taken back in Phase 0), so Phase 7 and Phase 14 were both built in the
+same session rather than waiting for a separate sprint.
+
+### What was built
+
+- **Migration `202608190001_admin_rbac_and_audit_logs.sql`**:
+  - `is_admin_user()` — mirrors `is_active_user()` (same SECURITY DEFINER +
+    pinned `search_path` rationale).
+  - `profiles_select_admin` — one new, purely additive SELECT policy on
+    `public.profiles` (owned by User Management). Does not touch
+    `profiles_select_own`/`profiles_update_own`. **Cross-module change**,
+    flagged per the plan's coordination rule — team decision 2026-08-19 to
+    proceed without a separate review cycle since it's additive-only (see
+    `202608190001_admin_rbac_and_audit_logs.sql`'s own header comment).
+  - `admin_audit_log` table + RLS (`is_admin_user()`-gated select; insert
+    policy is defense-in-depth, not the primary write path — see below).
+  - `admin_access_attempt_log` table + RLS. Deliberately **not**
+    `is_admin_user()`-gated on insert — the whole point is recording an
+    attempt from someone who just failed that exact check, so requiring it
+    would make every real attempt unrecordable. Insert policy is instead
+    `auth.uid() = attempted_user_id` (a caller can only record an attempt
+    about themselves); reads are `is_admin_user()`-scoped.
+- **Edge Functions** `admin-suspend-user` / `admin-reactivate-user`
+  (`supabase/functions/`, registered in `supabase/config.toml` with
+  `verify_jwt = false` — auth is checked manually inside, matching
+  `account-deactivate-confirm`'s pattern): two-client architecture
+  (anon client for identity only, service-role client for every
+  privileged read/write). `admin-suspend-user` also calls
+  `auth.admin.signOut(targetUserId)` (Architecture Decision 4 — the
+  reason this is a privileged function and not a plain RLS-guarded table
+  write) and re-checks "target is admin" / "target already suspended"
+  server-side as defense-in-depth against stale client state (Phase 5's
+  own validation decisions, now enforced on both ends).
+- **Real repositories** (`lib/data/`): `SupabaseAdminUserDirectoryRepository`,
+  `SupabaseAdminDashboardRepository` (computes stats client-side over a
+  minimal-column fetch, per Phase 0's "keep to fields a mock can trivially
+  compute" guidance — no server-side aggregate query), `SupabaseAdminAuditLogRepository`,
+  `SupabaseAdminAccountActionsRepository` (calls the two Edge Functions;
+  `adminUserId` param accepted for interface parity but not sent — the
+  Edge Function derives the acting admin from the caller's own JWT),
+  `SupabaseAdminAccessAttemptLogRepository`.
+- **`admin_repository_locator.dart` swapped** to lazy getters resolving
+  the real repositories (mirrors `user_management_repository_locator.dart`'s
+  Phase 7 shape). `adminAuthRepository` now reuses
+  `user_management_repository_locator.dart`'s `authRepository` directly
+  (Architecture Decision 2) rather than a separate instance — the mock
+  locator used a separate `MockAuthRepository` only because a mock can
+  simulate exactly one signed-in persona per instance; the real Supabase
+  Auth backend is one shared service for both flows.
+
+### The test-architecture gap this surfaced (and how it was closed)
+
+Every admin widget test that pumped a screen via a bare `ProviderScope`
+(or an un-overridden `ProviderContainer`) was implicitly relying on the
+locator's globals resolving to mocks. Swapping to real Supabase broke
+that silently — not a compile error, a runtime "you must initialize the
+Supabase instance" crash the moment any admin provider was first read.
+Two shapes of this problem, two different fixes:
+
+1. **Screens whose controller comes from a top-level Riverpod provider**
+   (`AdminDashboardScreen`, `AdminUserListScreen`, `AdminIssueReportListScreen`,
+   `AuditLogScreen`, `AdminGate`/`AdminLoginScreen`) — fixed with
+   **`AdminTestHarness`** (`test/support/admin_test_harness.dart`),
+   mirroring `AuthTestHarness`: a shared `MockAdminUserStore` + mock
+   repositories, five controllers built from them, and a `.wrap(widget)`
+   helper that overrides all five providers in one `ProviderScope`. All
+   directly-affected test files were migrated to it:
+   `admin_dashboard_screen_test.dart`, `admin_user_list_screen_test.dart`,
+   `admin_issue_report_list_screen_test.dart`, `admin_logout_test.dart`,
+   `report_issue_button_test.dart` (constructor-injection only — it's a
+   plain `StatelessWidget`, no provider), `responsive_layout_test.dart`
+   (new `_appWithMockAdmin` helper alongside its existing
+   `_appWithMockAuth`), and `login_screen_admin_entry_test.dart`'s one
+   test that reaches `AdminGate` (merged the traveler-side
+   `AuthTestHarness` override with `AdminTestHarness.overrides` in a
+   single `ProviderScope`, since that's the only test in the file that
+   crosses into admin providers at all).
+2. **`AdminUserDetailScreen` / `IssueReportDetailScreen`** — these were
+   already a known exception (Phase 4/10's own doc comments): their
+   controllers are constructed locally per-instance, not resolved from a
+   provider, because they need an instance parameter (`userId`/`reportId`)
+   a plain global provider can't carry. No provider means no override
+   seam. Fixed with **test-only constructor-injection params**
+   (`controller`, `accountActionsRepository` /
+   `issueReportRepositoryOverride`) — the same pattern `ReportIssueButton`
+   already used for `userIdProvider`. `admin_user_detail_screen_test.dart`
+   and `issue_report_detail_screen_test.dart` (which pump these screens
+   directly) inject harness-backed controllers this way.
+3. **Internal navigation *into* those two screens from elsewhere**
+   (tapping a dashboard access-attempt, a user-list row, an issue-report
+   tile, or an audit-log entry) is a third shape neither fix above
+   reaches: the *pushed* screen's constructor is called by production
+   code inside another screen's tap handler, not by the test. Closed by
+   adding a **test-only builder-function parameter** to the four
+   navigating screens (`AdminDashboardScreen.userDetailScreenBuilder`,
+   `AdminUserListScreen.userDetailScreenBuilder`,
+   `AdminIssueReportListScreen.detailScreenBuilder`,
+   `AuditLogScreen.userDetailScreenBuilder` +
+   `.issueDetailScreenBuilder`) — `Widget Function(String id)?`, defaulting
+   to the real screen construction, letting a test hand the pushed screen
+   a harness-backed controller the same way the two fixes above already
+   do. The five tests this affected (`admin_dashboard_screen_test.dart`,
+   `admin_user_list_screen_test.dart`, `admin_issue_report_list_screen_test.dart`,
+   and two in `audit_log_screen_test.dart`) now assert on the pushed
+   screen's actual loaded content again, not just that navigation happened.
+
+### Deferred / not built
+
+- `SystemHealthScreen`'s eventual "database connectivity status" (Sprint
+  3, Open Decision 7) — unrelated to this work, still N/A until built.
+- Real automatic screenshot upload for issue reports (Sprint 2 Open
+  Decision 5) — `ReportIssueButton` still stores the picked photo's local
+  device path directly, same as mock mode; the `issue-report-attachments`
+  storage bucket (Phase 14 migration) exists and is RLS-ready but nothing
+  uploads to it yet. Flagged as a known gap, not attempted here — wiring
+  actual upload is separate scope from "swap the mocks for real reads/writes."
+
+### Verification
+
+- `flutter analyze` — no issues found.
+- `flutter test` — full suite (941 tests) passes.
+
+---
+
 # Sprint 2 — Issue Management & Audit Monitoring
 
 ## Phase 8 — Recon & Contracts (complete)
@@ -1719,3 +1855,995 @@ gone on one accidental tap).
 - `flutter analyze` — no issues found.
 - `flutter test` — full suite (735 tests) passes, including the 4 net-new
   tests from this addition; no regressions.
+
+---
+
+## Phase 14 — Real Backend (Sprint 2) (complete, built 2026-08-19 alongside Phase 7)
+
+Built in the same session as Phase 7 (see that entry for why Phase
+7/14's "next sprint" gating resolved early) — see that entry for the
+shared test-architecture gap and how it was closed; not repeated here.
+
+### What was built
+
+- **Migration `202608190002_issue_reports_and_attachments_bucket.sql`**:
+  `issue_reports` table (`report_id, submitted_by_user_id, page,
+  description, screenshot_url, status, admin_remarks, created_at,
+  updated_at`) + `handle_updated_at` trigger (reused from the User
+  Management module's `202608140001_user_management.sql`, already applied
+  to `profiles`). RLS: any signed-in user can insert/select their own
+  reports (Architecture Decision 7); `is_admin_user()` callers can select
+  and update any report — no admin delete policy, reports aren't
+  deletable through this module's scope. `issue-report-attachments`
+  storage bucket + policies, mirroring `profile-avatars`'s setup except
+  objects are also readable by `is_admin_user()` callers (an admin needs
+  to view any user's attachment, unlike avatars).
+- **`SupabaseIssueReportRepository`** (`lib/data/`). `updateStatus`
+  notably does **not** need an Edge Function the way suspend/reactivate
+  did — it doesn't call `auth.admin.signOut()` or anything else requiring
+  service role, so a direct RLS-scoped write from the signed-in admin's
+  own session is enough (`issue_reports_update_admin` +
+  `admin_audit_log_insert_admin` both evaluate `is_admin_user()` against
+  that session's real `auth.uid()`).
+- **`SupabaseAdminAuditLogRepository.getAllEntries`** (added Phase 8,
+  real-backed since this is the same repository class Phase 7 built) —
+  no separate work needed here since one audit table already served both
+  sprints' actions (Architecture Decision 5/6).
+- **`admin_repository_locator.dart`**: `issueReportRepository` swapped
+  alongside the four Phase 7 repositories in the same locator edit.
+
+### Deferred / not built
+
+Same two items noted in Phase 7's "Deferred / not built" — real
+screenshot upload to `issue-report-attachments` (bucket exists, nothing
+uploads to it yet) and `SystemHealthScreen`'s Sprint 3 work.
+
+### Verification
+
+- `flutter analyze` — no issues found.
+- `flutter test` — full suite (941 tests) passes.
+
+**Checkpoint reached**: both Sprint 1 (PB-01–PB-05, PB-10) and Sprint 2
+(PB-06–PB-10) now run against the real Supabase backend end-to-end, not
+mocks. Phase 15 onward (Sprint 3 — AI & System Monitoring) is still
+genuinely unbuilt and, per `ADMIN_MODULE_IMPLEMENTATION_PLAN.md`'s own
+numbering, the next phase in sequence.
+
+---
+
+## Phase 15 — Recon & Contracts (Sprint 3) (complete)
+
+### Open Decisions — resolved with the plan's recommended defaults
+
+7. **"Database connectivity status" / "API availability" while mock-first**
+   — recommended default taken: `SystemHealthScreen` (Phase 19) will show
+   **"N/A — mock backend in use"** for any indicator with no real
+   infrastructure behind it, rather than fabricating a fake "healthy"
+   status. The Gemini AI key check is real and buildable now (`.env`'s
+   `GEMINI_API_KEY` set or not) — that's the one indicator Phase 19 can
+   check honestly today.
+8. **`SystemErrorLog` severity levels** — recommended default taken: a
+   four-value `ErrorSeverity` enum (`info, warning, error, fatal`),
+   matching common logging-framework convention.
+
+### Entities defined (`lib/models/`)
+
+- `SystemErrorLog` (`system_error_log.dart`) — `logId`, `module`,
+  `severity` (`ErrorSeverity`), `message`, `stackTrace` (nullable),
+  `createdAt`. `fromJson`/`toJson` included for the eventual Phase 21
+  Supabase swap.
+- `AiRequestLog` (`ai_request_log.dart`) — `logId`, `userId`, `requestType`
+  (`AiRequestType { dailyAdvice, foodDetection, tripSummary }`), `status`
+  (`AiRequestStatus { succeeded, failed }`), `executionTimeMs`,
+  `errorMessage` (nullable), `createdAt`. `fromJson`/`toJson` included.
+
+### Repository interfaces defined (`lib/data/`, no implementations)
+
+- `SystemErrorLogRepository` — `recordError(entry)`, `getAllErrors({module,
+  severity})`
+- `AiRequestLogRepository` — `recordRequest(entry)`, `getAllRequests({status})`,
+  `getFailedRequests()`
+
+### AI locator recon
+
+Confirmed the current shape of all three locators Phase 18 will wrap —
+each is a single top-level `final <Service>` resolved by a private
+`_resolve...()` function that checks `dotenv.env['GEMINI_API_KEY']` and
+falls back to a `Mock...Service`:
+
+- `lib/features/journal/ai/daily_advice_locator.dart` → `dailyAdviceService`
+  (`DailyAdviceService`)
+- `lib/features/journal/ai/food_detection_locator.dart` →
+  `foodDetectionService` (`FoodDetectionService`)
+- `lib/features/trip/ai/trip_summary_locator.dart` → `tripSummaryService`
+  (`TripSummaryService`)
+
+All three are plain top-level finals, not classes/functions taking a
+repository — Phase 18's logging decorator will need to replace each final
+with one that wraps the resolved service instance, timing calls and
+writing to `AiRequestLogRepository` before delegating. None of the three
+services currently exposes a shared interface beyond their own file's
+abstract class, so the decorator will need one wrapper type per service
+(or a generic wrapper parameterized over the call), not a single shared
+decorator class — revisit at Phase 18 once the wrapping shape is chosen.
+
+### Files touched (Phase 15)
+
+- `lib/models/system_error_log.dart` (new)
+- `lib/models/ai_request_log.dart` (new)
+- `lib/data/system_error_log_repository.dart` (new)
+- `lib/data/ai_request_log_repository.dart` (new)
+- `docs/admin/PROGRESS.md` (this file)
+
+### Verification
+
+- `flutter analyze` — no issues found.
+
+### Definition of Done
+
+- [x] `SystemErrorLog`, `AiRequestLog` defined
+- [x] `SystemErrorLogRepository`, `AiRequestLogRepository` defined, no
+      implementations yet
+- [x] Code compiles
+
+---
+
+## Phase 16 — Mock Repositories (Sprint 3) (complete)
+
+### What was built
+
+- **`MockSystemErrorLogRepository`** — seeded with 5 sample errors spanning
+  every `ErrorSeverity` value and 4 different modules (`journal`, `trip`,
+  `auth`, `health`). Same `_logCounter`/`nextLogId()` pattern as
+  `MockAdminAuditLogRepository`.
+- **`MockAiRequestLogRepository`** — seeded with 6 sample requests covering
+  all three `AiRequestType` values with a mix of succeeded/failed status.
+  `getFailedRequests()` delegates to `getAllRequests(status: failed)` rather
+  than duplicating the filter/sort logic.
+- **`admin_repository_locator.dart`**: both new repositories wired as
+  top-level `final`s backed by their mocks — **not** lazy getters like the
+  rest of the locator's entries. Unlike the Supabase-backed repositories
+  (stateless — a fresh client wrapper per call is fine), these mocks hold
+  in-memory state that must persist across every read/write for the app's
+  lifetime, so a single shared instance is required. This will need
+  revisiting at Phase 21 once real `Supabase*` implementations exist — at
+  that point they can move back to lazy getters like every other entry in
+  this file.
+
+### Deferred / not built
+
+`AdminTestHarness` (`test/support/admin_test_harness.dart`) was **not**
+extended with these two repositories yet — there are no controllers to
+wire them into until Phase 17/18 build `SystemErrorLogScreen` and
+`AiRequestMonitoringScreen`. Revisit then.
+
+### Files touched (Phase 16)
+
+- `lib/data/mock_system_error_log_repository.dart` (new)
+- `lib/data/mock_ai_request_log_repository.dart` (new)
+- `lib/data/admin_repository_locator.dart` (modified — two new top-level
+  `final` repositories)
+- `test/mock_system_error_log_repository_test.dart` (new)
+- `test/mock_ai_request_log_repository_test.dart` (new)
+- `docs/admin/PROGRESS.md` (this file)
+
+### Verification
+
+- `flutter analyze` — no issues found.
+- `flutter test` — full suite (954 tests) passes, including 13 net-new
+  tests from this phase; no regressions.
+
+### Definition of Done
+
+- [x] Both mocks implemented and unit-testable
+- [x] Locator wires them; still the one place mock vs. real is decided
+
+---
+
+## Phase 17 — PB-11: Monitor System Error Logs (mock) (complete)
+
+### What was built
+
+- **`error_reporting.dart`** (`lib/`, new — not under `lib/features/admin/`)
+  — `reportSystemError(error, stackTrace, {severity})`, the global error
+  hook per Architecture Decision 9. Extracted to its own top-level function,
+  rather than an inline closure in `main()`, specifically so a test can call
+  it directly and assert against `systemErrorLogRepository` without needing
+  to actually crash something inside a running app. Fire-and-forget/
+  best-effort — a logging failure must never take down the error handler
+  itself, mirroring `AdminAuthController`'s best-effort access-attempt
+  write (Sprint 1, post-Phase-3).
+  - `module` is always `'app'` — a truly global hook has no reliable way to
+    know which feature module raised a given error; a per-module tag would
+    need per-feature instrumentation, out of scope for one global hook.
+  - `logId` is a client-generated `Uuid().v4()` (already a dependency, used
+    the same way for trip/entry/meal ids elsewhere), not
+    `MockSystemErrorLogRepository.nextLogId()` — unlike Sprint 1/2's
+    audit-log callers, which hold a concretely-typed `Mock*` reference and
+    can call its counter, `error_reporting.dart` only ever sees the
+    interface-typed `systemErrorLogRepository` global, and a client-generated
+    id works identically once Phase 21 swaps in a real repository, so no
+    later rework is needed here.
+- **`main.dart` wiring** (cross-module — the app's entry point, not
+  `lib/features/admin/`, flagged here per this plan's established
+  discipline for cross-module touches):
+  - `FlutterError.onError` — framework/rendering errors, still calls
+    `FlutterError.presentError` first so existing debug-mode behavior
+    (red screen, console output) is unchanged. Recorded as
+    `ErrorSeverity.error` — the app typically keeps running after one of
+    these, unlike an uncaught async error.
+  - `runZonedGuarded` wraps `runApp` — catches uncaught errors in async code
+    outside the widget tree's build/layout/paint path, which would
+    otherwise crash the isolate. Recorded as `ErrorSeverity.fatal` (the
+    function's default), since nothing else already caught it.
+- **`SystemErrorLogController`** (`lib/features/admin/controller/`, new) —
+  loads via `SystemErrorLogRepository.getAllErrors`, exposes
+  loading/error/data plus module/severity filters. Mirrors
+  `AuditLogController`'s plain `ChangeNotifier` convention. Also derives
+  `availableModules` (the distinct set of modules seen, for the module
+  filter's dropdown choices) from one unfiltered fetch the first time
+  `load()` runs, since `SystemErrorLogRepository` has no separate
+  "list distinct modules" method.
+- **`SystemErrorLogScreen`** (`lib/features/admin/screens/`, new) —
+  mirrors `AuditLogScreen`'s layout: a filter bar (severity `ChoiceChip`s +
+  a module dropdown) above a `ListView` of card-style tiles, not a plain
+  text dump — each tile shows a severity icon/color, the module, a relative
+  timestamp, and the message; tapping an entry that has a stack trace opens
+  it in a dialog (`SelectableText`, monospace) rather than inlining a long
+  trace into the list. Reached from `AdminDashboardScreen`'s app bar
+  (`admin-system-errors`, mirrors the existing "Audit log"/"Issue reports"
+  icon-button entry points).
+- **`errorSeverityLabel`** added to `admin_format_utils.dart`, shared for
+  reuse by Phase 20's monitoring report; severity icon/color stayed local
+  to `system_error_log_screen.dart` (mirrors
+  `admin_issue_report_list_screen.dart`'s own `_statusIcon`/`_statusColor`
+  precedent) since no second screen needs them yet.
+- **`AdminTestHarness`** gained a sixth override
+  (`systemErrorLogControllerProvider`) plus an exposed
+  `systemErrorLogRepository`/`systemErrorLogController`, mirroring the
+  other five. Noted in its doc comment as the one exception to "seeded
+  identically to the real locator's defaults" — Sprint 3's two repositories
+  stay mock-backed permanently (Phase 21 is a later sprint), so there's no
+  Supabase counterpart to match seed data against.
+
+### No database changes
+
+Phase 17 is UI/mock-only, per the plan (Phase 21, a later sprint, is where
+`system_error_logs` gets a real table). Nothing in `supabase/` was touched.
+
+### Files touched (Phase 17)
+
+- `lib/error_reporting.dart` (new)
+- `lib/main.dart` (modified — cross-module: `FlutterError.onError` +
+  `runZonedGuarded` wiring)
+- `lib/features/admin/controller/system_error_log_controller.dart` (new)
+- `lib/features/admin/screens/system_error_log_screen.dart` (new)
+- `lib/features/admin/screens/admin_dashboard_screen.dart` (modified —
+  "System error log" app bar action)
+- `lib/features/admin/admin_format_utils.dart` (modified — `errorSeverityLabel`)
+- `test/support/admin_test_harness.dart` (modified — sixth provider override)
+- `test/error_reporting_test.dart` (new, 2 tests)
+- `test/system_error_log_controller_test.dart` (new, 10 tests)
+- `test/system_error_log_screen_test.dart` (new, 10 tests)
+
+### Verification
+
+- `flutter analyze` — no issues found.
+- `flutter test` — full suite (1157 tests) passes, including the 22 new
+  Phase 17 tests; no regressions.
+
+### Definition of Done
+
+- [x] An error thrown anywhere in the app (mock-triggerable for testing)
+      appears in the log — `reportSystemError` is directly callable from a
+      test, exactly for this
+- [x] Filtering by module and by severity both demonstrably narrow results,
+      and compose together
+
+### Next phase (Phase 18) should start with
+
+The logging decorator wrapping the three AI locators
+(`daily_advice_locator.dart`, `food_detection_locator.dart`,
+`trip_summary_locator.dart` — Journal/Trip module files, another
+cross-module touch to flag) plus `AiRequestMonitoringScreen` and the
+failed-requests/retry view.
+
+---
+
+## Phase 18 — PB-12 + PB-13: AI Request Monitoring (mock) (complete)
+
+### What was built
+
+- **`lib/data/ai_request_logging.dart`** (new, data-layer — mirrors
+  `error_reporting.dart`'s placement) — `recordAiRequest({requestType,
+  status, executionTimeMs, errorMessage})`, the shared recording helper the
+  three per-service decorators below all funnel through (id generation via
+  `Uuid().v4()`, current-user resolution, fire-and-forget write), so that
+  logic isn't tripled across three files. `userId` resolves from
+  `Supabase.instance.client.auth.currentUser` — best-effort, wrapped in its
+  own try/catch (falls back to `'unknown'`) since none of the three AI
+  service interfaces take a `userId` parameter, and this stays safe to
+  exercise in a test, which never calls `Supabase.initialize()`.
+- **Per-locator logging decorators** (cross-module — Journal/Trip module
+  files, not `lib/features/admin/`, flagged here per this plan's
+  established discipline):
+  - `daily_advice_locator.dart`, `food_detection_locator.dart`,
+    `trip_summary_locator.dart` each gained a private
+    `_Logging*Service` class implementing that file's own service
+    interface, wrapping the existing resolved instance, timing the call
+    with a `Stopwatch`, and calling `recordAiRequest` on success or failure
+    (rethrowing after recording a failure, so the wrapped call's own
+    error-handling at the UI layer is unaffected).
+  - **Deviation from the plan's literal wording**: "wrapping … the three
+    AI locators" could read as replacing each locator's existing exported
+    symbol (`dailyAdviceService` etc.) with the decorator outright. Not
+    done that way — `daily_advice_locator_test.dart` and
+    `food_detection_locator_test.dart` (Phase 15-era, already shipped)
+    assert `dailyAdviceService is MockDailyAdviceService` /
+    `foodDetectionService is MockFoodDetectionService` in the no-key case,
+    which a decorator wrapping and hiding the underlying type would break.
+    Each locator instead exports a **second** symbol —
+    `loggedDailyAdviceService`, `loggedFoodDetectionService`,
+    `loggedTripSummaryService` — and production call sites
+    (`journal_controller.dart`'s provider, `health_log_form.dart`,
+    `trip_view_screen.dart`; also cross-module, same three files the plan
+    itself names) were switched to the `logged*` symbol instead of the raw
+    one. The raw symbols are otherwise untouched. Per the plan's own
+    instruction ("trust the repo, note the conflict, proceed with the more
+    sensible option").
+- **`AiRequestMonitoringController`/`AiRequestMonitoringScreen`** (PB-12,
+  `lib/features/admin/`) — mirrors `SystemErrorLogController`/
+  `SystemErrorLogScreen`'s shape: status filter (`ChoiceChip`s: All /
+  Succeeded / Failed) above a card-tile `ListView` (type, status icon/
+  color, execution time, relative time). View-only — no retry buttons
+  here; reached from `AdminDashboardScreen`'s app bar
+  (`admin-ai-requests`).
+- **`FailedAiRequestsController`/`FailedAiRequestsScreen`** (PB-13,
+  `lib/features/admin/`) — a **separate** screen, not a filtered view
+  layered onto the PB-12 screen above, matching the precedent already set
+  by `AiRequestLogRepository.getFailedRequests`'s own doc comment (Phase
+  15): "exposed separately since PB-13 is its own backlog item with its
+  own screen". Loads only failed entries; each tile shows the error
+  message and a per-row Retry button (a per-`logId` `Set` tracks which
+  row has a retry in flight, so one retry doesn't disable every button on
+  the screen). Reached from `AiRequestMonitoringScreen`'s app bar
+  (`admin-ai-requests-failed`).
+- **`ai_request_retry.dart`** (`lib/features/admin/`, new) —
+  `retryAiRequest(AiRequestType)`, PB-13's retry action (Architecture
+  Decision 10). **Deviation, flagged explicitly**: Architecture Decision
+  10 names two acceptable designs — store original call params on
+  `AiRequestLog` "if feasible", or "just 'try the action again from the UI
+  that triggered it'". Storing real params wasn't attempted: the three
+  services' inputs (meals/steps/mood; an image file; a trip + its journal
+  entries) belong to whichever user made the original request, not to a
+  monitoring log an admin reads, and would need `AiRequestLog` to grow a
+  bespoke payload shape per request type. Instead, retry re-invokes the
+  same request type's `logged*Service` against a small, fixed,
+  synthetic payload (empty meals/neutral mood; a placeholder image path;
+  a synthetic one-entry trip) — this demonstrates *whether the AI
+  capability itself is currently working* (a network/quota/API-key issue
+  reproduces; a request-specific data issue doesn't), not a replay of the
+  original request. `FailedAiRequestsScreen`'s post-retry `SnackBar`
+  states this plainly ("a representative test request") rather than
+  implying the original request was reproduced. The retry is recorded as
+  its own new `AiRequestLog` entry via the same `logged*Service` path real
+  calls use — it does not mutate the original failed entry, which is why
+  that entry stays visible in `FailedAiRequestsScreen` after a retry.
+- **`aiRequestTypeLabel`/`aiRequestStatusLabel`** added to
+  `admin_format_utils.dart`, shared between the two new screens (and,
+  per Phase 20's plan, its monitoring report).
+- **`AdminTestHarness`** gained its seventh and eighth overrides
+  (`aiRequestMonitoringControllerProvider`, `failedAiRequestsControllerProvider`)
+  plus an exposed `aiRequestLogRepository`, mirroring Phase 17's
+  `systemErrorLogRepository` addition — same "not seeded identically to
+  the real locator" exception noted in its doc comment.
+
+### No database changes
+
+Phase 18 is UI/mock-only, per the plan (Phase 21, a later sprint, is where
+`ai_request_logs` gets a real table). Nothing in `supabase/` was touched.
+
+### Files touched (Phase 18)
+
+- `lib/data/ai_request_logging.dart` (new)
+- `lib/features/journal/ai/daily_advice_locator.dart` (modified — cross-module:
+  `_LoggingDailyAdviceService` + `loggedDailyAdviceService`)
+- `lib/features/journal/ai/food_detection_locator.dart` (modified —
+  cross-module: `_LoggingFoodDetectionService` + `loggedFoodDetectionService`)
+- `lib/features/trip/ai/trip_summary_locator.dart` (modified — cross-module:
+  `_LoggingTripSummaryService` + `loggedTripSummaryService`)
+- `lib/features/journal/controller/journal_controller.dart` (modified —
+  cross-module: provider now injects `loggedDailyAdviceService`)
+- `lib/features/journal/widgets/health_log_form.dart` (modified —
+  cross-module: calls `loggedFoodDetectionService`)
+- `lib/features/trip/trip_view_screen.dart` (modified — cross-module: calls
+  `loggedTripSummaryService`)
+- `lib/features/admin/ai_request_retry.dart` (new)
+- `lib/features/admin/controller/ai_request_monitoring_controller.dart` (new)
+- `lib/features/admin/controller/failed_ai_requests_controller.dart` (new)
+- `lib/features/admin/screens/ai_request_monitoring_screen.dart` (new)
+- `lib/features/admin/screens/failed_ai_requests_screen.dart` (new)
+- `lib/features/admin/screens/admin_dashboard_screen.dart` (modified —
+  "AI request monitoring" app bar action)
+- `lib/features/admin/admin_format_utils.dart` (modified —
+  `aiRequestTypeLabel`, `aiRequestStatusLabel`)
+- `test/support/admin_test_harness.dart` (modified — seventh/eighth
+  provider overrides)
+- `test/ai_request_retry_test.dart` (new, 3 tests)
+- `test/ai_request_monitoring_controller_test.dart` (new, 6 tests)
+- `test/ai_request_monitoring_screen_test.dart` (new, 8 tests)
+- `test/failed_ai_requests_controller_test.dart` (new, 5 tests)
+- `test/failed_ai_requests_screen_test.dart` (new, 6 tests)
+
+### Verification
+
+- `flutter analyze` — no issues found.
+- `flutter test` — full suite (1185 tests) passes, including the 28 new
+  Phase 18 tests; no regressions in Journal/Trip module tests despite the
+  three cross-module call-site changes.
+
+### Definition of Done
+
+- [x] A real (mock) AI call appears in the log with status and timing —
+      confirmed by `ai_request_retry_test.dart` exercising all three
+      `logged*Service`s end to end against the shared repository
+- [x] Failed requests are visibly distinguishable and individually
+      retryable — `FailedAiRequestsScreen`'s per-row Retry button
+
+### Next phase (Phase 19) should start with
+
+`SystemHealthScreen` (PB-14) — per Open Decision 7, a real check for
+`GEMINI_API_KEY` configuration, "N/A — mock backend in use" placeholders
+for database/API availability until real infrastructure exists. No new
+repository needed; this reads `dotenv.env['GEMINI_API_KEY']` directly,
+same as the three AI locators already do.
+
+---
+
+## Phase 19 — PB-14: System Health Dashboard (mock) (complete)
+
+### What was built
+
+- **`SystemHealthScreen`** (`lib/features/admin/screens/`, new) — three
+  indicator cards:
+  - **Gemini AI** — the one *real* check, per Open Decision 7: `dotenv.isInitialized
+    ? dotenv.env['GEMINI_API_KEY'] : null`, the same expression the three AI
+    locators already evaluate. Shows "Configured"/"Not configured", never a
+    fabricated "Healthy".
+  - **Database Connectivity** and **Backend API** — both show **"N/A"**
+    with a "Mock backend in use — no live \[connectivity/availability\]
+    check is performed for this indicator yet" detail line. **Deliberately
+    not upgraded to a real Supabase ping**, even though Phase 7 (real
+    backend) already exists for most of this module by this point in the
+    session — the plan's own Phase 21 outline explicitly scopes "an actual
+    lightweight Supabase query for DB connectivity" to Phase 21 (a later
+    sprint), not Phase 19, so this isn't a stale assumption left over from
+    before Phase 7 landed; it's a deliberate phase boundary restated in the
+    plan even after describing Phase 7. No conflict to flag here — followed
+    as written.
+  - No controller/repository — every indicator is either a synchronous
+    `dotenv` read or a fixed placeholder, so there's no loading/error state
+    to manage, unlike every other admin screen so far.
+- **Mid-batch redesign: `SystemMonitoringScreen`** (`lib/features/admin/screens/`,
+  new) — **not a numbered phase of its own**, but built alongside Phase 19
+  because Phase 19 is what made it necessary. Phases 17 and 18 each added
+  their own `AdminDashboardScreen` app bar icon (`admin-system-errors`,
+  `admin-ai-requests`), following Sprint 1/2's one-icon-per-screen
+  precedent. Adding Phase 19's `SystemHealthScreen` as a fourth — with
+  Phase 20's `MonitoringReportScreen` still to come as a likely fifth —
+  would have pushed the app bar past what the team's explicit design bar
+  for this batch ("clean, organized… don't leave anything displayed just
+  as sentence", 2026-08-26) can reasonably hold. `SystemMonitoringScreen`
+  replaces those two icons with one (`admin-monitoring`) and presents all
+  three Sprint 3 monitoring screens as tappable cards (icon, title,
+  one-line description, chevron) — the same card language
+  `AdminDashboardScreen`'s `_DashboardStatCard` and `AdminUserListScreen`'s
+  results already use, not a plain list of links. Phase 20's report screen
+  gets its own card here too, rather than a sixth dashboard icon.
+- **`AdminDashboardScreen`**: `admin-system-errors` and `admin-ai-requests`
+  icons removed; replaced with the single `admin-monitoring` icon →
+  `SystemMonitoringScreen`. No test referenced either removed key by its
+  exact string (confirmed by search before removing them), so nothing
+  else needed updating for the removal itself.
+
+### No database changes
+
+Phase 19 is UI-only — no repository, no mock, no migration. Nothing in
+`supabase/` was touched.
+
+### Files touched (Phase 19)
+
+- `lib/features/admin/screens/system_health_screen.dart` (new)
+- `lib/features/admin/screens/system_monitoring_screen.dart` (new)
+- `lib/features/admin/screens/admin_dashboard_screen.dart` (modified —
+  two icons replaced with one)
+- `test/system_health_screen_test.dart` (new, 3 tests)
+- `test/system_monitoring_screen_test.dart` (new, 4 tests)
+- `test/admin_dashboard_screen_test.dart` (modified — added a test for the
+  new Monitoring action)
+
+### Verification
+
+- `flutter analyze` — no issues found.
+- `flutter test` — full suite (1193 tests) passes, including the 8 new/
+  changed Phase 19 tests; no regressions.
+
+### Definition of Done
+
+- [x] Screen renders without fabricating a misleading "healthy" status for
+      anything not actually checked — Database Connectivity/Backend API
+      show "N/A", not "Connected"/"Healthy" (asserted directly by test)
+
+### Next phase (Phase 20) should start with
+
+`MonitoringReportScreen` (PB-15) — a date-range picker, a summary drawing
+on Phases 17–19's data (error counts by severity, AI request counts by
+status, issue counts by status from Sprint 2), PDF export via the existing
+`printing`-based pattern, and a plain-formatter CSV export (no new
+dependency). Gets its own card on `SystemMonitoringScreen` alongside the
+three built so far, per that screen's own doc comment.
+
+---
+
+## Phase 20 — PB-15: Generate System Monitoring Reports (mock) (complete)
+
+### What was built
+
+- **`MonitoringReport`** (`lib/features/admin/monitoring_report.dart`, new)
+  — a plain computed struct (`errorCountsBySeverity`,
+  `aiRequestCountsByStatus`, `issueCountsByStatus`, plus `total*` getters),
+  deliberately **not** a `lib/models/` entity — nothing here is persisted;
+  it's assembled fresh by the controller each time.
+- **`MonitoringReportController`** (new) — draws on
+  `SystemErrorLogRepository`, `AiRequestLogRepository`, and
+  `IssueReportRepository` (Sprint 2's, read-only here). None of the three
+  support a date-range parameter on their own `getAll*` methods, so this
+  fetches everything from each and filters to `startDate`/`endDate`
+  itself — same composition style `AuditLogController` already uses for
+  data its own repository doesn't filter for it. Auto-generates an
+  all-time report on screen open, then regenerates on every date-range
+  change (no separate "Apply"/"Generate" step) — kept consistent with
+  every other admin filter screen's auto-reload-on-change convention
+  rather than introducing a new confirm-step pattern nowhere else in this
+  module uses it.
+- **`MonitoringReportScreen`** (new) — a date-range picker (mirrors
+  `AuditLogScreen`'s `showDateRangePicker` usage) above three report-section
+  cards (label + count rows + a bold Total row, not a plain text dump),
+  plus Export PDF / Export CSV actions.
+- **PDF export** (`lib/features/admin/pdf/monitoring_report_pdf.dart`,
+  Architecture Decision 11) — built the same way `journal_pdf_export.dart`
+  builds its documents (a `pw.Document`, returned as bytes, shared via
+  `Printing.sharePdf` — no second PDF-building convention introduced).
+- **CSV export** (`lib/features/admin/monitoring_report_csv.dart`) — a
+  plain `StringBuffer` formatter, no new dependency, per the plan. No
+  CSV-escaping logic needed: every value written (severity/status labels,
+  "Total", counts) is a fixed label or an integer, never free text that
+  could contain a comma or quote.
+- **CSV delivery, deliberately not a new dependency either**: `share_plus`
+  (already a dependency, used by the trip-publishing feature's Share Link)
+  offers `Share.shareXFiles`, which shares raw bytes as a file — reused for
+  the CSV rather than reaching for a file-saving package just for this one
+  export.
+- **Mid-batch follow-through**: `SystemMonitoringScreen` gained its fourth
+  card (`admin-monitoring-report`), exactly as that screen's Phase 19 doc
+  comment said it would — no new dashboard app bar icon.
+
+### No database changes
+
+Phase 20 is UI-only — no repository, no mock, no migration. It reads from
+the same three repositories Phases 8/16 already built; nothing in
+`supabase/` was touched.
+
+### Files touched (Phase 20)
+
+- `lib/features/admin/monitoring_report.dart` (new)
+- `lib/features/admin/controller/monitoring_report_controller.dart` (new)
+- `lib/features/admin/screens/monitoring_report_screen.dart` (new)
+- `lib/features/admin/pdf/monitoring_report_pdf.dart` (new)
+- `lib/features/admin/monitoring_report_csv.dart` (new)
+- `lib/features/admin/screens/system_monitoring_screen.dart` (modified —
+  fourth card)
+- `test/support/admin_test_harness.dart` (modified — ninth provider
+  override, using the harness's existing mock `issueReportRepository`)
+- `test/monitoring_report_controller_test.dart` (new, 7 tests)
+- `test/monitoring_report_pdf_test.dart` (new, 8 tests)
+- `test/monitoring_report_csv_test.dart` (new, 4 tests)
+- `test/monitoring_report_screen_test.dart` (new, 6 tests)
+- `test/system_monitoring_screen_test.dart` (modified — added the fourth
+  card's coverage)
+
+### Verification
+
+- `flutter analyze` — no issues found.
+- `flutter test` — full suite (1218 tests) passes, including the 26 new/
+  changed Phase 20 tests; no regressions.
+
+### Definition of Done
+
+- [x] A generated report reflects the current mock data accurately —
+      `monitoring_report_controller_test.dart` verifies exact counts by
+      severity/status and correct date-range narrowing
+- [x] Both PDF and CSV export produce a downloadable file —
+      `monitoring_report_pdf_test.dart`/`monitoring_report_csv_test.dart`
+      verify the actual bytes/content built; the screen wires both to
+      `Printing.sharePdf`/`Share.shareXFiles`
+
+**Sprint 3 complete.** PB-11 through PB-15 all work end-to-end against
+mocks — the same checkpoint shape Sprint 1 and Sprint 2 each reached before
+their own real-backend phase. Phase 21 (real backend for
+`system_error_logs`/`ai_request_logs`, plus `SystemHealthScreen`'s real
+checks) is out of scope for this sprint and explicitly deferred to a later
+sprint per the plan's own outline.
+
+---
+
+## Phase 21 — Real Backend (Sprint 3) (complete)
+
+### What was built
+
+- **Migration** (`202608260002_system_error_and_ai_request_logs.sql`)
+  — `system_error_logs` and `ai_request_logs` tables. Write path: direct
+  RLS-scoped client inserts, per the Phase 7 precedent (Edge Functions are
+  only for operations needing `auth.admin.signOut()` or similar
+  service-role-only work — neither table needs that).
+  - `system_error_logs` has **no `user_id` column at all** — an uncaught
+    error isn't "about" a specific user, and `main.dart`'s hook has no
+    reliable way to attribute one regardless (it can fire before sign-in
+    resolves). Insert policy is `to authenticated, with check (true)`: any
+    signed-in session, no ownership check, since there's no owner column
+    to check against. **Known, accepted gap**: an error occurring before
+    anyone is signed in has no session to insert under and is silently
+    dropped — consistent with the fire-and-forget philosophy the hook
+    already used.
+  - `ai_request_logs.user_id` is **`text`, not `uuid references
+    auth.users(id)`** — the Dart-side resolver falls back to the literal
+    string `'unknown'` when no session is resolved, which isn't a valid
+    `auth.users` id and would violate a real foreign key. Insert policy is
+    `auth.uid()::text = user_id` (mirrors `admin_access_attempt_log`'s
+    "insert about yourself only" policy) — an entry with the `'unknown'`
+    placeholder is rejected and silently dropped, same gap as above. In
+    practice both AI-locator decorators only ever fire from already-
+    authenticated feature screens, so this is a theoretical safety net,
+    not an expected occurrence.
+  - **Deferred, flagged**: no `supabase/tests/*.sql` pgTAP file was written
+    for these two tables' RLS, unlike every other admin-module migration.
+    This session has no Supabase CLI/local Postgres to run one against, so
+    writing one blind — unable to verify it actually passes — risked
+    shipping a broken test that looks like coverage but isn't. Recorded
+    here as a real gap, not silently skipped: whoever next has a local
+    Supabase environment should add
+    `supabase/tests/system_error_and_ai_request_logs_test.sql` mirroring
+    `trip_summary_permissions_test.sql`'s shape before trusting these two
+    policies in production.
+- **`SupabaseSystemErrorLogRepository`, `SupabaseAiRequestLogRepository`**
+  (`lib/data/`, new) — mirror `SupabaseAdminAccessAttemptLogRepository`'s
+  shape exactly (a private `_fromRow` mapper method, not a separate
+  `*_supabase_mapper.dart` file — that's the pattern the *other* modules
+  use; every admin-module Supabase repo keeps its mapping inline).
+- **`admin_repository_locator.dart`**: `systemErrorLogRepository` and
+  `aiRequestLogRepository` swapped from top-level `final`s (mock) to lazy
+  getters (Supabase) — exactly the move Phase 16's own doc comment said
+  would happen here.
+- **Two real bugs found and fixed** — both were latent in the Phase 17/18
+  code, invisible while the locator was mock-backed, and only surfaced
+  once `systemErrorLogRepository`/`aiRequestLogRepository` became lazy
+  getters that can throw on resolution:
+  - `recordAiRequest` (`ai_request_logging.dart`) resolved
+    `aiRequestLogRepository` (now a throwing getter) *outside* its
+    protective `try`/`catchError` — a synchronous throw there propagated
+    straight out of the function, landing back in the calling
+    `_Logging*Service`'s own `try` block. **Consequence**: a *successful*
+    AI call was being misreported as failed whenever the repository
+    getter threw (e.g. any plain test), because the resulting exception
+    was caught by the wrapper's `catch` clause instead of being an
+    invisible logging failure. Fixed by moving the repository resolution
+    inside its own `try`/`catch`.
+  - `reportSystemError` (`error_reporting.dart`) had the identical shape
+    of bug against `systemErrorLogRepository`. This one is more serious
+    than the AI-request case: `main.dart` wires this function directly
+    into `FlutterError.onError`, which is set up *before*
+    `Supabase.initialize()` runs — a framework error during that window
+    would have thrown a second time from inside the error handler itself.
+    Same fix.
+  - Also found and fixed the same shape of bug in the two new **health
+    check helpers themselves**, mid-implementation:
+    `checkSupabaseConnectivity` resolved `Supabase.instance.client`
+    outside its own `try` block, so the exact same "not initialized"
+    throw it was meant to catch instead propagated past it, uncaught,
+    into `SystemHealthScreen`'s `initState` callback. Fixed identically.
+  - Recorded together here because they're one lesson: **a lazy getter
+    that can throw must be resolved *inside* the `try` block that's
+    supposed to guard it, not before it** — a mistake easy to make once
+    and then copy-paste three more times, which is exactly what happened
+    across Phases 17/18/21 before Phase 21's real backend exposed it.
+- **`SystemHealthScreen` real checks** (`lib/features/admin/screens/`,
+  rewritten) — StatelessWidget → StatefulWidget:
+  - **Gemini AI**: still shows Configured/Not-configured on load (the
+    Phase 19 check, unchanged) — plus a new **"Test Connection" button**,
+    shown only when configured, calling
+    [`checkGeminiReachability`](../../lib/features/admin/gemini_reachability.dart)
+    on tap. **Deliberately on-demand, never automatic**: this app has
+    already hit Gemini free-tier quota exhaustion twice in real use (see
+    `gemini_model.dart`'s doc comment) — spending a real API call every
+    time this screen opens, just to show a status chip, would work
+    against that lesson. `checkGeminiReachability` calls `ListModels`, not
+    `generateContent` — a metadata call, not a generation request, so
+    even the on-demand check doesn't compete with the app's own AI-feature
+    quota.
+  - **Supabase Connectivity**: a real, automatic check on open
+    ([`checkSupabaseConnectivity`](../../lib/features/admin/supabase_connectivity.dart)
+    — a cheap `profiles` read, RLS-satisfied by the same `is_admin_user()`
+    policy that let this admin reach the screen at all) plus a manual
+    re-check button.
+  - **Deviation, flagged**: Phase 19's three indicators (Gemini AI,
+    Database Connectivity, Backend API) are now **two**. This app has no
+    backend distinct from Supabase to test separately — the original
+    proposal's "Node.js / Python FastAPI" line (`CLAUDE.md`'s Tech Stack
+    table) was aspirational and never built. Testing "Backend API" as its
+    own indicator would just be re-running the same PostgREST query under
+    a different label. Per the plan's own instruction ("trust the repo,
+    note the conflict, proceed with the more sensible option").
+- **`AdminTestHarness`** doc comment updated — its four Sprint-3
+  controllers are still exceptions to "seeded identically to the real
+  locator's defaults," but the *reason* changed: it's no longer "the real
+  locator has no Supabase counterpart" (Phase 21 gave it one), it's that a
+  real `system_error_logs`/`ai_request_logs` table starts empty for every
+  account, so there's no fixed default-seed count to mirror the way the
+  other five mocks mirror a real table's starting rows.
+
+### Cascading test fixes (Phase 21's real cost)
+
+Five test files touched the real, shared `systemErrorLogRepository`/
+`aiRequestLogRepository` globals directly — safe while they were
+mock-backed singletons, unsafe the moment they became live Supabase
+getters:
+
+- `error_reporting_test.dart` — `reportSystemError` gained an optional
+  `repository` parameter (a test seam, defaults to the real global) so
+  the test can inject a `MockSystemErrorLogRepository` instead.
+- `ai_request_retry_test.dart` — `retryAiRequest` has **no** injection
+  seam (its whole point is exercising the exact production `logged*Service`
+  call path), so this couldn't be fixed the same way. Rewritten to assert
+  only that each call `completes` without throwing — it can no longer
+  assert a written log entry, since that write now targets a real
+  Supabase table this session can't reach.
+- `failed_ai_requests_controller_test.dart` — switched from the real
+  global to a locally-constructed `MockAiRequestLogRepository`. The
+  "retry leaves the original entry" test's assertion changed to match:
+  since `retry()` always writes through the real global regardless of
+  which repository the controller itself holds, a retry's outcome no
+  longer appears in *that same controller's* own list the way it did
+  pre-Phase-21 — what's still true and still tested is that retry doesn't
+  mutate the original entry.
+- `ai_request_monitoring_screen_test.dart` — one test (navigating to
+  `FailedAiRequestsScreen`) needed a `failedAiRequestsControllerProvider`
+  override added alongside the existing one, since that screen reads a
+  second provider on build.
+- `system_health_screen_test.dart` — fully rewritten for the two-indicator
+  layout; the Gemini "Test Connection" button is asserted to exist but
+  **never tapped** in any test, to avoid making a real network call to
+  Google's API during test runs.
+
+Two new test files for the two new pure-function health checks:
+`gemini_reachability_test.dart` (using `package:http/testing.dart`'s
+`MockClient` — no real network call) and `supabase_connectivity_test.dart`
+(asserts the "not initialized" path returns `false` rather than throwing).
+
+### No database changes beyond this phase's own migration
+
+The one migration above is the only `supabase/` change in Phase 21 — no
+other table, policy, or function was touched.
+
+### Files touched (Phase 21)
+
+- `supabase/migrations/202608260002_system_error_and_ai_request_logs.sql` (new)
+- `lib/data/supabase_system_error_log_repository.dart` (new)
+- `lib/data/supabase_ai_request_log_repository.dart` (new)
+- `lib/data/admin_repository_locator.dart` (modified — two repositories
+  swapped from mock finals to Supabase-backed lazy getters)
+- `lib/data/ai_request_logging.dart` (modified — sync-throw bug fix)
+- `lib/error_reporting.dart` (modified — sync-throw bug fix + `repository`
+  test-seam parameter)
+- `lib/features/admin/gemini_reachability.dart` (new)
+- `lib/features/admin/supabase_connectivity.dart` (new)
+- `lib/features/admin/screens/system_health_screen.dart` (rewritten —
+  StatefulWidget, two real checks)
+- `test/support/admin_test_harness.dart` (modified — doc comment only)
+- `test/error_reporting_test.dart` (modified — injected repository, no
+  longer touches the real global)
+- `test/ai_request_retry_test.dart` (modified — asserts completion, not a
+  written entry)
+- `test/failed_ai_requests_controller_test.dart` (modified — local mock
+  repository, adjusted retry assertion)
+- `test/ai_request_monitoring_screen_test.dart` (modified — second
+  provider override)
+- `test/system_health_screen_test.dart` (rewritten for the two-indicator
+  layout)
+- `test/gemini_reachability_test.dart` (new, 4 tests)
+- `test/supabase_connectivity_test.dart` (new, 1 test)
+
+### Verification
+
+- `flutter analyze` — no issues found.
+- `flutter test` — full suite (1226 tests) passes; no regressions, despite
+  the five-file test cascade above.
+
+### Definition of Done
+
+- [x] `system_error_logs`, `ai_request_logs` migrated, RLS-scoped
+      (pgTAP coverage flagged as a follow-up — see "Deferred, flagged" above)
+- [x] The `main.dart` error hook and the three AI-locator wrappers write to
+      the real tables via direct RLS-scoped client inserts
+- [x] `SystemHealthScreen`'s Gemini indicator does a real reachability
+      check (on-demand); Supabase connectivity is checked for real,
+      automatically
+- [x] `admin_repository_locator.dart` resolves both repositories to their
+      `Supabase*` implementations
+
+**Sprint 3 complete against the real backend.** PB-11 through PB-15 now
+run end-to-end against Supabase, matching Sprint 1 (Phase 7) and Sprint 2
+(Phase 14)'s own checkpoints. No further phases are defined in
+`ADMIN_MODULE_IMPLEMENTATION_PLAN.md` beyond this one.
+
+## Identity-model gap: an admin-role profile could still sign in as a traveler (found and fixed 2026-08-26)
+
+### What was found
+
+Decision 1's identity model (2026-08-12, above) says admin accounts are
+**dedicated** — always a separate `Profile` row from any traveler account
+the same person might have — so `AuthGate` (traveler) and `AdminGate`
+(admin) are "two independent, non-overlapping entry points, since no
+single sign-in can ever resolve to both."
+
+That guarantee only ever held by *provisioning convention*, not by
+anything enforced in code. Manually testing the admin flow against a
+personal Google account that was already a real, in-use traveler account
+(`profiles.role` flipped `user` → `admin` in place, rather than a fresh
+dedicated admin profile being created) surfaced the gap directly: that
+account stayed fully signed in on the traveler `HomeScreen` — journal
+entries, health logging, everything — *while also* passing the Admin
+Portal's `role == admin` check. `AuthController.status`
+(`lib/features/auth/controller/auth_controller.dart`) never once consulted
+`Profile.role`; it only ever branched on `isSuspended` / `isDeactivated` /
+`profileCompleted`. So the "never both" promise was true only as long as
+whoever created an admin account did it correctly — a single bad
+provisioning step (or, later, a real backend role edit) broke it silently.
+
+### What was fixed
+
+Cross-module note: `auth_controller.dart` and `auth_gate.dart` belong to
+the User Management module, not this one — flagging here per the plan's
+own instruction to document conflicts rather than silently resolve them,
+same as Decision 2's `AccountStatus.suspended` addition above. The change
+is narrow (one extra branch, checked first, plus one new screen) and
+directly enforces this module's own confirmed identity-model decision, so
+it was made now rather than left as a written-down risk.
+
+- `AuthStatus` gained `adminAccount`.
+- `AuthController.status` now checks `profile.role == UserRole.admin`
+  before anything else (including `isSuspended`/`isDeactivated`) and
+  returns `adminAccount` — a categorical redirect off the traveler side
+  entirely, not just another traveler account state, so it takes priority
+  over what the profile's other fields say.
+- New `AdminAccountScreen` (`lib/features/auth/screens/admin_account_screen.dart`,
+  modelled on `SuspendedScreen`): explains the account is registered as an
+  administrator and offers a "Sign out" button — the way back to
+  `LoginScreen`, from which the Admin Portal is reachable via the existing
+  hidden logo-tap entry.
+- `AuthGate` routes `AuthStatus.adminAccount` to `AdminAccountScreen`.
+
+### Tests added
+
+- `test/auth_controller_test.dart` — an admin-role profile (both mutated
+  mid-session and already-admin at sign-in time) resolves to
+  `adminAccount`, not `authenticated`; and `adminAccount` wins even when
+  the same profile is also `suspended`, confirming the priority ordering.
+- `test/admin_account_screen_test.dart` (mirrors `suspended_screen_test.dart`) —
+  `AuthGate` shows `AdminAccountScreen` (not `HomeScreen`) for an
+  admin-role sign-in, and "Sign out" returns to `LoginScreen`.
+
+### Verification
+
+- `flutter analyze` — no issues found.
+- `flutter test` — full suite (1234 tests) passes; no regressions.
+
+### Not done here
+
+Provisioning a *correct* dedicated admin account (the actual fix for the
+account that surfaced this) is a database-side task, not a code change —
+sign in once with the new account via the Admin Portal (never the
+traveler login) so `handle_new_user` creates its `auth.users`/`profiles`
+row, then set `role = 'admin'` on that row directly, before ever using it
+as a traveler. The existing personal test account should have its `role`
+reverted to `user` and stay a traveler-only account.
+
+---
+
+## `AdminGate` back-navigation guard — leaked the route underneath, then trapped rejected sign-ins (found and fixed 2026-08-26)
+
+### What was found
+
+Two related gaps in how `AdminGate` behaves as a *pushed* route, both only
+visible once actually driven through `Navigator` rather than pumped in
+isolation:
+
+1. **No back-navigation guard at all.** `AdminGate` is reached via
+   `Navigator.push` from the traveler `LoginScreen`'s hidden 3-tap logo
+   gesture (Phase 2) — that route stays alive underneath. Because
+   `adminAuthRepository` is an alias for the shared `authRepository`
+   (Phase 7's Architecture Decision 2, not a second auth system), a
+   successful admin sign-in shares the exact same Supabase session as the
+   traveler side. Popping back out (hardware back / edge-swipe) after
+   signing in would silently surface whatever the traveler `AuthGate` now
+   resolves to underneath — usually `HomeScreen`, not the `LoginScreen` the
+   admin portal was opened from a moment earlier.
+2. **A rejected (non-admin) sign-in left the account signed in.** Before
+   this fix, a rejection only set `AdminAuthController.error` and moved
+   `status` to `unauthorized` — the real account stayed fully signed in,
+   both the shared Supabase session and (since `AuthRepository` wraps one
+   shared `GoogleSignIn` instance) Google's own cached "currently selected
+   account". That second part actively broke the *next* sign-in attempt:
+   `GoogleSignIn` generally reuses whichever account is already cached
+   instead of showing the picker again, so retrying with the real admin
+   account right after a rejected one could silently re-select the same
+   wrong account. It also meant gap 1's guard, if applied naively, would
+   have blocked back-navigation for `unauthorized` too — trapping the user
+   on `AdminLoginScreen`, which has no sign-out affordance of its own, only
+   "Sign in with Google", so "Log out to leave the admin portal" would be
+   an instruction with no way to follow it.
+
+### What was fixed
+
+- **`AdminAuthController._rejectAndSignOut(session, message, reason)`**
+  (new, replaces the inline `_error = …; await _recordAttempt(...)` in both
+  rejection branches) — records the attempt first (must happen *before*
+  signing out: `admin_access_attempt_log_insert_own`'s RLS check needs
+  `auth.uid()` to still be the rejected account), then fully signs out
+  (`_authRepository.signOut()`, clearing both Google's cache and the
+  Supabase session) and clears `_session`/`_profile` — so `status` derives
+  back to `signedOut`, not `unauthorized`, by the time the next build sees
+  it. The message is stashed in a new one-shot `_pendingRejectionMessage`
+  (`hasPendingRejection` getter, `consumePendingRejection()` — throws if
+  called with nothing pending, mirrors `Queue.removeFirst`'s contract) for
+  `AdminGate` to relay after popping itself, rather than leaving the
+  now-signed-out account sitting on `AdminLoginScreen` for the user to
+  notice the error and back out of manually.
+- **`AdminGate.build`** — checks `controller.hasPendingRejection` first;
+  if set, consumes it, captures the `Navigator`/`ScaffoldMessenger`
+  *states* (not `context` — by the time the post-frame callback runs this
+  widget's own route has popped and `context` is no longer valid, but
+  these `State` objects live above the `Navigator` and stay mounted
+  regardless), then in a post-frame callback pops itself and shows the
+  rejection message as a `SnackBar` on the traveler screen underneath.
+  One-shot specifically so a later rebuild (anything else this widget
+  watches changing) doesn't pop a second time.
+- **`AdminGate` wrapped in `PopScope`** — `canPop: status !=
+  AdminAuthStatus.authenticated`. A blocked pop shows a `SnackBar`, "Log
+  out to leave the admin portal." Deliberately **only** blocks
+  `authenticated`, not `unauthorized` — per gap 2 above, a rejected attempt
+  now signs itself out and pops automatically before this guard would ever
+  see `unauthorized` on a real build anyway, and `authenticated` is the one
+  status with a real "Log out" button (`AdminDashboardScreen`'s) for the
+  message to point at.
+
+### Files touched
+
+- `lib/features/admin/admin_gate.dart` (modified — `PopScope` guard +
+  pending-rejection consumption)
+- `lib/features/admin/controller/admin_auth_controller.dart` (modified —
+  `_rejectAndSignOut`, `hasPendingRejection`, `consumePendingRejection()`)
+- `test/admin_gate_back_navigation_test.dart` (new, 4 tests — back blocked
+  once authenticated; back allowed again after logout; back allowed before
+  any sign-in attempt; a rejected sign-in auto-pops and relays the message
+  as a `SnackBar` on the screen underneath)
+- `test/admin_auth_controller_test.dart` (modified — the three rejection
+  tests now assert `status == signedOut` (not `unauthorized`), `session`/
+  `profile` cleared, and `hasPendingRejection`/`consumePendingRejection()`
+  instead of just `error`/`status`)
+
+### Verification
+
+- `flutter analyze` — no issues found.
+- `flutter test` (targeted: `admin_gate_back_navigation_test.dart`,
+  `admin_auth_controller_test.dart`, `admin_account_screen_test.dart`,
+  `auth_controller_test.dart`) — 53 tests pass, no regressions.

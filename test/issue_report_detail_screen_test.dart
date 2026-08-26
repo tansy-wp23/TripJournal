@@ -1,12 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:tripjournal/data/admin_repository_locator.dart';
-import 'package:tripjournal/features/admin/controller/admin_auth_controller.dart';
 import 'package:tripjournal/features/admin/screens/issue_report_detail_screen.dart';
 import 'package:tripjournal/features/journal/widgets/photo_thumbnail.dart';
 import 'package:tripjournal/models/issue_report.dart';
+
+import 'support/admin_test_harness.dart';
 
 void main() {
   // A tall virtual screen so the status-control/status-history sections
@@ -20,44 +19,53 @@ void main() {
     addTearDown(tester.view.resetDevicePixelRatio);
   }
 
-  // The status buttons need ref.read(adminAuthControllerProvider) to know
-  // which admin is acting, so these tests sign in against a real
-  // ProviderContainer first (mirrors pumpSignedInDetailScreen in
-  // admin_user_detail_screen_test.dart).
-  Future<void> pumpSignedInDetailScreen(WidgetTester tester, String reportId) async {
+  // Pumps IssueReportDetailScreen against a fresh AdminTestHarness, with
+  // the controller and issue-report repository injected directly (the
+  // screen constructs its controller locally rather than resolving one
+  // from a global provider — see IssueReportDetailScreen's doc comment).
+  Future<AdminTestHarness> pumpDetailScreen(
+    WidgetTester tester,
+    String reportId, {
+    bool signedIn = false,
+  }) async {
     useTallViewport(tester);
-    final container = ProviderContainer();
-    addTearDown(container.dispose);
-    await container.read(adminAuthControllerProvider.notifier).signInWithGoogle();
+    final harness = AdminTestHarness();
+    addTearDown(harness.dispose);
+    if (signedIn) {
+      await harness.signIn();
+    }
 
     await tester.pumpWidget(
-      UncontrolledProviderScope(
-        container: container,
-        child: MaterialApp(home: IssueReportDetailScreen(reportId: reportId)),
+      harness.wrap(
+        IssueReportDetailScreen(
+          reportId: reportId,
+          controller: harness.issueReportDetailController(),
+          issueReportRepositoryOverride: harness.issueReportRepository,
+        ),
       ),
     );
     await tester.pumpAndSettle();
+    return harness;
   }
 
-  Future<String> submitThrowawayReport(String description, {String? screenshotUrl}) async {
-    await issueReportRepository.submitReport(
+  Future<String> submitThrowawayReport(
+    AdminTestHarness harness,
+    String description, {
+    String? screenshotUrl,
+  }) async {
+    await harness.issueReportRepository.submitReport(
       userId: 'user-101',
       page: 'HomeScreen',
       description: description,
       screenshotUrl: screenshotUrl,
     );
-    final all = await issueReportRepository.getAllReports();
+    final all = await harness.issueReportRepository.getAllReports();
     return all.firstWhere((r) => r.description == description).reportId;
   }
 
   group('IssueReportDetailScreen', () {
     testWidgets('shows the report fields for a known report', (tester) async {
-      useTallViewport(tester);
-
-      await tester.pumpWidget(
-        const MaterialApp(home: IssueReportDetailScreen(reportId: 'issue-001')),
-      );
-      await tester.pumpAndSettle();
+      await pumpDetailScreen(tester, 'issue-001');
 
       expect(
         find.text('Cover photo fails to upload when offline.'),
@@ -76,17 +84,25 @@ void main() {
     testWidgets('a submitter with no matching profile shows an unknown-user '
         'message, not a crash', (tester) async {
       useTallViewport(tester);
-      await issueReportRepository.submitReport(
+      final harness = AdminTestHarness();
+      addTearDown(harness.dispose);
+      await harness.issueReportRepository.submitReport(
         userId: 'deleted-user-999',
         page: 'HomeScreen',
         description: 'Filed by a since-deleted account.',
       );
-      final reportId = (await issueReportRepository.getAllReports())
+      final reportId = (await harness.issueReportRepository.getAllReports())
           .firstWhere((r) => r.submittedByUserId == 'deleted-user-999')
           .reportId;
 
       await tester.pumpWidget(
-        MaterialApp(home: IssueReportDetailScreen(reportId: reportId)),
+        harness.wrap(
+          IssueReportDetailScreen(
+            reportId: reportId,
+            controller: harness.issueReportDetailController(),
+            issueReportRepositoryOverride: harness.issueReportRepository,
+          ),
+        ),
       );
       await tester.pumpAndSettle();
 
@@ -96,13 +112,22 @@ void main() {
     testWidgets('shows a photo thumbnail when the report has an attachment',
         (tester) async {
       useTallViewport(tester);
+      final harness = AdminTestHarness();
+      addTearDown(harness.dispose);
       final reportId = await submitThrowawayReport(
+        harness,
         'Broken layout with a photo attached.',
         screenshotUrl: 'C:/fake/does-not-exist.jpg',
       );
 
       await tester.pumpWidget(
-        MaterialApp(home: IssueReportDetailScreen(reportId: reportId)),
+        harness.wrap(
+          IssueReportDetailScreen(
+            reportId: reportId,
+            controller: harness.issueReportDetailController(),
+            issueReportRepositoryOverride: harness.issueReportRepository,
+          ),
+        ),
       );
       await tester.pumpAndSettle();
 
@@ -110,23 +135,27 @@ void main() {
     });
 
     testWidgets('no photo attachment shows no thumbnail', (tester) async {
-      useTallViewport(tester);
-
-      await tester.pumpWidget(
-        const MaterialApp(home: IssueReportDetailScreen(reportId: 'issue-001')),
-      );
-      await tester.pumpAndSettle();
+      await pumpDetailScreen(tester, 'issue-001');
 
       expect(find.byType(PhotoThumbnail), findsNothing);
     });
 
     testWidgets('shows an empty status history state when nothing has been '
         'recorded yet', (tester) async {
-      final reportId = await submitThrowawayReport('Fresh report, never touched.');
+      final harness = AdminTestHarness();
+      addTearDown(harness.dispose);
+      final reportId =
+          await submitThrowawayReport(harness, 'Fresh report, never touched.');
 
       useTallViewport(tester);
       await tester.pumpWidget(
-        MaterialApp(home: IssueReportDetailScreen(reportId: reportId)),
+        harness.wrap(
+          IssueReportDetailScreen(
+            reportId: reportId,
+            controller: harness.issueReportDetailController(),
+            issueReportRepositoryOverride: harness.issueReportRepository,
+          ),
+        ),
       );
       await tester.pumpAndSettle();
 
@@ -134,8 +163,11 @@ void main() {
     });
 
     testWidgets('shows a recorded status-history entry', (tester) async {
-      final reportId = await submitThrowawayReport('Needs a status change recorded.');
-      await issueReportRepository.updateStatus(
+      final harness = AdminTestHarness();
+      addTearDown(harness.dispose);
+      final reportId = await submitThrowawayReport(
+          harness, 'Needs a status change recorded.');
+      await harness.issueReportRepository.updateStatus(
         adminUserId: 'admin-001',
         reportId: reportId,
         status: IssueReportStatus.inProgress,
@@ -144,7 +176,13 @@ void main() {
 
       useTallViewport(tester);
       await tester.pumpWidget(
-        MaterialApp(home: IssueReportDetailScreen(reportId: reportId)),
+        harness.wrap(
+          IssueReportDetailScreen(
+            reportId: reportId,
+            controller: harness.issueReportDetailController(),
+            issueReportRepositoryOverride: harness.issueReportRepository,
+          ),
+        ),
       );
       await tester.pumpAndSettle();
 
@@ -156,12 +194,7 @@ void main() {
 
     testWidgets('an unknown report id shows an error with a retry button',
         (tester) async {
-      useTallViewport(tester);
-
-      await tester.pumpWidget(
-        const MaterialApp(home: IssueReportDetailScreen(reportId: 'nonexistent-999')),
-      );
-      await tester.pumpAndSettle();
+      await pumpDetailScreen(tester, 'nonexistent-999');
 
       expect(find.byKey(const Key('admin-issue-detail-retry')), findsOneWidget);
       expect(find.byKey(const Key('admin-issue-detail-content')), findsNothing);
@@ -169,9 +202,12 @@ void main() {
 
     testWidgets('the button matching the current status is disabled',
         (tester) async {
-      final reportId = await submitThrowawayReport('Disabled-current-status check.');
+      final harness = AdminTestHarness();
+      addTearDown(harness.dispose);
+      final reportId = await submitThrowawayReport(
+          harness, 'Disabled-current-status check.');
 
-      await pumpSignedInDetailScreen(tester, reportId);
+      await pumpSignedInDetailScreenWithHarness(tester, harness, reportId);
 
       // Exactly one FilledButton on this screen in this state — the
       // current-status control (disabled); everything else is an
@@ -185,9 +221,12 @@ void main() {
 
     testWidgets('selecting a new status updates it, records an audit entry, '
         'and shows a confirmation', (tester) async {
-      final reportId = await submitThrowawayReport('Should move to In Progress.');
+      final harness = AdminTestHarness();
+      addTearDown(harness.dispose);
+      final reportId = await submitThrowawayReport(
+          harness, 'Should move to In Progress.');
 
-      await pumpSignedInDetailScreen(tester, reportId);
+      await pumpSignedInDetailScreenWithHarness(tester, harness, reportId);
 
       await tester.enterText(
         find.byKey(const Key('admin-issue-remarks-field')),
@@ -205,14 +244,17 @@ void main() {
 
     testWidgets('reopening a resolved report requires a remark, then records '
         'issueReopen', (tester) async {
-      final reportId = await submitThrowawayReport('Resolved then reopened.');
-      await issueReportRepository.updateStatus(
+      final harness = AdminTestHarness();
+      addTearDown(harness.dispose);
+      final reportId =
+          await submitThrowawayReport(harness, 'Resolved then reopened.');
+      await harness.issueReportRepository.updateStatus(
         adminUserId: 'admin-001',
         reportId: reportId,
         status: IssueReportStatus.resolved,
       );
 
-      await pumpSignedInDetailScreen(tester, reportId);
+      await pumpSignedInDetailScreenWithHarness(tester, harness, reportId);
 
       await tester.tap(find.byKey(const Key('admin-issue-set-status-open')));
       await tester.pumpAndSettle();
@@ -240,14 +282,17 @@ void main() {
 
     testWidgets('cancelling the leaving-resolved dialog leaves the report '
         'status unchanged', (tester) async {
-      final reportId = await submitThrowawayReport('Resolved then cancel-reopened.');
-      await issueReportRepository.updateStatus(
+      final harness = AdminTestHarness();
+      addTearDown(harness.dispose);
+      final reportId = await submitThrowawayReport(
+          harness, 'Resolved then cancel-reopened.');
+      await harness.issueReportRepository.updateStatus(
         adminUserId: 'admin-001',
         reportId: reportId,
         status: IssueReportStatus.resolved,
       );
 
-      await pumpSignedInDetailScreen(tester, reportId);
+      await pumpSignedInDetailScreenWithHarness(tester, harness, reportId);
 
       await tester.tap(find.byKey(const Key('admin-issue-set-status-inProgress')));
       await tester.pumpAndSettle();
@@ -260,20 +305,23 @@ void main() {
       expect(find.byKey(const Key('admin-issue-set-status-open')), findsOneWidget);
       expect(find.byKey(const Key('admin-issue-set-status-inProgress')), findsOneWidget);
 
-      final report = await issueReportRepository.getReportById(reportId);
+      final report = await harness.issueReportRepository.getReportById(reportId);
       expect(report!.status, IssueReportStatus.resolved);
     });
 
     testWidgets('moving Resolved down to In Progress also requires a remark',
         (tester) async {
-      final reportId = await submitThrowawayReport('Resolved then downgraded.');
-      await issueReportRepository.updateStatus(
+      final harness = AdminTestHarness();
+      addTearDown(harness.dispose);
+      final reportId =
+          await submitThrowawayReport(harness, 'Resolved then downgraded.');
+      await harness.issueReportRepository.updateStatus(
         adminUserId: 'admin-001',
         reportId: reportId,
         status: IssueReportStatus.resolved,
       );
 
-      await pumpSignedInDetailScreen(tester, reportId);
+      await pumpSignedInDetailScreenWithHarness(tester, harness, reportId);
 
       await tester.tap(find.byKey(const Key('admin-issue-set-status-inProgress')));
       await tester.pumpAndSettle();
@@ -293,9 +341,12 @@ void main() {
     testWidgets('the leaving-resolved dialog is pre-filled from the '
         'persistent remarks field and not shown for forward transitions',
         (tester) async {
-      final reportId = await submitThrowawayReport('Pre-filled remark check.');
+      final harness = AdminTestHarness();
+      addTearDown(harness.dispose);
+      final reportId =
+          await submitThrowawayReport(harness, 'Pre-filled remark check.');
 
-      await pumpSignedInDetailScreen(tester, reportId);
+      await pumpSignedInDetailScreenWithHarness(tester, harness, reportId);
 
       // Open -> In Progress is a forward transition — no dialog, remarks
       // field stays optional as before.
@@ -316,7 +367,8 @@ void main() {
       await tester.tap(find.byKey(const Key('admin-issue-set-status-resolved')));
       await tester.pumpAndSettle();
       expect(find.byKey(const Key('leaving-resolved-remark-field')), findsNothing);
-      final resolvedReport = await issueReportRepository.getReportById(reportId);
+      final resolvedReport =
+          await harness.issueReportRepository.getReportById(reportId);
       expect(resolvedReport!.status, IssueReportStatus.resolved);
 
       // Now Resolved -> Open should prefill the dialog from that same text.
@@ -330,4 +382,25 @@ void main() {
       expect(dialogField.controller!.text, 'Fixed in the latest build.');
     });
   });
+}
+
+/// Like `pumpSignedInDetailScreen`, but against a harness the caller
+/// already seeded data into (submitThrowawayReport/updateStatus need the
+/// harness's repository instance before the screen is pumped).
+Future<void> pumpSignedInDetailScreenWithHarness(
+  WidgetTester tester,
+  AdminTestHarness harness,
+  String reportId,
+) async {
+  await harness.signIn();
+  await tester.pumpWidget(
+    harness.wrap(
+      IssueReportDetailScreen(
+        reportId: reportId,
+        controller: harness.issueReportDetailController(),
+        issueReportRepositoryOverride: harness.issueReportRepository,
+      ),
+    ),
+  );
+  await tester.pumpAndSettle();
 }

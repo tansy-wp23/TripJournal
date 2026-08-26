@@ -2,7 +2,9 @@ import 'package:flutter/material.dart' show IconData, Icons;
 
 import '../../models/admin_access_attempt_log.dart';
 import '../../models/admin_audit_log.dart';
+import '../../models/ai_request_log.dart';
 import '../../models/issue_report.dart';
+import '../../models/system_error_log.dart';
 
 /// Shared formatting helpers for the admin feature — extracted from
 /// `AdminDashboardScreen`'s original private `_formatTimestamp`/
@@ -73,6 +75,48 @@ String adminAuditTargetTypeLabel(AdminAuditTargetType targetType) {
       return 'User';
     case AdminAuditTargetType.issueReport:
       return 'Issue Report';
+  }
+}
+
+/// Shared display label for an [ErrorSeverity] — used by
+/// `SystemErrorLogScreen` (Phase 17) and, per the Sprint 3 plan,
+/// `MonitoringReportScreen` (Phase 20)'s error-count-by-severity summary, so
+/// the two can't drift on wording.
+String errorSeverityLabel(ErrorSeverity severity) {
+  switch (severity) {
+    case ErrorSeverity.info:
+      return 'Info';
+    case ErrorSeverity.warning:
+      return 'Warning';
+    case ErrorSeverity.error:
+      return 'Error';
+    case ErrorSeverity.fatal:
+      return 'Fatal';
+  }
+}
+
+/// Shared display label for an [AiRequestType] — used by
+/// `AiRequestMonitoringScreen` and `FailedAiRequestsScreen` (Phase 18) so
+/// the two can't drift on wording.
+String aiRequestTypeLabel(AiRequestType type) {
+  switch (type) {
+    case AiRequestType.dailyAdvice:
+      return 'Daily Advice';
+    case AiRequestType.foodDetection:
+      return 'Food Detection';
+    case AiRequestType.tripSummary:
+      return 'Trip Summary';
+  }
+}
+
+/// Shared display label for an [AiRequestStatus] — same reuse reason as
+/// [aiRequestTypeLabel].
+String aiRequestStatusLabel(AiRequestStatus status) {
+  switch (status) {
+    case AiRequestStatus.succeeded:
+      return 'Succeeded';
+    case AiRequestStatus.failed:
+      return 'Failed';
   }
 }
 

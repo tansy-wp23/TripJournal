@@ -36,6 +36,7 @@ import 'package:tripjournal/models/mood.dart';
 import 'package:tripjournal/models/trip.dart';
 import 'package:tripjournal/widgets/app_splash.dart';
 
+import 'support/admin_test_harness.dart';
 import 'support/auth_test_harness.dart';
 
 /// Sizes chosen to bracket what the app actually has to survive: a small
@@ -105,6 +106,28 @@ Widget _appWithMockAuth(
     ),
   );
 }
+
+/// Same as [_app] but overrides every admin controller provider with a
+/// mock-backed one via [AdminTestHarness], so admin screens don't touch
+/// `Supabase.instance` (which isn't initialized in widget tests) — mirrors
+/// [_appWithMockAuth]'s reasoning, needed once
+/// `admin_repository_locator.dart` was wired to the real backend
+/// (`ADMIN_MODULE_IMPLEMENTATION_PLAN.md` Phase 7/14).
+Widget _appWithMockAdmin(
+  AdminTestHarness harness,
+  Widget home, {
+  double textScale = 1.0,
+}) => ProviderScope(
+  overrides: harness.overrides,
+  child: MaterialApp(
+    builder: (context, child) => MediaQuery.withClampedTextScaling(
+      minScaleFactor: textScale,
+      maxScaleFactor: textScale,
+      child: child!,
+    ),
+    home: home,
+  ),
+);
 
 /// Renders [build] at every size and fails on any layout overflow. A
 /// RenderFlex/RenderBox overflow raises a FlutterError during paint, which the
@@ -439,15 +462,25 @@ void main() {
     testWidgets('admin login survives every screen size and orientation', (
       tester,
     ) async {
-      await _expectNoOverflow(tester, () => _app(const AdminLoginScreen()));
+      final harness = AdminTestHarness();
+      addTearDown(harness.dispose);
+      // AdminLoginScreen watches adminAuthControllerProvider itself (to
+      // show its loading/error state), so it needs the mock override too,
+      // same as the other three admin screens below.
+      await _expectNoOverflow(
+        tester,
+        () => _appWithMockAdmin(harness, const AdminLoginScreen()),
+      );
     });
 
     testWidgets(
       'the admin dashboard survives every screen size and orientation',
       (tester) async {
+        final harness = AdminTestHarness();
+        addTearDown(harness.dispose);
         await _expectNoOverflow(
           tester,
-          () => _app(const AdminDashboardScreen()),
+          () => _appWithMockAdmin(harness, const AdminDashboardScreen()),
         );
       },
     );
@@ -455,9 +488,11 @@ void main() {
     testWidgets(
       'the admin user list survives every screen size and orientation',
       (tester) async {
+        final harness = AdminTestHarness();
+        addTearDown(harness.dispose);
         await _expectNoOverflow(
           tester,
-          () => _app(const AdminUserListScreen()),
+          () => _appWithMockAdmin(harness, const AdminUserListScreen()),
         );
       },
     );
@@ -465,7 +500,12 @@ void main() {
     testWidgets('the audit log survives every screen size and orientation', (
       tester,
     ) async {
-      await _expectNoOverflow(tester, () => _app(const AuditLogScreen()));
+      final harness = AdminTestHarness();
+      addTearDown(harness.dispose);
+      await _expectNoOverflow(
+        tester,
+        () => _appWithMockAdmin(harness, const AuditLogScreen()),
+      );
     });
   });
 
@@ -537,10 +577,15 @@ void main() {
     testWidgets('the admin dashboard survives 1.3x text at every size', (
       tester,
     ) async {
+      final harness = AdminTestHarness();
+      addTearDown(harness.dispose);
       await _expectNoOverflowAtLargeText(
         tester,
-        ({double textScale = 1.0}) =>
-            _app(const AdminDashboardScreen(), textScale: textScale),
+        ({double textScale = 1.0}) => _appWithMockAdmin(
+          harness,
+          const AdminDashboardScreen(),
+          textScale: textScale,
+        ),
       );
     });
 

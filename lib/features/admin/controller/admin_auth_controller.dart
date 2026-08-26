@@ -59,10 +59,31 @@ class AdminAuthController extends ChangeNotifier {
   bool _loading = false;
   String? _error;
 
+  /// Non-null exactly when [signInWithGoogle] just rejected a real,
+  /// non-admin (or inactive-admin) account and has already signed it out —
+  /// [AdminGate] consumes this via [consumePendingRejection] to pop itself
+  /// and relay the message as a SnackBar on the traveler screen underneath.
+  /// See that method's doc comment for why this exists.
+  String? _pendingRejectionMessage;
+
   AppSession? get session => _session;
   Profile? get profile => _profile;
   bool get loading => _loading;
   String? get error => _error;
+  bool get hasPendingRejection => _pendingRejectionMessage != null;
+
+  /// One-shot read of [_pendingRejectionMessage] — clears it so a later
+  /// rebuild of whatever consumes this doesn't pop/relay a second time.
+  /// Throws if called with nothing pending; callers should guard with
+  /// [hasPendingRejection] first (mirrors `Queue.removeFirst`'s contract).
+  String consumePendingRejection() {
+    final message = _pendingRejectionMessage;
+    if (message == null) {
+      throw StateError('consumePendingRejection() with no pending rejection');
+    }
+    _pendingRejectionMessage = null;
+    return message;
+  }
 
   /// The current admin auth status, derived from [session] and [profile].
   AdminAuthStatus get status {
@@ -96,18 +117,21 @@ class AdminAuthController extends ChangeNotifier {
       _profile = profile;
 
       if (profile == null || profile.role != UserRole.admin) {
-        _error = 'This Google account is not registered as an administrator.';
-        await _recordAttempt(
+        await _rejectAndSignOut(
           session,
+          'This Google account is not registered as an administrator.',
           profile == null
               ? AdminAccessAttemptReason.noProfileFound
               : AdminAccessAttemptReason.notAnAdmin,
         );
       } else if (!profile.isActive) {
-        _error = profile.isSuspended
-            ? 'This administrator account has been suspended.'
-            : 'This administrator account is not active.';
-        await _recordAttempt(session, AdminAccessAttemptReason.adminAccountNotActive);
+        await _rejectAndSignOut(
+          session,
+          profile.isSuspended
+              ? 'This administrator account has been suspended.'
+              : 'This administrator account is not active.',
+          AdminAccessAttemptReason.adminAccountNotActive,
+        );
       } else {
         _error = null;
       }
@@ -121,6 +145,40 @@ class AdminAuthController extends ChangeNotifier {
       _loading = false;
       notifyListeners();
     }
+  }
+
+  /// Found and fixed 2026-08-26: a rejected admin attempt used to leave the
+  /// real, non-admin account fully signed in (both the shared Supabase
+  /// session and — since `AuthRepository` wraps a single shared
+  /// `GoogleSignIn` instance — Google's own cached "currently selected
+  /// account"). That second part broke the *next* attempt: `GoogleSignIn`
+  /// generally reuses whichever account is already cached rather than
+  /// showing the picker again, so trying to sign in with the real admin
+  /// account right after a rejected one could silently re-select the same
+  /// wrong account instead of letting you choose a different one. It could
+  /// also read as "am I now logged into the wrong account?" on the
+  /// traveler side once back-navigation was allowed to reach it (the
+  /// previous fix, same date).
+  ///
+  /// So a rejection now: records the attempt (must happen *before* signing
+  /// out — `admin_access_attempt_log_insert_own`'s RLS check needs
+  /// `auth.uid()` to still be the rejected account), then fully signs out
+  /// (clears both Google's cache and the Supabase session), then hands the
+  /// message to [_pendingRejectionMessage] for [AdminGate] to relay after
+  /// popping itself — rather than leaving the rejected account sitting
+  /// there on `AdminLoginScreen` for the user to notice and back out of
+  /// manually.
+  Future<void> _rejectAndSignOut(
+    AppSession session,
+    String message,
+    AdminAccessAttemptReason reason,
+  ) async {
+    _error = message;
+    await _recordAttempt(session, reason);
+    await _authRepository.signOut();
+    _session = null;
+    _profile = null;
+    _pendingRejectionMessage = message;
   }
 
   /// Best-effort write to [_accessAttemptLogRepository] — swallows its own
