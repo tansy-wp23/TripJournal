@@ -91,16 +91,6 @@ class _TripMapViewState extends State<TripMapView> {
             selectedDay: _selectedDay,
             onSelected: _selectDay,
           ),
-          if (model.previousDayHasNoMappedEntry)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-              child: Text(
-                'Previous day has no mapped entry',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
-              ),
-            ),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
             child: Text(
@@ -400,22 +390,10 @@ class TripMapUnavailableSurface extends StatelessWidget {
               child: ListTile(
                 key: Key('trip-map-fallback-${group.key}'),
                 onTap: () => onSelected(group),
-                leading: Icon(
-                  group.isPreviousDayContext
-                      ? Icons.history_outlined
-                      : Icons.location_on_outlined,
-                  color: group.isPreviousDayContext
-                      ? Theme.of(context).colorScheme.outline
-                      : null,
-                ),
-                title: Text(
-                  _locationLabel(group.entries.first.location!),
-                  style: group.isPreviousDayContext
-                      ? TextStyle(color: Theme.of(context).colorScheme.outline)
-                      : null,
-                ),
+                leading: const Icon(Icons.location_on_outlined),
+                title: Text(_locationLabel(group.entries.first.location!)),
                 subtitle: Text(
-                  'Day ${group.dayNumber}${group.isPreviousDayContext ? ' · Previous day context' : ''} · '
+                  'Day ${group.dayNumber} · '
                   '${group.entries.length} ${group.entries.length == 1 ? 'entry' : 'entries'}',
                 ),
                 trailing: const Icon(Icons.chevron_right),

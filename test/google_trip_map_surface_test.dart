@@ -155,7 +155,7 @@ void main() {
     );
   });
 
-  test('selected-day previous context marker is visually muted', () {
+  test('selected day renders cumulative markers with normal styling', () {
     final model = buildTripMapModel(
       entries: [
         entry(id: 'day-1', createdAt: tripStart, latitude: 1, longitude: 2),
@@ -172,16 +172,17 @@ void main() {
     );
 
     final markers = googleTripMapMarkers(model: model, onSelected: (_) {});
-    final contextMarker = markers.singleWhere(
-      (marker) => marker.markerId.value.startsWith('context:'),
-    );
-    final currentMarker = markers.singleWhere(
-      (marker) => !marker.markerId.value.startsWith('context:'),
-    );
 
-    expect(contextMarker.alpha, lessThan(currentMarker.alpha));
-    expect(contextMarker.infoWindow.title, 'D1 · Previous day');
-    expect(currentMarker.infoWindow.title, 'D2');
+    expect(markers, hasLength(2));
+    expect(markers.map((marker) => marker.alpha), everyElement(1));
+    expect(markers.map((marker) => marker.infoWindow.title).toSet(), {
+      'D1',
+      'D2',
+    });
+    expect(
+      markers.any((marker) => marker.markerId.value.startsWith('context:')),
+      isFalse,
+    );
   });
 
   test('connectors use stable polylines and separate near-target arrows', () {

@@ -144,15 +144,9 @@ Set<Marker> googleTripMapMarkers({
         markerId: MarkerId(group.key),
         position: LatLng(group.latitude, group.longitude),
         clusterManagerId: clusterManagerId,
-        alpha: group.isPreviousDayContext ? 0.55 : 1,
-        icon: group.isPreviousDayContext
-            ? BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure)
-            : BitmapDescriptor.defaultMarker,
-        infoWindow: InfoWindow(
-          title: group.isPreviousDayContext
-              ? 'D${group.dayNumber} · Previous day'
-              : 'D${group.dayNumber}',
-        ),
+        alpha: 1,
+        icon: BitmapDescriptor.defaultMarker,
+        infoWindow: InfoWindow(title: 'D${group.dayNumber}'),
         onTap: () => onSelected(group),
       ),
   };

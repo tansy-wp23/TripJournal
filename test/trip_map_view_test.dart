@@ -100,14 +100,26 @@ void main() {
     expect(find.byKey(const Key('trip-map-day-all')), findsOneWidget);
     expect(find.byKey(const Key('trip-map-day-1')), findsOneWidget);
     expect(find.byKey(const Key('trip-map-day-2')), findsOneWidget);
-    expect(find.byKey(const Key('fake-map-place:one')), findsOneWidget);
-    expect(find.byKey(const Key('fake-map-place:two')), findsOneWidget);
+    expect(
+      find.byKey(const Key('fake-map-place:one:1.000000,2.000000')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('fake-map-place:two:3.000000,4.000000')),
+      findsOneWidget,
+    );
 
     await tester.tap(find.byKey(const Key('trip-map-day-2')));
     await tester.pump();
 
-    expect(find.byKey(const Key('fake-map-place:one')), findsNothing);
-    expect(find.byKey(const Key('fake-map-place:two')), findsOneWidget);
+    expect(
+      find.byKey(const Key('fake-map-place:one:1.000000,2.000000')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('fake-map-place:two:3.000000,4.000000')),
+      findsOneWidget,
+    );
   });
 
   testWidgets(
@@ -145,7 +157,9 @@ void main() {
         ),
       );
 
-      await tester.tap(find.byKey(const Key('fake-map-place:shrine')));
+      await tester.tap(
+        find.byKey(const Key('fake-map-place:shrine:35.000000,135.000000')),
+      );
       await tester.pumpAndSettle();
 
       expect(find.text('First visit'), findsOneWidget);
@@ -198,7 +212,7 @@ void main() {
   });
 
   testWidgets(
-    'selected day explains when the previous day has no mapped stop',
+    'selected day keeps cumulative markers without a previous-day warning',
     (tester) async {
       await tester.pumpWidget(
         view(
@@ -222,14 +236,14 @@ void main() {
       await tester.tap(find.byKey(const Key('trip-map-day-3')));
       await tester.pump();
 
-      expect(find.text('Previous day has no mapped entry'), findsOneWidget);
+      expect(find.text('Previous day has no mapped entry'), findsNothing);
       expect(
         find.byKey(const Key('fake-map-coord:3.000000,4.000000')),
         findsOneWidget,
       );
       expect(
         find.byKey(const Key('fake-map-coord:1.000000,2.000000')),
-        findsNothing,
+        findsOneWidget,
       );
     },
   );
