@@ -5,7 +5,7 @@ import 'system_error_log_repository.dart';
 
 /// Real [SystemErrorLogRepository] backed by the `system_error_logs` table
 /// (Phase 21 of ADMIN_MODULE_IMPLEMENTATION_PLAN.md,
-/// 202608260002_admin_module_phase21_sprint3_real_backend.sql). Insert is
+/// 202608260002_system_error_and_ai_request_logs.sql). Insert is
 /// allowed for any signed-in caller (`to authenticated`, no ownership
 /// check — the table has no user_id column at all, see the migration's own
 /// comment for why); reads are `is_admin_user()`-scoped.

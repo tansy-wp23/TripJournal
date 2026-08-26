@@ -7,7 +7,7 @@ import 'admin_audit_log_repository.dart';
 /// (Phase 7 of ADMIN_MODULE_IMPLEMENTATION_PLAN.md; `getAllEntries` added
 /// Phase 14 / Sprint 2 for PB-10 "Monitor Audit Log"). Reads are
 /// RLS-scoped to `is_admin_user()` callers
-/// (202608190001_admin_module_phase7.sql).
+/// (202608190001_admin_rbac_and_audit_logs.sql).
 ///
 /// [recordAction] exists to satisfy the interface, but in practice every
 /// entry is written by the privileged Edge Functions

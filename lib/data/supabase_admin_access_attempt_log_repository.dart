@@ -10,7 +10,7 @@ import 'admin_access_attempt_log_repository.dart';
 /// (`auth.uid() = attempted_user_id`) — deliberately not
 /// `is_admin_user()`-gated, since the whole point is recording a *failed*
 /// admin check; reads are `is_admin_user()`-scoped
-/// (202608190001_admin_module_phase7.sql).
+/// (202608190001_admin_rbac_and_audit_logs.sql).
 class SupabaseAdminAccessAttemptLogRepository
     implements AdminAccessAttemptLogRepository {
   SupabaseAdminAccessAttemptLogRepository(this._client);

@@ -8,7 +8,7 @@ import 'profile_supabase_mapper.dart';
 /// read over `profiles` (Phase 7 of ADMIN_MODULE_IMPLEMENTATION_PLAN.md).
 /// Only reachable by a caller whose own profile satisfies
 /// `is_admin_user()` — see `profiles_select_admin`
-/// (202608190001_admin_module_phase7.sql); a non-admin caller's queries
+/// (202608190001_admin_rbac_and_audit_logs.sql); a non-admin caller's queries
 /// here return only their own row via the pre-existing
 /// `profiles_select_own` policy, not an error.
 class SupabaseAdminUserDirectoryRepository

@@ -51,8 +51,9 @@ void main() {
       expect(accessAttemptLogRepository.entries, isEmpty);
     });
 
-    test('sign-in as a non-admin profile is unauthorized and recorded',
-        () async {
+    test(
+        'sign-in as a non-admin profile is rejected, signed back out, and '
+        'recorded', () async {
       authRepository = MockAuthRepository(
         mockUserId: 'user-101',
         mockEmail: 'alice.tan@example.com',
@@ -65,9 +66,19 @@ void main() {
 
       await controller.signInWithGoogle();
 
-      expect(controller.status, AdminAuthStatus.unauthorized);
+      // Found and fixed 2026-08-26: a rejected attempt now signs itself
+      // back out immediately (both the shared Supabase session and
+      // Google's own cached account selection — see
+      // `_rejectAndSignOut`'s doc comment) rather than leaving the
+      // rejected account sitting there signed in. `error` and
+      // `hasPendingRejection` are what carry the rejection message
+      // forward for `AdminGate` to relay after popping itself.
+      expect(controller.status, AdminAuthStatus.signedOut);
+      expect(controller.session, isNull);
+      expect(controller.profile, isNull);
       expect(controller.error, isNotNull);
-      expect(controller.profile?.role, UserRole.user);
+      expect(controller.hasPendingRejection, isTrue);
+      expect(controller.consumePendingRejection(), controller.error);
 
       expect(accessAttemptLogRepository.entries, hasLength(1));
       final entry = accessAttemptLogRepository.entries.single;
@@ -77,8 +88,8 @@ void main() {
     });
 
     test(
-        'sign-in with an id that has no profile at all is unauthorized and '
-        'recorded', () async {
+        'sign-in with an id that has no profile at all is rejected, signed '
+        'back out, and recorded', () async {
       authRepository = MockAuthRepository(
         mockUserId: 'nonexistent-999',
         mockEmail: 'nobody@example.com',
@@ -91,9 +102,13 @@ void main() {
 
       await controller.signInWithGoogle();
 
-      expect(controller.status, AdminAuthStatus.unauthorized);
+      // See the "sign-in as a non-admin profile" test above for why this
+      // is signedOut, not unauthorized (found and fixed 2026-08-26).
+      expect(controller.status, AdminAuthStatus.signedOut);
+      expect(controller.session, isNull);
       expect(controller.profile, isNull);
       expect(controller.error, isNotNull);
+      expect(controller.hasPendingRejection, isTrue);
 
       expect(accessAttemptLogRepository.entries, hasLength(1));
       expect(
@@ -102,15 +117,19 @@ void main() {
       );
     });
 
-    test('sign-in as a suspended admin is unauthorized and recorded',
-        () async {
+    test(
+        'sign-in as a suspended admin is rejected, signed back out, and '
+        'recorded', () async {
       userStore.profiles[0] = userStore.profiles[0].copyWith(
         status: AccountStatus.suspended,
       );
 
       await controller.signInWithGoogle();
 
-      expect(controller.status, AdminAuthStatus.unauthorized);
+      // See the "sign-in as a non-admin profile" test above for why this
+      // is signedOut, not unauthorized (found and fixed 2026-08-26).
+      expect(controller.status, AdminAuthStatus.signedOut);
+      expect(controller.hasPendingRejection, isTrue);
       expect(controller.error, contains('suspended'));
 
       expect(accessAttemptLogRepository.entries, hasLength(1));

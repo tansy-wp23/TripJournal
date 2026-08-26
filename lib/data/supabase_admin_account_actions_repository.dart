@@ -8,7 +8,7 @@ import 'admin_account_actions_repository.dart';
 /// than writing to `profiles` directly — a direct client write can't call
 /// `auth.admin.signOut()` (Architecture Decision 4), and there is
 /// deliberately no admin UPDATE policy on `profiles` for the same reason
-/// (see `202608190001_admin_module_phase7.sql`).
+/// (see `202608190001_admin_rbac_and_audit_logs.sql`).
 class SupabaseAdminAccountActionsRepository
     implements AdminAccountActionsRepository {
   SupabaseAdminAccountActionsRepository(this._client);

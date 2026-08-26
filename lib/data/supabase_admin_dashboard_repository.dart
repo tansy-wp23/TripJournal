@@ -6,7 +6,7 @@ import 'admin_dashboard_repository.dart';
 /// Real [AdminDashboardRepository] (Phase 7 of
 /// ADMIN_MODULE_IMPLEMENTATION_PLAN.md) — an RLS-protected read scoped to
 /// `is_admin_user()` callers via `profiles_select_admin`
-/// (202608190001_admin_module_phase7.sql), computing the same aggregates
+/// (202608190001_admin_rbac_and_audit_logs.sql), computing the same aggregates
 /// [MockAdminDashboardRepository] does client-side over the seeded list.
 /// Fetches only the three columns the counts need rather than a full
 /// `Profile` row per user, and computes on the client rather than via a

@@ -901,7 +901,7 @@ same session rather than waiting for a separate sprint.
 
 ### What was built
 
-- **Migration `202608190001_admin_module_phase7.sql`**:
+- **Migration `202608190001_admin_rbac_and_audit_logs.sql`**:
   - `is_admin_user()` — mirrors `is_active_user()` (same SECURITY DEFINER +
     pinned `search_path` rationale).
   - `profiles_select_admin` — one new, purely additive SELECT policy on
@@ -909,7 +909,7 @@ same session rather than waiting for a separate sprint.
     `profiles_select_own`/`profiles_update_own`. **Cross-module change**,
     flagged per the plan's coordination rule — team decision 2026-08-19 to
     proceed without a separate review cycle since it's additive-only (see
-    `202608190001_admin_module_phase7.sql`'s own header comment).
+    `202608190001_admin_rbac_and_audit_logs.sql`'s own header comment).
   - `admin_audit_log` table + RLS (`is_admin_user()`-gated select; insert
     policy is defense-in-depth, not the primary write path — see below).
   - `admin_access_attempt_log` table + RLS. Deliberately **not**
@@ -1866,7 +1866,7 @@ shared test-architecture gap and how it was closed; not repeated here.
 
 ### What was built
 
-- **Migration `202608190002_admin_module_phase14_issue_reports.sql`**:
+- **Migration `202608190002_issue_reports_and_attachments_bucket.sql`**:
   `issue_reports` table (`report_id, submitted_by_user_id, page,
   description, screenshot_url, status, admin_remarks, created_at,
   updated_at`) + `handle_updated_at` trigger (reused from the User
@@ -2481,7 +2481,7 @@ sprint per the plan's own outline.
 
 ### What was built
 
-- **Migration** (`202608260002_admin_module_phase21_sprint3_real_backend.sql`)
+- **Migration** (`202608260002_system_error_and_ai_request_logs.sql`)
   — `system_error_logs` and `ai_request_logs` tables. Write path: direct
   RLS-scoped client inserts, per the Phase 7 precedent (Edge Functions are
   only for operations needing `auth.admin.signOut()` or similar
@@ -2512,7 +2512,7 @@ sprint per the plan's own outline.
     shipping a broken test that looks like coverage but isn't. Recorded
     here as a real gap, not silently skipped: whoever next has a local
     Supabase environment should add
-    `supabase/tests/admin_module_phase21_test.sql` mirroring
+    `supabase/tests/system_error_and_ai_request_logs_test.sql` mirroring
     `trip_summary_permissions_test.sql`'s shape before trusting these two
     policies in production.
 - **`SupabaseSystemErrorLogRepository`, `SupabaseAiRequestLogRepository`**
@@ -2636,7 +2636,7 @@ other table, policy, or function was touched.
 
 ### Files touched (Phase 21)
 
-- `supabase/migrations/202608260002_admin_module_phase21_sprint3_real_backend.sql` (new)
+- `supabase/migrations/202608260002_system_error_and_ai_request_logs.sql` (new)
 - `lib/data/supabase_system_error_log_repository.dart` (new)
 - `lib/data/supabase_ai_request_log_repository.dart` (new)
 - `lib/data/admin_repository_locator.dart` (modified — two repositories
@@ -2684,3 +2684,166 @@ other table, policy, or function was touched.
 run end-to-end against Supabase, matching Sprint 1 (Phase 7) and Sprint 2
 (Phase 14)'s own checkpoints. No further phases are defined in
 `ADMIN_MODULE_IMPLEMENTATION_PLAN.md` beyond this one.
+
+## Identity-model gap: an admin-role profile could still sign in as a traveler (found and fixed 2026-08-26)
+
+### What was found
+
+Decision 1's identity model (2026-08-12, above) says admin accounts are
+**dedicated** — always a separate `Profile` row from any traveler account
+the same person might have — so `AuthGate` (traveler) and `AdminGate`
+(admin) are "two independent, non-overlapping entry points, since no
+single sign-in can ever resolve to both."
+
+That guarantee only ever held by *provisioning convention*, not by
+anything enforced in code. Manually testing the admin flow against a
+personal Google account that was already a real, in-use traveler account
+(`profiles.role` flipped `user` → `admin` in place, rather than a fresh
+dedicated admin profile being created) surfaced the gap directly: that
+account stayed fully signed in on the traveler `HomeScreen` — journal
+entries, health logging, everything — *while also* passing the Admin
+Portal's `role == admin` check. `AuthController.status`
+(`lib/features/auth/controller/auth_controller.dart`) never once consulted
+`Profile.role`; it only ever branched on `isSuspended` / `isDeactivated` /
+`profileCompleted`. So the "never both" promise was true only as long as
+whoever created an admin account did it correctly — a single bad
+provisioning step (or, later, a real backend role edit) broke it silently.
+
+### What was fixed
+
+Cross-module note: `auth_controller.dart` and `auth_gate.dart` belong to
+the User Management module, not this one — flagging here per the plan's
+own instruction to document conflicts rather than silently resolve them,
+same as Decision 2's `AccountStatus.suspended` addition above. The change
+is narrow (one extra branch, checked first, plus one new screen) and
+directly enforces this module's own confirmed identity-model decision, so
+it was made now rather than left as a written-down risk.
+
+- `AuthStatus` gained `adminAccount`.
+- `AuthController.status` now checks `profile.role == UserRole.admin`
+  before anything else (including `isSuspended`/`isDeactivated`) and
+  returns `adminAccount` — a categorical redirect off the traveler side
+  entirely, not just another traveler account state, so it takes priority
+  over what the profile's other fields say.
+- New `AdminAccountScreen` (`lib/features/auth/screens/admin_account_screen.dart`,
+  modelled on `SuspendedScreen`): explains the account is registered as an
+  administrator and offers a "Sign out" button — the way back to
+  `LoginScreen`, from which the Admin Portal is reachable via the existing
+  hidden logo-tap entry.
+- `AuthGate` routes `AuthStatus.adminAccount` to `AdminAccountScreen`.
+
+### Tests added
+
+- `test/auth_controller_test.dart` — an admin-role profile (both mutated
+  mid-session and already-admin at sign-in time) resolves to
+  `adminAccount`, not `authenticated`; and `adminAccount` wins even when
+  the same profile is also `suspended`, confirming the priority ordering.
+- `test/admin_account_screen_test.dart` (mirrors `suspended_screen_test.dart`) —
+  `AuthGate` shows `AdminAccountScreen` (not `HomeScreen`) for an
+  admin-role sign-in, and "Sign out" returns to `LoginScreen`.
+
+### Verification
+
+- `flutter analyze` — no issues found.
+- `flutter test` — full suite (1234 tests) passes; no regressions.
+
+### Not done here
+
+Provisioning a *correct* dedicated admin account (the actual fix for the
+account that surfaced this) is a database-side task, not a code change —
+sign in once with the new account via the Admin Portal (never the
+traveler login) so `handle_new_user` creates its `auth.users`/`profiles`
+row, then set `role = 'admin'` on that row directly, before ever using it
+as a traveler. The existing personal test account should have its `role`
+reverted to `user` and stay a traveler-only account.
+
+---
+
+## `AdminGate` back-navigation guard — leaked the route underneath, then trapped rejected sign-ins (found and fixed 2026-08-26)
+
+### What was found
+
+Two related gaps in how `AdminGate` behaves as a *pushed* route, both only
+visible once actually driven through `Navigator` rather than pumped in
+isolation:
+
+1. **No back-navigation guard at all.** `AdminGate` is reached via
+   `Navigator.push` from the traveler `LoginScreen`'s hidden 3-tap logo
+   gesture (Phase 2) — that route stays alive underneath. Because
+   `adminAuthRepository` is an alias for the shared `authRepository`
+   (Phase 7's Architecture Decision 2, not a second auth system), a
+   successful admin sign-in shares the exact same Supabase session as the
+   traveler side. Popping back out (hardware back / edge-swipe) after
+   signing in would silently surface whatever the traveler `AuthGate` now
+   resolves to underneath — usually `HomeScreen`, not the `LoginScreen` the
+   admin portal was opened from a moment earlier.
+2. **A rejected (non-admin) sign-in left the account signed in.** Before
+   this fix, a rejection only set `AdminAuthController.error` and moved
+   `status` to `unauthorized` — the real account stayed fully signed in,
+   both the shared Supabase session and (since `AuthRepository` wraps one
+   shared `GoogleSignIn` instance) Google's own cached "currently selected
+   account". That second part actively broke the *next* sign-in attempt:
+   `GoogleSignIn` generally reuses whichever account is already cached
+   instead of showing the picker again, so retrying with the real admin
+   account right after a rejected one could silently re-select the same
+   wrong account. It also meant gap 1's guard, if applied naively, would
+   have blocked back-navigation for `unauthorized` too — trapping the user
+   on `AdminLoginScreen`, which has no sign-out affordance of its own, only
+   "Sign in with Google", so "Log out to leave the admin portal" would be
+   an instruction with no way to follow it.
+
+### What was fixed
+
+- **`AdminAuthController._rejectAndSignOut(session, message, reason)`**
+  (new, replaces the inline `_error = …; await _recordAttempt(...)` in both
+  rejection branches) — records the attempt first (must happen *before*
+  signing out: `admin_access_attempt_log_insert_own`'s RLS check needs
+  `auth.uid()` to still be the rejected account), then fully signs out
+  (`_authRepository.signOut()`, clearing both Google's cache and the
+  Supabase session) and clears `_session`/`_profile` — so `status` derives
+  back to `signedOut`, not `unauthorized`, by the time the next build sees
+  it. The message is stashed in a new one-shot `_pendingRejectionMessage`
+  (`hasPendingRejection` getter, `consumePendingRejection()` — throws if
+  called with nothing pending, mirrors `Queue.removeFirst`'s contract) for
+  `AdminGate` to relay after popping itself, rather than leaving the
+  now-signed-out account sitting on `AdminLoginScreen` for the user to
+  notice the error and back out of manually.
+- **`AdminGate.build`** — checks `controller.hasPendingRejection` first;
+  if set, consumes it, captures the `Navigator`/`ScaffoldMessenger`
+  *states* (not `context` — by the time the post-frame callback runs this
+  widget's own route has popped and `context` is no longer valid, but
+  these `State` objects live above the `Navigator` and stay mounted
+  regardless), then in a post-frame callback pops itself and shows the
+  rejection message as a `SnackBar` on the traveler screen underneath.
+  One-shot specifically so a later rebuild (anything else this widget
+  watches changing) doesn't pop a second time.
+- **`AdminGate` wrapped in `PopScope`** — `canPop: status !=
+  AdminAuthStatus.authenticated`. A blocked pop shows a `SnackBar`, "Log
+  out to leave the admin portal." Deliberately **only** blocks
+  `authenticated`, not `unauthorized` — per gap 2 above, a rejected attempt
+  now signs itself out and pops automatically before this guard would ever
+  see `unauthorized` on a real build anyway, and `authenticated` is the one
+  status with a real "Log out" button (`AdminDashboardScreen`'s) for the
+  message to point at.
+
+### Files touched
+
+- `lib/features/admin/admin_gate.dart` (modified — `PopScope` guard +
+  pending-rejection consumption)
+- `lib/features/admin/controller/admin_auth_controller.dart` (modified —
+  `_rejectAndSignOut`, `hasPendingRejection`, `consumePendingRejection()`)
+- `test/admin_gate_back_navigation_test.dart` (new, 4 tests — back blocked
+  once authenticated; back allowed again after logout; back allowed before
+  any sign-in attempt; a rejected sign-in auto-pops and relays the message
+  as a `SnackBar` on the screen underneath)
+- `test/admin_auth_controller_test.dart` (modified — the three rejection
+  tests now assert `status == signedOut` (not `unauthorized`), `session`/
+  `profile` cleared, and `hasPendingRejection`/`consumePendingRejection()`
+  instead of just `error`/`status`)
+
+### Verification
+
+- `flutter analyze` — no issues found.
+- `flutter test` (targeted: `admin_gate_back_navigation_test.dart`,
+  `admin_auth_controller_test.dart`, `admin_account_screen_test.dart`,
+  `auth_controller_test.dart`) — 53 tests pass, no regressions.

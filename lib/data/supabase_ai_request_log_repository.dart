@@ -5,7 +5,7 @@ import 'ai_request_log_repository.dart';
 
 /// Real [AiRequestLogRepository] backed by the `ai_request_logs` table
 /// (Phase 21 of ADMIN_MODULE_IMPLEMENTATION_PLAN.md,
-/// 202608260002_admin_module_phase21_sprint3_real_backend.sql). Insert
+/// 202608260002_system_error_and_ai_request_logs.sql). Insert
 /// requires `auth.uid()::text = user_id` — a caller can only record a
 /// request attributed to themselves; reads are `is_admin_user()`-scoped.
 class SupabaseAiRequestLogRepository implements AiRequestLogRepository {

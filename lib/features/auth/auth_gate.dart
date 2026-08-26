@@ -5,6 +5,7 @@ import '../../widgets/app_splash.dart';
 import '../home/home_screen.dart';
 import '../profile/screens/profile_onboarding_screen.dart';
 import 'controller/auth_controller.dart';
+import 'screens/admin_account_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/reactivation_screen.dart';
 import 'screens/suspended_screen.dart';
@@ -31,6 +32,8 @@ class AuthGate extends ConsumerWidget {
         return const ReactivationScreen();
       case AuthStatus.suspended:
         return const SuspendedScreen();
+      case AuthStatus.adminAccount:
+        return const AdminAccountScreen();
     }
   }
 }

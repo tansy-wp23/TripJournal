@@ -12,7 +12,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 /// same thing under a different name.
 ///
 /// `profiles` specifically because `profiles_select_admin`
-/// (202608190001_admin_module_phase7.sql) already grants read access to
+/// (202608190001_admin_rbac_and_audit_logs.sql) already grants read access to
 /// any `is_admin_user()` session — the only session that can ever reach
 /// `SystemHealthScreen` in the first place, so this never needs its own
 /// bespoke RLS policy.
