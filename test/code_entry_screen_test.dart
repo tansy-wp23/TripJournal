@@ -66,7 +66,7 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 50));
 
-      expect(harness.controller.status, AuthStatus.signedOut);
+      expect(harness.controller.status, AuthStatus.guest);
     });
 
     testWidgets('resend code sends a new code', (tester) async {
@@ -290,7 +290,7 @@ void main() {
         await tester.pumpAndSettle();
 
         // The account is deleted → the controller signs out.
-        expect(harness.controller.status, AuthStatus.signedOut);
+        expect(harness.controller.status, AuthStatus.guest);
         expect(harness.controller.session, isNull);
         expect(harness.controller.profile, isNull);
       },

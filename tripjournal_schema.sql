@@ -1193,14 +1193,24 @@ grant update (is_public, published_at, publisher_display_name, publisher_avatar_
 
 grant update (summary) on table public.trips to authenticated;
 
+-- Guest mode (202608270001): these four public-select policies target both
+-- authenticated and anon, so an unauthenticated visitor can browse public
+-- trips and their child data. Requires `grant select ... to anon` below —
+-- without a permissive policy the grant alone does nothing, since RLS is
+-- enabled on all four tables.
+grant select on table public.trips to anon;
+grant select on table public.journal_entries to anon;
+grant select on table public.health_logs to anon;
+grant select on table public.meals to anon;
+
 drop policy if exists "trips_select_public" on public.trips;
 create policy "trips_select_public" on public.trips
-  for select to authenticated
+  for select to authenticated, anon
   using (is_public = true and deleted_at is null);
 
 drop policy if exists "entries_select_public" on public.journal_entries;
 create policy "entries_select_public" on public.journal_entries
-  for select to authenticated
+  for select to authenticated, anon
   using (
     exists (
       select 1 from public.trips as t
@@ -1210,7 +1220,7 @@ create policy "entries_select_public" on public.journal_entries
 
 drop policy if exists "health_logs_select_public" on public.health_logs;
 create policy "health_logs_select_public" on public.health_logs
-  for select to authenticated
+  for select to authenticated, anon
   using (
     exists (
       select 1
@@ -1222,7 +1232,7 @@ create policy "health_logs_select_public" on public.health_logs
 
 drop policy if exists "meals_select_public" on public.meals;
 create policy "meals_select_public" on public.meals
-  for select to authenticated
+  for select to authenticated, anon
   using (
     exists (
       select 1

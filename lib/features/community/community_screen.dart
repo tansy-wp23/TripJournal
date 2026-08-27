@@ -10,7 +10,13 @@ import 'widgets/public_trip_card.dart';
 
 /// The community feed — public trips from all users.
 class CommunityScreen extends ConsumerStatefulWidget {
-  const CommunityScreen({super.key});
+  const CommunityScreen({super.key, this.onSignIn});
+
+  /// Non-null only when [GuestHomeScreen] embeds this screen for an
+  /// unauthenticated visitor (Guest Mode plan) — shows a "Sign in" AppBar
+  /// action and a guest-specific empty state. Null (the default, used by the
+  /// signed-in Home screen's Community entry point) leaves both unchanged.
+  final VoidCallback? onSignIn;
 
   @override
   ConsumerState<CommunityScreen> createState() => _CommunityScreenState();
@@ -103,6 +109,13 @@ class _CommunityScreenState extends ConsumerState<CommunityScreen> {
       appBar: AppBar(
         title: const Text('Community'),
         actions: [
+          if (widget.onSignIn != null)
+            TextButton.icon(
+              key: const Key('guest-sign-in-button'),
+              onPressed: widget.onSignIn,
+              icon: const Icon(Icons.login),
+              label: const Text('Sign in'),
+            ),
           IconButton(
             key: const Key('community-destination-search-toggle'),
             icon: Icon(
@@ -147,10 +160,21 @@ class _CommunityScreenState extends ConsumerState<CommunityScreen> {
                 style: Theme.of(context).textTheme.titleLarge,
               ),
               const SizedBox(height: 8),
-              const Text(
-                'Be the first to share a trip with the community!',
+              Text(
+                widget.onSignIn != null
+                    ? 'Sign in to create and share your own trips!'
+                    : 'Be the first to share a trip with the community!',
                 textAlign: TextAlign.center,
               ),
+              if (widget.onSignIn != null) ...[
+                const SizedBox(height: 24),
+                FilledButton.icon(
+                  key: const Key('guest-empty-state-sign-in-button'),
+                  onPressed: widget.onSignIn,
+                  icon: const Icon(Icons.login),
+                  label: const Text('Sign in with Google'),
+                ),
+              ],
             ],
           ),
         ),
@@ -195,6 +219,17 @@ class _CommunityScreenState extends ConsumerState<CommunityScreen> {
                   onTap: () => _openPublicTrip(trip),
                 ),
               ),
+          if (widget.onSignIn != null) ...[
+            const SizedBox(height: 24),
+            Center(
+              child: FilledButton.icon(
+                key: const Key('guest-create-first-trip-button'),
+                onPressed: widget.onSignIn,
+                icon: const Icon(Icons.add),
+                label: const Text('Create your first trip'),
+              ),
+            ),
+          ],
         ],
       ),
     );

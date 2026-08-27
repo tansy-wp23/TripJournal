@@ -2,14 +2,19 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../widgets/app_splash.dart';
+import '../guest/guest_home_screen.dart';
 import '../home/home_screen.dart';
 import '../profile/screens/profile_onboarding_screen.dart';
 import 'controller/auth_controller.dart';
 import 'screens/admin_account_screen.dart';
-import 'screens/login_screen.dart';
 import 'screens/reactivation_screen.dart';
 import 'screens/suspended_screen.dart';
 
+/// Never routes to `LoginScreen` directly — a first-time launch or a
+/// just-logged-out user resolves to [AuthStatus.guest] and lands on
+/// [GuestHomeScreen] (read-only community browsing). `LoginScreen` is only
+/// reached by an explicit prompt from there: the profile affordance, or a
+/// gated action requiring a real account. See `AuthStatus`'s doc comment.
 class AuthGate extends ConsumerWidget {
   const AuthGate({super.key});
 
@@ -18,8 +23,8 @@ class AuthGate extends ConsumerWidget {
     final status = ref.watch(authControllerProvider).status;
 
     switch (status) {
-      case AuthStatus.signedOut:
-        return const LoginScreen();
+      case AuthStatus.guest:
+        return const GuestHomeScreen();
       case AuthStatus.loading:
         // Carries the native launch screen's artwork through until the session
         // resolves, so there is no blank frame between the two.

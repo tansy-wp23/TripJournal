@@ -3,8 +3,8 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:tripjournal/features/auth/auth_gate.dart';
 import 'package:tripjournal/features/auth/controller/auth_controller.dart';
-import 'package:tripjournal/features/auth/screens/login_screen.dart';
 import 'package:tripjournal/features/auth/screens/suspended_screen.dart';
+import 'package:tripjournal/features/guest/guest_home_screen.dart';
 import 'package:tripjournal/models/profile.dart';
 
 import 'support/auth_test_harness.dart';
@@ -34,6 +34,10 @@ void main() {
       await tester.pumpWidget(wrapped());
       await tester.pumpAndSettle();
 
+      // AuthGate's resting state is guest browsing (2026-08-27 redesign) —
+      // reach LoginScreen via the same explicit prompt a real guest uses.
+      await tester.tap(find.byKey(const Key('guest-sign-in-button')));
+      await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('sign-in-with-google')));
       await tester.pumpAndSettle();
 
@@ -42,7 +46,7 @@ void main() {
     });
 
     testWidgets('tapping "Sign out" on SuspendedScreen returns to '
-        'LoginScreen', (tester) async {
+        'guest browsing', (tester) async {
       final existing = (await harness.profileRepository.getProfile(
         'user-001',
       ))!;
@@ -52,6 +56,8 @@ void main() {
 
       await tester.pumpWidget(wrapped());
       await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('guest-sign-in-button')));
+      await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('sign-in-with-google')));
       await tester.pumpAndSettle();
       expect(find.byType(SuspendedScreen), findsOneWidget);
@@ -60,8 +66,8 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 50));
 
-      expect(harness.controller.status, AuthStatus.signedOut);
-      expect(find.byType(LoginScreen), findsOneWidget);
+      expect(harness.controller.status, AuthStatus.guest);
+      expect(find.byType(GuestHomeScreen), findsOneWidget);
       expect(find.byType(SuspendedScreen), findsNothing);
     });
   });

@@ -46,7 +46,7 @@ class AuthController extends ChangeNotifier {
   // Starts true, not false: on app launch, Supabase hasn't finished
   // checking local storage for a persisted session yet. If this defaulted
   // to false, `status` below would read `_session == null` as a definitive
-  // "signed out" and route to the login screen before restoration ever had
+  // "no session" and route to guest browsing before restoration ever had
   // a chance to complete — appearing to "lose" a perfectly valid session on
   // every restart. _onAuthStateChanged is what eventually flips this back
   // to false, once the stream's first event (restored session or
@@ -93,9 +93,14 @@ class AuthController extends ChangeNotifier {
   /// 2026-08-12; see `docs/admin/PROGRESS.md`.
   AuthStatus get status {
     if (_loading) return AuthStatus.loading;
-    if (_session == null || !_session!.isSignedIn) return AuthStatus.signedOut;
+    // No session — a first-time launch or a just-logged-out user — resolves
+    // straight to guest (read-only community browsing), never to a login
+    // wall. LoginScreen (2026-08-27 redesign) is reached only by an explicit
+    // prompt: a guest tapping the profile affordance, or a gated action —
+    // never as a status AuthGate routes to on its own. See `GuestHomeScreen`.
+    if (_session == null || !_session!.isSignedIn) return AuthStatus.guest;
     final profile = _profile;
-    if (profile == null) return AuthStatus.signedOut;
+    if (profile == null) return AuthStatus.guest;
     if (profile.role == UserRole.admin) return AuthStatus.adminAccount;
     if (profile.isSuspended) return AuthStatus.suspended;
     if (profile.isDeactivated) return AuthStatus.deactivated;
@@ -233,7 +238,7 @@ class AuthController extends ChangeNotifier {
   }
 
   /// Confirms deactivation with [code]. On success, signs the user out
-  /// (PB-14 — ends the session) and returns to the login screen.
+  /// (PB-14 — ends the session) and returns to guest browsing.
   ///
   /// Throws [CodeValidationException] if the code is wrong or expired.
   Future<void> confirmDeactivation(String code) async {
@@ -381,16 +386,21 @@ class AuthController extends ChangeNotifier {
   }
 }
 
-/// The high-level auth status the UI routes on. `suspended` (an
-/// admin-imposed suspension) is distinct from `deactivated` (self-service)
-/// — see [AuthController.status]'s doc comment. `needsOnboarding` is a
-/// genuinely new profile (`Profile.profileCompleted == false`) that hasn't
-/// seen the Profile Onboarding screen yet. `adminAccount` is a
-/// `role == admin` profile — the traveler side (`AuthGate`) refuses to
-/// treat it as a normal signed-in user; see [AuthController.status]'s doc
-/// comment and `AdminAccountScreen`.
+/// The high-level auth status the UI routes on. `guest` is the resting
+/// state for "no Supabase auth session" (2026-08-27 redesign) — covers both
+/// a first-time launch and right after logging out. `AuthGate` routes it to
+/// `GuestHomeScreen` (read-only community browsing), never to a login wall;
+/// `LoginScreen` is reached only by an explicit prompt (the guest tapping
+/// the profile affordance, or a gated action), never as a routed status.
+/// `suspended` (an admin-imposed suspension) is distinct from `deactivated`
+/// (self-service) — see [AuthController.status]'s doc comment.
+/// `needsOnboarding` is a genuinely new profile
+/// (`Profile.profileCompleted == false`) that hasn't seen the Profile
+/// Onboarding screen yet. `adminAccount` is a `role == admin` profile — the
+/// traveler side (`AuthGate`) refuses to treat it as a normal signed-in
+/// user; see [AuthController.status]'s doc comment and `AdminAccountScreen`.
 enum AuthStatus {
-  signedOut,
+  guest,
   loading,
   authenticated,
   deactivated,

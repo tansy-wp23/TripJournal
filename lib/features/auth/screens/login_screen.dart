@@ -56,8 +56,18 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  Future<void> _signIn(WidgetRef ref) async {
+  /// This screen is now only ever reached by being pushed on top of
+  /// [GuestHomeScreen] (2026-08-27 redesign) — `AuthGate`'s base route just
+  /// rebuilds its content to the newly-resolved screen underneath, it never
+  /// pops this pushed route on its own. Without an explicit pop here, a
+  /// successful sign-in would leave the guest browsing already invisibly
+  /// replaced by `HomeScreen` (or `AdminAccountScreen`, etc.) one route
+  /// down, forever hidden behind this now-stale screen.
+  Future<void> _signIn(BuildContext context, WidgetRef ref) async {
     await ref.read(authControllerProvider.notifier).signInWithGoogle();
+    if (!context.mounted) return;
+    final auth = ref.read(authControllerProvider);
+    if (auth.error == null) Navigator.maybePop(context);
   }
 
   @override
@@ -67,6 +77,11 @@ class _LoginScreenState extends State<LoginScreen> {
         final auth = ref.watch(authControllerProvider);
 
         return Scaffold(
+          // Now reached only as a pushed route (2026-08-27 redesign — guest
+          // browsing is the resting state, not this screen), never as the
+          // app's root: an AppBar gives the automatic back arrow a guest who
+          // opened this by mistake needs to return to browsing.
+          appBar: AppBar(),
           body: CenteredFormBody(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -100,7 +115,9 @@ class _LoginScreenState extends State<LoginScreen> {
                     ],
                     FilledButton.icon(
                       key: const Key('sign-in-with-google'),
-                      onPressed: auth.loading ? null : () => _signIn(ref),
+                      onPressed: auth.loading
+                          ? null
+                          : () => _signIn(context, ref),
                       icon: auth.loading
                           ? const SizedBox(
                               width: 18,

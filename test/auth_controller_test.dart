@@ -93,13 +93,13 @@ void main() {
     );
 
     test(
-      'passively restored signed-out session (no persisted session) routes to signedOut',
+      'passively restored signed-out session (no persisted session) routes to guest',
       () async {
         authRepository.emitSignedOutSession();
         await Future.delayed(const Duration(milliseconds: 10));
 
         expect(controller.loading, isFalse);
-        expect(controller.status, AuthStatus.signedOut);
+        expect(controller.status, AuthStatus.guest);
         expect(controller.session, isNull);
         expect(controller.profile, isNull);
       },
@@ -287,7 +287,51 @@ void main() {
       },
     );
 
-    test('failed sign-in sets error and stays signedOut', () async {
+    group('Guest Mode (2026-08-27 redesign)', () {
+      test(
+        'a first-time launch (no persisted session) resolves to guest '
+        'directly — no separate opt-in step',
+        () async {
+          authRepository.emitSignedOutSession();
+          await Future.delayed(const Duration(milliseconds: 10));
+
+          expect(controller.status, AuthStatus.guest);
+          expect(controller.session, isNull);
+          expect(controller.currentUserId, isNull);
+        },
+      );
+
+      test(
+        'signing in from guest lands on authenticated — a real session '
+        'replaces the "no session" guest state',
+        () async {
+          authRepository.emitSignedOutSession();
+          await Future.delayed(const Duration(milliseconds: 10));
+          expect(controller.status, AuthStatus.guest);
+
+          await controller.signInWithGoogle();
+
+          expect(controller.status, AuthStatus.authenticated);
+        },
+      );
+
+      test(
+        'signing out returns to guest, not a distinct signed-out status — '
+        'logging out lands back on browsing, not a login wall',
+        () async {
+          await controller.signInWithGoogle();
+          expect(controller.status, AuthStatus.authenticated);
+
+          await controller.signOut();
+
+          expect(controller.status, AuthStatus.guest);
+          expect(controller.session, isNull);
+          expect(controller.profile, isNull);
+        },
+      );
+    });
+
+    test('failed sign-in sets error and stays on guest', () async {
       authRepository = MockAuthRepository(result: MockAuthResult.failure);
       controller = AuthController(
         authRepository,
@@ -297,13 +341,13 @@ void main() {
 
       await controller.signInWithGoogle();
 
-      expect(controller.status, AuthStatus.signedOut);
+      expect(controller.status, AuthStatus.guest);
       expect(controller.error, isNotNull);
       expect(controller.error!.contains('failed'), isTrue);
     });
 
     test(
-      'cancelled sign-in sets a cancelled error and stays signedOut',
+      'cancelled sign-in sets a cancelled error and stays on guest',
       () async {
         authRepository = MockAuthRepository(result: MockAuthResult.cancelled);
         controller = AuthController(
@@ -314,7 +358,7 @@ void main() {
 
         await controller.signInWithGoogle();
 
-        expect(controller.status, AuthStatus.signedOut);
+        expect(controller.status, AuthStatus.guest);
         expect(controller.error, 'Sign-in cancelled.');
       },
     );
@@ -325,12 +369,12 @@ void main() {
 
       await controller.signOut();
 
-      expect(controller.status, AuthStatus.signedOut);
+      expect(controller.status, AuthStatus.guest);
       expect(controller.session, isNull);
       expect(controller.profile, isNull);
     });
 
-    test('signOut during an auth-stream restore finishes signedOut', () async {
+    test('signOut during an auth-stream restore finishes on guest', () async {
       controller.dispose();
       final eventAuthRepository = _SignOutBeforeEventAuthRepository();
       final deferredProfileRepository = _DeferredProfileRepository();
@@ -355,7 +399,7 @@ void main() {
 
       expect(
         controller.status,
-        AuthStatus.signedOut,
+        AuthStatus.guest,
         reason: 'Observed auth states: $states',
       );
 
@@ -368,9 +412,9 @@ void main() {
       eventAuthRepository.emitSignedOutSession();
       await Future<void>.delayed(Duration.zero);
 
-      final firstSignedOut = states.indexOf(AuthStatus.signedOut);
+      final firstSignedOut = states.indexOf(AuthStatus.guest);
       expect(firstSignedOut, isNonNegative);
-      expect(states.skip(firstSignedOut), everyElement(AuthStatus.signedOut));
+      expect(states.skip(firstSignedOut), everyElement(AuthStatus.guest));
     });
 
     test(
@@ -410,7 +454,7 @@ void main() {
         eventAuthRepository.releaseSignOut();
         await signOut;
 
-        expect(controller.status, AuthStatus.signedOut);
+        expect(controller.status, AuthStatus.guest);
         expect(controller.session, isNull);
         expect(controller.profile, isNull);
       },
@@ -458,7 +502,7 @@ void main() {
     );
 
     test(
-      'failed signOut during an auth-stream restore still finishes signedOut',
+      'failed signOut during an auth-stream restore still finishes on guest',
       () async {
         controller.dispose();
         final eventAuthRepository = _SignOutBeforeEventAuthRepository(
@@ -482,7 +526,7 @@ void main() {
 
         await expectLater(controller.signOut(), throwsStateError);
 
-        expect(controller.status, AuthStatus.signedOut);
+        expect(controller.status, AuthStatus.guest);
         expect(controller.session, isNull);
         expect(controller.profile, isNull);
 
@@ -529,7 +573,7 @@ void main() {
 
         expect(sessionAfterQueuedEvent, isNull);
         expect(createsAfterQueuedEvent, 0);
-        expect(controller.status, AuthStatus.signedOut);
+        expect(controller.status, AuthStatus.guest);
 
         final restored = Completer<void>();
         controller.addListener(() {
@@ -584,12 +628,12 @@ void main() {
 
       queuedAuthRepository.emitSignedInSession();
       await controller.signOut();
-      expect(controller.status, AuthStatus.signedOut);
+      expect(controller.status, AuthStatus.guest);
 
       queuedAuthRepository.releaseSignedInEvent();
       await Future<void>.delayed(const Duration(milliseconds: 10));
 
-      expect(controller.status, AuthStatus.signedOut);
+      expect(controller.status, AuthStatus.guest);
       expect(controller.session, isNull);
       expect(controller.profile, isNull);
     });
@@ -598,7 +642,7 @@ void main() {
       'a legitimate signed-in stream event after signOut restores the session',
       () async {
         await controller.signOut();
-        expect(controller.status, AuthStatus.signedOut);
+        expect(controller.status, AuthStatus.guest);
 
         authRepository.emitSignedInSession();
         await Future<void>.delayed(const Duration(milliseconds: 10));
@@ -622,7 +666,7 @@ void main() {
         );
         deferredAuthRepository.emitSignedOutSession();
         await Future<void>.delayed(Duration.zero);
-        expect(controller.status, AuthStatus.signedOut);
+        expect(controller.status, AuthStatus.guest);
 
         final signIn = controller.signInWithGoogle();
         await deferredAuthRepository.signInStarted;
@@ -633,7 +677,7 @@ void main() {
         await signOut;
         await Future<void>.delayed(const Duration(milliseconds: 10));
 
-        expect(controller.status, AuthStatus.signedOut);
+        expect(controller.status, AuthStatus.guest);
         expect(controller.session, isNull);
         expect(controller.profile, isNull);
       },
@@ -819,7 +863,7 @@ void main() {
         MockVerificationCodeRepository.mockCode,
       );
 
-      expect(controller.status, AuthStatus.signedOut);
+      expect(controller.status, AuthStatus.guest);
       expect(controller.session, isNull);
       expect(controller.profile, isNull);
     });
@@ -856,7 +900,7 @@ void main() {
       await controller.requestDeletion();
       await controller.deleteAccount(MockVerificationCodeRepository.mockCode);
 
-      expect(controller.status, AuthStatus.signedOut);
+      expect(controller.status, AuthStatus.guest);
       expect(controller.session, isNull);
       expect(controller.profile, isNull);
     });
