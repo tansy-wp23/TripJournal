@@ -23,7 +23,13 @@ abstract class VerificationCodeRepository {
 }
 
 /// Outcome of validating a submitted code.
-enum CodeValidationResult { valid, invalid, expired }
+///
+/// `locked` is distinct from `invalid`: the backend locks out a code after 5
+/// wrong submissions, and even a *correct* code then reports `locked`, not
+/// `invalid`. Keeping it separate lets the UI tell the user to resend (which
+/// issues a fresh code with its attempt counter reset) instead of telling
+/// them their correct code was wrong.
+enum CodeValidationResult { valid, invalid, expired, locked }
 
 /// Why a code-send attempt failed. The UI (Phase 4/9) maps each kind to a
 /// plain-language message so a non-technical user gets an honest reason

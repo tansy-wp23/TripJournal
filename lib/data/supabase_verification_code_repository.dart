@@ -67,6 +67,7 @@ class SupabaseVerificationCodeRepository implements VerificationCodeRepository {
       return switch (result) {
         'valid' => CodeValidationResult.valid,
         'expired' => CodeValidationResult.expired,
+        'locked' => CodeValidationResult.locked,
         _ => CodeValidationResult.invalid,
       };
     }

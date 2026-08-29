@@ -130,9 +130,13 @@ class SupabaseAccountLifecycleRepository implements AccountLifecycleRepository {
         final reason = errorStr.substring(prefix.length);
         final result = switch (reason) {
           'expired' => CodeValidationResult.expired,
+          'locked' => CodeValidationResult.locked,
           _ => CodeValidationResult.invalid,
         };
-        return CodeValidationException(result, 'Invalid or expired code.');
+        return CodeValidationException(
+          result,
+          'Invalid, expired, or locked code.',
+        );
       }
     }
     return e;
