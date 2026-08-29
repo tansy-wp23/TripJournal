@@ -739,8 +739,8 @@ changed.
 - **`SupabaseVerificationCodeRepository`** (`lib/data/supabase_verification_code_repository.dart`)
   — calls the Phase 6 Edge Functions (`verification-send` / `verification-validate`),
   mapping the server's `result` string to
-  `CodeValidationResult` (`valid`→valid, `expired`→expired, anything else
-  including `invalid`/`locked`/`not_found`→invalid).
+  `CodeValidationResult` (`valid`→valid, `expired`→expired, `locked`→locked,
+  anything else including `invalid`/`not_found`→invalid).
 - **`SupabaseAccountLifecycleRepository`**
   (`lib/data/supabase_account_lifecycle_repository.dart`) — calls
   `account-deactivate-confirm` / `account-reactivate-confirm`. Maps a 400
@@ -884,12 +884,12 @@ Modified:
   the profile and throws `AccountSuspendedException` before calling
   `account-reactivate-confirm`, so a suspended user never burns a code attempt on
   a flow they can't complete.
-- **`deny-list` mapping quirk:** `SupabaseVerificationCodeRepository.validateCode`
-  intentionally maps every non-`valid`/non-`expired` server result
-  (`invalid`/`locked`/`not_found`) to `CodeValidationResult.invalid`. The Dart
-  repo interface predates `locked`/`not_found`, and collapsing them into
-  `invalid` keeps the UI contract stable; the confirm path surfaces the real
-  reason via the `CodeValidationException` message instead.
+- **`deny-list` mapping:** `SupabaseVerificationCodeRepository.validateCode`
+  keeps the distinct outcomes the UI can act on (`valid`/`expired`/`locked`)
+  and collapses only the ambiguous ones (`invalid`/`not_found`→`invalid`).
+  The separate `locked` outcome (added 2026-08-27) lets the code-entry screen
+  tell a user their code is locked after 5 wrong attempts instead of claiming
+  a perfectly correct code is wrong.
 
 ### Verification
 
@@ -968,6 +968,39 @@ Modified:
   `_mapConfirmError` also deliberately rethrows non-400 errors as-is so they aren't
   misreported as "invalid code." The cosmetic gap (raw `PostgrestException.toString()`)
   was deferred to avoid widening scope.
+  - **Follow-up (2026-08-26):** profile/account-creation failure in
+    `AuthController._performSignInWithGoogle` no longer falls into the generic
+    `'An unexpected error occurred: $e'` fallback. That step is now in its own
+    try/catch and shows `"We couldn't finish setting up your account. Please try again."`
+    (and clears the half-set-up session so the user stays on the login screen) instead
+    of leaking the raw Supabase `PostgrestException`. Covered by
+    `auth_controller_test.dart`'s `_FailingCreateProfileRepository`.
+  - **Follow-up (2026-08-27):** the same class of raw-exception leak was fixed in
+    `ProfileController.loadProfile` — a thrown `getProfile` failure (network,
+    RLS, etc.) now shows `"Failed to load profile. Please try again."` instead of
+    `e.toString()`. Covered by `profile_controller_test.dart`'s
+    `_ThrowingGetProfileRepository`.
+  - **Follow-up (2026-08-27):** the **save-side** profile paths were made friendly
+    and consistent across onboarding and the edit screen. `updateDisplayName`,
+    `updateTravelDetails`, `completeOnboarding`, and `skipOnboarding` all now
+    return `"Failed to save profile. Please try again."`; `updateAvatar` /
+    `removeAvatar` return `"Couldn't update your profile photo. Please try again."`
+    (identical on both screens). The avatar-picker access message was also unified
+    so onboarding and edit both say `"Couldn't access photos — you can continue
+    without one."`. Covered by `profile_controller_test.dart`'s
+    `_ThrowingUpdateProfileRepository`.
+  - **Follow-up (2026-08-27):** the OTP `locked` outcome is now distinct from
+    `invalid` end to end. `CodeValidationResult` gained `locked`;
+    `SupabaseVerificationCodeRepository.validateCode` and
+    `SupabaseAccountLifecycleRepository._mapConfirmError` map the server's
+    `invalid_code:locked` to it (previously collapsed to `invalid`), and the
+    mock mirrors the backend's locked-before-expired ordering. `CodeEntryScreen`
+    now shows `"Too many incorrect attempts. Please resend a new code."` for a
+    locked code, so a user who hits the 5-attempt limit and then enters the
+    *correct* code is told to resend rather than that their code is wrong.
+    Covered by `mock_verification_code_repository_test`,
+    `supabase_verification_code_repository_test`,
+    `mock_account_lifecycle_repository_test`, and `code_entry_screen_test`.
 - **FuncReq audit (task 4)** — blocked: `USER_MANAGEMENT_IMPLEMENTATION_PLAN.md`
   references a `FuncReq.md` with checklist 1.1.1–1.3.4, but **no such file exists in the
   repo**. Flagged as a known gap in `lib/features/auth/README.md` -> "Open issues".
