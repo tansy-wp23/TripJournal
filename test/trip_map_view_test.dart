@@ -289,39 +289,59 @@ void main() {
     );
   });
 
-  testWidgets('fallback lists adjacent-day connectors with endpoint labels', (
-    tester,
-  ) async {
-    await tester.pumpWidget(
-      view(
-        entries: [
-          entry(
-            id: 'day-1',
-            createdAt: tripStart,
-            location: const GeoTag(
-              latitude: 1,
-              longitude: 2,
-              placeName: 'Trailhead',
+  testWidgets(
+    'fallback lists route segments in entry order with endpoint labels',
+    (tester) async {
+      await tester.pumpWidget(
+        view(
+          entries: [
+            entry(
+              id: 'day-1',
+              createdAt: tripStart,
+              location: const GeoTag(
+                latitude: 1,
+                longitude: 2,
+                placeName: 'Trailhead',
+              ),
             ),
-          ),
-          entry(
-            id: 'day-2',
-            createdAt: tripStart.add(const Duration(days: 1)),
-            location: const GeoTag(latitude: 3, longitude: 4),
-          ),
-        ],
-        mapBuilder: ({required model, required onSelected}) =>
-            TripMapUnavailableSurface(model: model, onSelected: onSelected),
-      ),
-    );
+            entry(
+              id: 'nice',
+              createdAt: tripStart.add(const Duration(days: 1)),
+              location: const GeoTag(
+                latitude: 3,
+                longitude: 4,
+                placeName: 'Nice place',
+              ),
+            ),
+            entry(
+              id: 'ur',
+              createdAt: tripStart.add(const Duration(days: 1, hours: 1)),
+              location: const GeoTag(
+                latitude: 5,
+                longitude: 6,
+                placeName: 'UR place',
+              ),
+            ),
+          ],
+          mapBuilder: ({required model, required onSelected}) =>
+              TripMapUnavailableSurface(model: model, onSelected: onSelected),
+        ),
+      );
 
-    expect(find.text('Day 1 last stop → Day 2 first stop'), findsOneWidget);
-    expect(find.text('Trailhead → 3.00000, 4.00000'), findsOneWidget);
-    expect(
-      find.byKey(const Key('trip-map-fallback-connector-day-1-to-day-2')),
-      findsOneWidget,
-    );
-  });
+      expect(find.text('Day 1 → Day 2'), findsOneWidget);
+      expect(find.text('Day 2 route'), findsOneWidget);
+      expect(find.text('Trailhead → Nice place'), findsOneWidget);
+      expect(find.text('Nice place → UR place'), findsOneWidget);
+      expect(
+        find.byKey(const Key('trip-map-fallback-route-entry-day-1-to-nice')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('trip-map-fallback-route-entry-nice-to-ur')),
+        findsOneWidget,
+      );
+    },
+  );
 
   testWidgets('remains usable at narrow width with larger text', (
     tester,

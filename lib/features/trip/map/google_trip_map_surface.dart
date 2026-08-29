@@ -18,7 +18,7 @@ const String _googleMapsIosKey = String.fromEnvironment('GOOGLE_MAPS_IOS_KEY');
 const String _googleMapsWebKey = String.fromEnvironment('GOOGLE_MAPS_WEB_KEY');
 
 // A transparent 48px north-facing arrow, rendered at 24 logical pixels and
-// rotated to the connector's local course by Google Maps.
+// rotated to the route segment's local course by Google Maps.
 final BitmapDescriptor _tripMapArrowIcon = BitmapDescriptor.bytes(
   base64Decode(
     'iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAYAAABXAvmHAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAD+SURBVGhD7c9BCsJAFARRT+oBPK4XUlwI8hBtzWQ6gRTUJiH9K6fTwcG2OV+uN5/thkf8U99tntf43f2E4bv6CYPf6TebwdBP+m0dAxPdqGHYL7o1HYP+0c1pGLJEt6dgxBLdXh0DRuiN1fDwSL01HA+uoTeH4aE19fZiPDBDG/7G4Zna8jMONrQpxqGmtn3FgS1o4zA8lOpODcNS3alhWKo7NQxLdaeGYanu1DAs1Z0ahqW6U8OwVHdqGJbqTg3DUt2pYViqOzUMS3WnhmGp7tQwLNWdGoalulPDsFR3ahiW6k4Nw1LdqWFYqjs1DEt1p4Zhqe7UMCzVnYODAncGH/uLcvDJmQAAAABJRU5ErkJggg==',
@@ -165,17 +165,17 @@ Set<ClusterManager> googleTripMapClusterManagers(
       }
     : const {};
 
-/// Builds one plain line for every adjacent-day connector. Direction is drawn
+/// Builds one plain line for every entry-ordered route segment. Direction is drawn
 /// separately by [googleTripMapArrowMarkers] so platform-specific caps are not
 /// required.
 @visibleForTesting
 Set<Polyline> googleTripMapPolylines(TripMapModel model) => {
-  for (final connector in model.connectors)
+  for (final segment in model.routeSegments)
     Polyline(
-      polylineId: PolylineId(connector.id),
+      polylineId: PolylineId(segment.id),
       points: [
-        LatLng(connector.fromLatitude, connector.fromLongitude),
-        LatLng(connector.toLatitude, connector.toLongitude),
+        LatLng(segment.fromLatitude, segment.fromLongitude),
+        LatLng(segment.toLatitude, segment.toLongitude),
       ],
       color: const Color(0xFF5E6AD2),
       geodesic: true,
@@ -184,17 +184,16 @@ Set<Polyline> googleTripMapPolylines(TripMapModel model) => {
     ),
 };
 
-/// Builds an independently rotated marker near each connector destination.
+/// Builds an independently rotated marker near each route segment destination.
 @visibleForTesting
 Set<Marker> googleTripMapArrowMarkers(TripMapModel model) => {
-  for (final connector in model.connectors)
-    _googleTripMapArrowMarker(connector),
+  for (final segment in model.routeSegments) _googleTripMapArrowMarker(segment),
 };
 
-Marker _googleTripMapArrowMarker(TripMapDayConnector connector) {
-  final position = _arrowPosition(connector);
+Marker _googleTripMapArrowMarker(TripMapRouteSegment segment) {
+  final position = _arrowPosition(segment);
   return Marker(
-    markerId: MarkerId('${connector.id}-arrow'),
+    markerId: MarkerId('${segment.id}-arrow'),
     position: position,
     alpha: 0.9,
     anchor: const Offset(0.5, 0.5),
@@ -202,19 +201,19 @@ Marker _googleTripMapArrowMarker(TripMapDayConnector connector) {
     icon: _tripMapArrowIcon,
     rotation: _bearingDegrees(
       from: position,
-      toLatitude: connector.toLatitude,
-      toLongitude: connector.toLongitude,
+      toLatitude: segment.toLatitude,
+      toLongitude: segment.toLongitude,
     ),
     zIndexInt: 2,
   );
 }
 
-LatLng _arrowPosition(TripMapDayConnector connector) {
+LatLng _arrowPosition(TripMapRouteSegment segment) {
   const progress = 0.82;
-  final fromLatitude = _radians(connector.fromLatitude);
-  final fromLongitude = _radians(connector.fromLongitude);
-  final toLatitude = _radians(connector.toLatitude);
-  final toLongitude = _radians(connector.toLongitude);
+  final fromLatitude = _radians(segment.fromLatitude);
+  final fromLongitude = _radians(segment.fromLongitude);
+  final toLatitude = _radians(segment.toLatitude);
+  final toLongitude = _radians(segment.toLongitude);
   final from = (
     math.cos(fromLatitude) * math.cos(fromLongitude),
     math.cos(fromLatitude) * math.sin(fromLongitude),
@@ -231,7 +230,7 @@ LatLng _arrowPosition(TripMapDayConnector connector) {
   );
   final angle = math.acos(dot);
   if (angle == 0) {
-    return LatLng(connector.toLatitude, connector.toLongitude);
+    return LatLng(segment.toLatitude, segment.toLongitude);
   }
   final angleSin = math.sin(angle);
   final fromWeight = math.sin((1 - progress) * angle) / angleSin;
@@ -461,10 +460,10 @@ bool _sameCameraTargets(TripMapModel a, TripMapModel b) {
       return false;
     }
   }
-  if (a.connectors.length != b.connectors.length) return false;
-  for (var index = 0; index < a.connectors.length; index++) {
-    final left = a.connectors[index];
-    final right = b.connectors[index];
+  if (a.routeSegments.length != b.routeSegments.length) return false;
+  for (var index = 0; index < a.routeSegments.length; index++) {
+    final left = a.routeSegments[index];
+    final right = b.routeSegments[index];
     if (left.fromLatitude != right.fromLatitude ||
         left.fromLongitude != right.fromLongitude ||
         left.toLatitude != right.toLatitude ||

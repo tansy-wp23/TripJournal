@@ -373,16 +373,17 @@ class TripMapUnavailableSurface extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 8),
-          for (final connector in model.connectors)
+          for (final segment in model.routeSegments)
             Card(
               child: ListTile(
-                key: Key('trip-map-fallback-connector-${connector.id}'),
+                key: Key('trip-map-fallback-route-${segment.id}'),
                 leading: const Icon(Icons.arrow_forward_outlined),
                 title: Text(
-                  'Day ${connector.fromDay} last stop → '
-                  'Day ${connector.toDay} first stop',
+                  segment.fromDay == segment.toDay
+                      ? 'Day ${segment.fromDay} route'
+                      : 'Day ${segment.fromDay} → Day ${segment.toDay}',
                 ),
-                subtitle: Text('${connector.fromLabel} → ${connector.toLabel}'),
+                subtitle: Text('${segment.fromLabel} → ${segment.toLabel}'),
               ),
             ),
           for (final group in model.groups)
