@@ -30,6 +30,9 @@ JournalEntry journalEntryFromSupabaseRow(Map<String, dynamic> row) {
     location: _geoTagFromRow(row['location']),
     createdAt: DateTime.parse(row['created_at'] as String),
     updatedAt: DateTime.parse(row['updated_at'] as String),
+    creationOrderAt: DateTime.parse(
+      (row['creation_order_at'] ?? row['updated_at']) as String,
+    ),
     healthLog: healthLogFromEmbeddedRows(row['health_logs']),
   );
 }
