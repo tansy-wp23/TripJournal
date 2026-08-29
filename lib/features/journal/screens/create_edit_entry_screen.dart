@@ -424,6 +424,7 @@ class _CreateEditEntryScreenState extends ConsumerState<CreateEditEntryScreen> {
       final createdAt =
           existing?.createdAt ??
           deriveEntryTimestamp(widget.initialDate ?? now, now: now);
+      final creationOrderAt = existing?.creationOrderAt ?? now;
       final entryId = existing?.id ?? _draftEntryId;
       final healthLogId = existing?.healthLog?.id ?? _draftHealthLogId;
       final totalCaloriesEaten = _meals.fold<int>(
@@ -441,6 +442,7 @@ class _CreateEditEntryScreenState extends ConsumerState<CreateEditEntryScreen> {
         location: _location,
         createdAt: createdAt,
         updatedAt: now,
+        creationOrderAt: creationOrderAt,
         // Preserve whatever advice already existed — generateAndAttachAdvice
         // regenerates it as a separate step right after this save completes,
         // per IMPLEMENTATION_PLAN_UX_AI.md §3.

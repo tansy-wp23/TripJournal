@@ -297,6 +297,32 @@ void main() {
       expect(restored.healthLog?.meals.length, entry.healthLog?.meals.length);
     });
 
+    test('round-trips immutable creation order', () {
+      final creationOrder = DateTime.utc(2026, 8, 29, 1, 2, 3);
+      final ordered = entry.copyWith(creationOrderAt: creationOrder);
+
+      final restored = JournalEntry.fromJson(ordered.toJson());
+
+      expect(restored.creationOrderAt, creationOrder);
+      expect(
+        restored
+            .copyWith(updatedAt: creationOrder.add(const Duration(days: 1)))
+            .creationOrderAt,
+        creationOrder,
+      );
+    });
+
+    test(
+      'legacy JSON falls back to its saved updatedAt for creation order',
+      () {
+        final legacy = entry.toJson()..remove('creationOrderAt');
+
+        final restored = JournalEntry.fromJson(legacy);
+
+        expect(restored.creationOrderAt, restored.updatedAt);
+      },
+    );
+
     test('round-trip with null location and null healthLog', () {
       final noOptional = JournalEntry(
         id: entry.id,

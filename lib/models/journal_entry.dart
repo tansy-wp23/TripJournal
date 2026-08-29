@@ -12,6 +12,7 @@ class JournalEntry {
   final GeoTag? location;
   final DateTime createdAt;
   final DateTime updatedAt;
+  final DateTime creationOrderAt;
   final HealthLog? healthLog;
 
   const JournalEntry({
@@ -24,8 +25,9 @@ class JournalEntry {
     this.location,
     required this.createdAt,
     required this.updatedAt,
+    DateTime? creationOrderAt,
     this.healthLog,
-  });
+  }) : creationOrderAt = creationOrderAt ?? updatedAt;
 
   /// A title is never required — the "title OR body" rule (see
   /// IMPLEMENTATION_PLAN_VALIDATION.md) allows a body-only entry. Anywhere
@@ -39,6 +41,7 @@ class JournalEntry {
   }
 
   factory JournalEntry.fromJson(Map<String, dynamic> json) {
+    final updatedAt = DateTime.parse(json['updatedAt'] as String);
     return JournalEntry(
       id: json['id'] as String,
       tripId: json['tripId'] as String,
@@ -52,7 +55,10 @@ class JournalEntry {
           ? null
           : GeoTag.fromJson(json['location'] as Map<String, dynamic>),
       createdAt: DateTime.parse(json['createdAt'] as String),
-      updatedAt: DateTime.parse(json['updatedAt'] as String),
+      updatedAt: updatedAt,
+      creationOrderAt: json['creationOrderAt'] == null
+          ? null
+          : DateTime.parse(json['creationOrderAt'] as String),
       healthLog: json['healthLog'] == null
           ? null
           : HealthLog.fromJson(json['healthLog'] as Map<String, dynamic>),
@@ -70,6 +76,7 @@ class JournalEntry {
       'location': location?.toJson(),
       'createdAt': createdAt.toIso8601String(),
       'updatedAt': updatedAt.toIso8601String(),
+      'creationOrderAt': creationOrderAt.toIso8601String(),
       'healthLog': healthLog?.toJson(),
     };
   }
@@ -85,6 +92,7 @@ class JournalEntry {
     bool clearLocation = false,
     DateTime? createdAt,
     DateTime? updatedAt,
+    DateTime? creationOrderAt,
     HealthLog? healthLog,
   }) {
     assert(!(clearLocation && location != null));
@@ -98,6 +106,7 @@ class JournalEntry {
       location: clearLocation ? null : (location ?? this.location),
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
+      creationOrderAt: creationOrderAt ?? this.creationOrderAt,
       healthLog: healthLog ?? this.healthLog,
     );
   }
