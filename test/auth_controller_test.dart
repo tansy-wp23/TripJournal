@@ -363,6 +363,32 @@ void main() {
       },
     );
 
+    test(
+      'profile creation failure shows a friendly message and falls back to guest',
+      () async {
+        profileRepository = _FailingCreateProfileRepository();
+        lifecycleRepository = MockAccountLifecycleRepository(
+          profileRepository: profileRepository,
+          verificationCodeRepository: verificationCodeRepository,
+        );
+        controller = AuthController(
+          authRepository,
+          profileRepository,
+          lifecycleRepository,
+        );
+
+        await controller.signInWithGoogle();
+
+        expect(controller.status, AuthStatus.guest);
+        expect(
+          controller.error,
+          "We couldn't finish setting up your account. Please try again.",
+        );
+        expect(controller.session, isNull);
+        expect(controller.profile, isNull);
+      },
+    );
+
     test('signOut clears session and profile', () async {
       await controller.signInWithGoogle();
       expect(controller.status, AuthStatus.authenticated);
@@ -999,6 +1025,20 @@ class _CountingProfileRepository extends MockProfileRepository {
       email: email,
       displayName: displayName,
     );
+  }
+}
+
+final class _FailingCreateProfileRepository extends MockProfileRepository {
+  @override
+  Future<Profile> createProfileIfMissing({
+    required String userId,
+    required String email,
+    required String displayName,
+  }) {
+    // Simulates the real SupabaseProfileRepository throwing (e.g. RLS
+    // rejection, constraint violation, network) when the profile row can't be
+    // created/looked-up after a successful Google sign-in.
+    throw Exception('profiles insert unavailable');
   }
 }
 
