@@ -121,7 +121,7 @@ class _ProfileOnboardingScreenState
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
-            "Couldn't access photos — you can still continue without one.",
+            "Couldn't access photos — you can continue without one.",
           ),
         ),
       );

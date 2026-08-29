@@ -101,7 +101,7 @@ class _ProfileEditScreenState extends ConsumerState<ProfileEditScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
-            "Couldn't access photos — you can still save without one.",
+            "Couldn't access photos — you can continue without one.",
           ),
         ),
       );
