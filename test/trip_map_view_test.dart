@@ -100,14 +100,26 @@ void main() {
     expect(find.byKey(const Key('trip-map-day-all')), findsOneWidget);
     expect(find.byKey(const Key('trip-map-day-1')), findsOneWidget);
     expect(find.byKey(const Key('trip-map-day-2')), findsOneWidget);
-    expect(find.byKey(const Key('fake-map-place:one')), findsOneWidget);
-    expect(find.byKey(const Key('fake-map-place:two')), findsOneWidget);
+    expect(
+      find.byKey(const Key('fake-map-place:one:1.000000,2.000000')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('fake-map-place:two:3.000000,4.000000')),
+      findsOneWidget,
+    );
 
     await tester.tap(find.byKey(const Key('trip-map-day-2')));
     await tester.pump();
 
-    expect(find.byKey(const Key('fake-map-place:one')), findsNothing);
-    expect(find.byKey(const Key('fake-map-place:two')), findsOneWidget);
+    expect(
+      find.byKey(const Key('fake-map-place:one:1.000000,2.000000')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('fake-map-place:two:3.000000,4.000000')),
+      findsOneWidget,
+    );
   });
 
   testWidgets(
@@ -145,7 +157,9 @@ void main() {
         ),
       );
 
-      await tester.tap(find.byKey(const Key('fake-map-place:shrine')));
+      await tester.tap(
+        find.byKey(const Key('fake-map-place:shrine:35.000000,135.000000')),
+      );
       await tester.pumpAndSettle();
 
       expect(find.text('First visit'), findsOneWidget);
@@ -198,7 +212,7 @@ void main() {
   });
 
   testWidgets(
-    'selected day explains when the previous day has no mapped stop',
+    'selected day keeps cumulative markers without a previous-day warning',
     (tester) async {
       await tester.pumpWidget(
         view(
@@ -222,14 +236,14 @@ void main() {
       await tester.tap(find.byKey(const Key('trip-map-day-3')));
       await tester.pump();
 
-      expect(find.text('Previous day has no mapped entry'), findsOneWidget);
+      expect(find.text('Previous day has no mapped entry'), findsNothing);
       expect(
         find.byKey(const Key('fake-map-coord:3.000000,4.000000')),
         findsOneWidget,
       );
       expect(
         find.byKey(const Key('fake-map-coord:1.000000,2.000000')),
-        findsNothing,
+        findsOneWidget,
       );
     },
   );
@@ -275,39 +289,59 @@ void main() {
     );
   });
 
-  testWidgets('fallback lists adjacent-day connectors with endpoint labels', (
-    tester,
-  ) async {
-    await tester.pumpWidget(
-      view(
-        entries: [
-          entry(
-            id: 'day-1',
-            createdAt: tripStart,
-            location: const GeoTag(
-              latitude: 1,
-              longitude: 2,
-              placeName: 'Trailhead',
+  testWidgets(
+    'fallback lists route segments in entry order with endpoint labels',
+    (tester) async {
+      await tester.pumpWidget(
+        view(
+          entries: [
+            entry(
+              id: 'day-1',
+              createdAt: tripStart,
+              location: const GeoTag(
+                latitude: 1,
+                longitude: 2,
+                placeName: 'Trailhead',
+              ),
             ),
-          ),
-          entry(
-            id: 'day-2',
-            createdAt: tripStart.add(const Duration(days: 1)),
-            location: const GeoTag(latitude: 3, longitude: 4),
-          ),
-        ],
-        mapBuilder: ({required model, required onSelected}) =>
-            TripMapUnavailableSurface(model: model, onSelected: onSelected),
-      ),
-    );
+            entry(
+              id: 'nice',
+              createdAt: tripStart.add(const Duration(days: 1)),
+              location: const GeoTag(
+                latitude: 3,
+                longitude: 4,
+                placeName: 'Nice place',
+              ),
+            ),
+            entry(
+              id: 'ur',
+              createdAt: tripStart.add(const Duration(days: 1, hours: 1)),
+              location: const GeoTag(
+                latitude: 5,
+                longitude: 6,
+                placeName: 'UR place',
+              ),
+            ),
+          ],
+          mapBuilder: ({required model, required onSelected}) =>
+              TripMapUnavailableSurface(model: model, onSelected: onSelected),
+        ),
+      );
 
-    expect(find.text('Day 1 last stop → Day 2 first stop'), findsOneWidget);
-    expect(find.text('Trailhead → 3.00000, 4.00000'), findsOneWidget);
-    expect(
-      find.byKey(const Key('trip-map-fallback-connector-day-1-to-day-2')),
-      findsOneWidget,
-    );
-  });
+      expect(find.text('Day 1 → Day 2'), findsOneWidget);
+      expect(find.text('Day 2 route'), findsOneWidget);
+      expect(find.text('Trailhead → Nice place'), findsOneWidget);
+      expect(find.text('Nice place → UR place'), findsOneWidget);
+      expect(
+        find.byKey(const Key('trip-map-fallback-route-entry-day-1-to-nice')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('trip-map-fallback-route-entry-nice-to-ur')),
+        findsOneWidget,
+      );
+    },
+  );
 
   testWidgets('remains usable at narrow width with larger text', (
     tester,

@@ -91,16 +91,6 @@ class _TripMapViewState extends State<TripMapView> {
             selectedDay: _selectedDay,
             onSelected: _selectDay,
           ),
-          if (model.previousDayHasNoMappedEntry)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-              child: Text(
-                'Previous day has no mapped entry',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
-              ),
-            ),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
             child: Text(
@@ -383,16 +373,17 @@ class TripMapUnavailableSurface extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 8),
-          for (final connector in model.connectors)
+          for (final segment in model.routeSegments)
             Card(
               child: ListTile(
-                key: Key('trip-map-fallback-connector-${connector.id}'),
+                key: Key('trip-map-fallback-route-${segment.id}'),
                 leading: const Icon(Icons.arrow_forward_outlined),
                 title: Text(
-                  'Day ${connector.fromDay} last stop → '
-                  'Day ${connector.toDay} first stop',
+                  segment.fromDay == segment.toDay
+                      ? 'Day ${segment.fromDay} route'
+                      : 'Day ${segment.fromDay} → Day ${segment.toDay}',
                 ),
-                subtitle: Text('${connector.fromLabel} → ${connector.toLabel}'),
+                subtitle: Text('${segment.fromLabel} → ${segment.toLabel}'),
               ),
             ),
           for (final group in model.groups)
@@ -400,22 +391,10 @@ class TripMapUnavailableSurface extends StatelessWidget {
               child: ListTile(
                 key: Key('trip-map-fallback-${group.key}'),
                 onTap: () => onSelected(group),
-                leading: Icon(
-                  group.isPreviousDayContext
-                      ? Icons.history_outlined
-                      : Icons.location_on_outlined,
-                  color: group.isPreviousDayContext
-                      ? Theme.of(context).colorScheme.outline
-                      : null,
-                ),
-                title: Text(
-                  _locationLabel(group.entries.first.location!),
-                  style: group.isPreviousDayContext
-                      ? TextStyle(color: Theme.of(context).colorScheme.outline)
-                      : null,
-                ),
+                leading: const Icon(Icons.location_on_outlined),
+                title: Text(_locationLabel(group.entries.first.location!)),
                 subtitle: Text(
-                  'Day ${group.dayNumber}${group.isPreviousDayContext ? ' · Previous day context' : ''} · '
+                  'Day ${group.dayNumber} · '
                   '${group.entries.length} ${group.entries.length == 1 ? 'entry' : 'entries'}',
                 ),
                 trailing: const Icon(Icons.chevron_right),

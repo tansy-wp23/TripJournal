@@ -73,6 +73,7 @@ create table public.journal_entries (
   location     jsonb,                               -- GeoTag; null when untagged
   entry_date   date not null,                       -- which calendar day of the trip this belongs to
   created_at   timestamptz not null default now(),  -- entry timestamp (orders multiple same-day entries)
+  creation_order_at timestamptz not null default now(), -- immutable same-day entry ordering
   updated_at   timestamptz not null default now(),
   -- must have a title OR a body (at least one non-empty)
   constraint entry_title_or_body check (
@@ -108,6 +109,8 @@ comment on column public.journal_entries.entry_date is 'Calendar day within the 
 create index journal_entries_trip_id_idx on public.journal_entries (trip_id);
 create index journal_entries_user_id_idx on public.journal_entries (user_id);
 create index journal_entries_entry_date_idx on public.journal_entries (entry_date);
+create index journal_entries_trip_day_creation_order_idx
+  on public.journal_entries (trip_id, entry_date, creation_order_at, id);
 
 
 -- ============================================================================
@@ -235,6 +238,17 @@ begin
 end;
 $$;
 
+create or replace function public.preserve_journal_entry_creation_order()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+begin
+  new.creation_order_at := old.creation_order_at;
+  return new;
+end;
+$$;
+
 create trigger trips_set_updated_at
   before update on public.trips
   for each row execute function public.set_updated_at();
@@ -242,6 +256,10 @@ create trigger trips_set_updated_at
 create trigger entries_set_updated_at
   before update on public.journal_entries
   for each row execute function public.set_updated_at();
+
+create trigger journal_entries_preserve_creation_order
+  before update on public.journal_entries
+  for each row execute function public.preserve_journal_entry_creation_order();
 
 create trigger health_set_updated_at
   before update on public.health_logs

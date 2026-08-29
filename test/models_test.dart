@@ -10,7 +10,12 @@ import 'package:tripjournal/models/portion_size.dart';
 
 void main() {
   group('Meal', () {
-    const meal = Meal(id: 'meal-1', name: 'Ramen', calories: 650, mealType: MealType.lunch);
+    const meal = Meal(
+      id: 'meal-1',
+      name: 'Ramen',
+      calories: 650,
+      mealType: MealType.lunch,
+    );
 
     test('portion defaults to regular when not specified', () {
       expect(meal.portion, PortionSize.regular);
@@ -32,11 +37,14 @@ void main() {
       expect(restored.portion, PortionSize.large);
     });
 
-    test('fromJson defaults to regular when portion is missing (backward compatibility)', () {
-      final json = meal.toJson()..remove('portion');
-      final restored = Meal.fromJson(json);
-      expect(restored.portion, PortionSize.regular);
-    });
+    test(
+      'fromJson defaults to regular when portion is missing (backward compatibility)',
+      () {
+        final json = meal.toJson()..remove('portion');
+        final restored = Meal.fromJson(json);
+        expect(restored.portion, PortionSize.regular);
+      },
+    );
 
     test('photoPath defaults to null for a meal typed in by hand', () {
       expect(meal.photoPath, isNull);
@@ -54,10 +62,13 @@ void main() {
       expect(restored.photoPath, '/data/photos/abc.jpg');
     });
 
-    test('fromJson tolerates a missing photoPath (meals saved before photos existed)', () {
-      final json = meal.toJson()..remove('photoPath');
-      expect(Meal.fromJson(json).photoPath, isNull);
-    });
+    test(
+      'fromJson tolerates a missing photoPath (meals saved before photos existed)',
+      () {
+        final json = meal.toJson()..remove('photoPath');
+        expect(Meal.fromJson(json).photoPath, isNull);
+      },
+    );
 
     test('copyWith keeps an existing photo unless clearPhotoPath is set', () {
       const photographed = Meal(
@@ -67,7 +78,10 @@ void main() {
         mealType: MealType.lunch,
         photoPath: '/data/photos/ramen.jpg',
       );
-      expect(photographed.copyWith(calories: 700).photoPath, '/data/photos/ramen.jpg');
+      expect(
+        photographed.copyWith(calories: 700).photoPath,
+        '/data/photos/ramen.jpg',
+      );
       expect(photographed.copyWith(clearPhotoPath: true).photoPath, isNull);
     });
 
@@ -125,10 +139,13 @@ void main() {
       expect(restored.rating, 5);
     });
 
-    test('fromJson tolerates a missing rating (meals saved before ratings existed)', () {
-      final json = meal.toJson()..remove('rating');
-      expect(Meal.fromJson(json).rating, isNull);
-    });
+    test(
+      'fromJson tolerates a missing rating (meals saved before ratings existed)',
+      () {
+        final json = meal.toJson()..remove('rating');
+        expect(Meal.fromJson(json).rating, isNull);
+      },
+    );
 
     test('copyWith keeps an existing rating unless clearRating is set', () {
       const rated = Meal(
@@ -158,7 +175,11 @@ void main() {
   });
 
   group('GeoTag', () {
-    const tag = GeoTag(latitude: 35.0116, longitude: 135.7681, placeName: 'Gion, Kyoto');
+    const tag = GeoTag(
+      latitude: 35.0116,
+      longitude: 135.7681,
+      placeName: 'Gion, Kyoto',
+    );
 
     test('loads old three-field JSON without optional location metadata', () {
       final restored = GeoTag.fromJson({
@@ -197,7 +218,11 @@ void main() {
     });
 
     test('fromJson tolerates integer-valued lat/lng (num, not double)', () {
-      final restored = GeoTag.fromJson({'latitude': 35, 'longitude': 135, 'placeName': null});
+      final restored = GeoTag.fromJson({
+        'latitude': 35,
+        'longitude': 135,
+        'placeName': null,
+      });
       expect(restored.latitude, 35.0);
       expect(restored.longitude, 135.0);
       expect(restored.placeName, isNull);
@@ -219,8 +244,18 @@ void main() {
       caloriesEaten: 1950,
       caloriesBurned: 2350,
       meals: [
-        Meal(id: 'meal-1a', name: 'Onigiri set', calories: 350, mealType: MealType.breakfast),
-        Meal(id: 'meal-1b', name: 'Ramen', calories: 650, mealType: MealType.lunch),
+        Meal(
+          id: 'meal-1a',
+          name: 'Onigiri set',
+          calories: 350,
+          mealType: MealType.breakfast,
+        ),
+        Meal(
+          id: 'meal-1b',
+          name: 'Ramen',
+          calories: 650,
+          mealType: MealType.lunch,
+        ),
       ],
       aiAdvice: 'Solid balance today.',
     );
@@ -237,13 +272,22 @@ void main() {
       expect(restored.aiAdvice, log.aiAdvice);
     });
 
-    test('round-trip with null aiAdvice, null caloriesBurned, and empty meals', () {
-      const noAdvice = HealthLog(id: 'h', entryId: 'e', steps: 0, caloriesEaten: 0, meals: []);
-      final restored = HealthLog.fromJson(noAdvice.toJson());
-      expect(restored.aiAdvice, isNull);
-      expect(restored.caloriesBurned, isNull);
-      expect(restored.meals, isEmpty);
-    });
+    test(
+      'round-trip with null aiAdvice, null caloriesBurned, and empty meals',
+      () {
+        const noAdvice = HealthLog(
+          id: 'h',
+          entryId: 'e',
+          steps: 0,
+          caloriesEaten: 0,
+          meals: [],
+        );
+        final restored = HealthLog.fromJson(noAdvice.toJson());
+        expect(restored.aiAdvice, isNull);
+        expect(restored.caloriesBurned, isNull);
+        expect(restored.meals, isEmpty);
+      },
+    );
 
     test('copyWith overrides only given fields', () {
       final updated = log.copyWith(steps: 9000);
@@ -269,7 +313,11 @@ void main() {
       body: 'Landed in Kansai and took the train straight to Kyoto.',
       mood: Mood.excited,
       photoPaths: const ['assets/mock/kyoto_arrival_1.jpg'],
-      location: const GeoTag(latitude: 35.0116, longitude: 135.7681, placeName: 'Gion, Kyoto'),
+      location: const GeoTag(
+        latitude: 35.0116,
+        longitude: 135.7681,
+        placeName: 'Gion, Kyoto',
+      ),
       createdAt: DateTime(2026, 4, 10, 19, 30),
       updatedAt: DateTime(2026, 4, 10, 19, 30),
       healthLog: const HealthLog(
@@ -277,7 +325,14 @@ void main() {
         entryId: 'entry-1',
         steps: 8200,
         caloriesEaten: 1950,
-        meals: [Meal(id: 'meal-1a', name: 'Onigiri set', calories: 350, mealType: MealType.breakfast)],
+        meals: [
+          Meal(
+            id: 'meal-1a',
+            name: 'Onigiri set',
+            calories: 350,
+            mealType: MealType.breakfast,
+          ),
+        ],
         aiAdvice: 'Solid balance today.',
       ),
     );
@@ -296,6 +351,32 @@ void main() {
       expect(restored.healthLog?.steps, entry.healthLog?.steps);
       expect(restored.healthLog?.meals.length, entry.healthLog?.meals.length);
     });
+
+    test('round-trips immutable creation order', () {
+      final creationOrder = DateTime.utc(2026, 8, 29, 1, 2, 3);
+      final ordered = entry.copyWith(creationOrderAt: creationOrder);
+
+      final restored = JournalEntry.fromJson(ordered.toJson());
+
+      expect(restored.creationOrderAt, creationOrder);
+      expect(
+        restored
+            .copyWith(updatedAt: creationOrder.add(const Duration(days: 1)))
+            .creationOrderAt,
+        creationOrder,
+      );
+    });
+
+    test(
+      'legacy JSON falls back to its saved updatedAt for creation order',
+      () {
+        final legacy = entry.toJson()..remove('creationOrderAt');
+
+        final restored = JournalEntry.fromJson(legacy);
+
+        expect(restored.creationOrderAt, restored.updatedAt);
+      },
+    );
 
     test('round-trip with null location and null healthLog', () {
       final noOptional = JournalEntry(
@@ -341,10 +422,13 @@ void main() {
         expect(entry.displayTitle, 'Arrival in Kyoto');
       });
 
-      test('falls back to a body snippet for a body-only entry (title OR body rule)', () {
-        final bodyOnly = entry.copyWith(title: '', body: 'Short body.');
-        expect(bodyOnly.displayTitle, 'Short body.');
-      });
+      test(
+        'falls back to a body snippet for a body-only entry (title OR body rule)',
+        () {
+          final bodyOnly = entry.copyWith(title: '', body: 'Short body.');
+          expect(bodyOnly.displayTitle, 'Short body.');
+        },
+      );
 
       test('truncates a long body snippet to 40 chars plus an ellipsis', () {
         final longBody = 'a' * 60;
@@ -352,13 +436,19 @@ void main() {
         expect(bodyOnly.displayTitle, '${'a' * 40}…');
       });
 
-      test('falls back to a placeholder when both title and body are empty', () {
-        final empty = entry.copyWith(title: '', body: '');
-        expect(empty.displayTitle, '(Untitled entry)');
-      });
+      test(
+        'falls back to a placeholder when both title and body are empty',
+        () {
+          final empty = entry.copyWith(title: '', body: '');
+          expect(empty.displayTitle, '(Untitled entry)');
+        },
+      );
 
       test('whitespace-only title is treated as empty', () {
-        final whitespaceTitle = entry.copyWith(title: '   ', body: 'Real content.');
+        final whitespaceTitle = entry.copyWith(
+          title: '   ',
+          body: 'Real content.',
+        );
         expect(whitespaceTitle.displayTitle, 'Real content.');
       });
     });

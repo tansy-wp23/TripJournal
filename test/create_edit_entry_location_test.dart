@@ -154,6 +154,45 @@ void main() {
     expect(saved.location?.longitude, 135.785046);
   });
 
+  testWidgets('editing a newly created entry preserves its creation order', (
+    tester,
+  ) async {
+    _useLargeView(tester);
+    final repository = _RecordingJournalRepository();
+    final service = _FakePlaceSearchService(reverseResult: pickedLocation);
+
+    await _pumpEditor(tester, service: service, repository: repository);
+    await tester.enterText(
+      find.byKey(const Key('entry-title-field')),
+      'Original title',
+    );
+    await tester.tap(find.byKey(const Key('save-entry-button')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('save-confirm-confirm')));
+    await tester.pumpAndSettle();
+
+    final originallyCreated = repository.adds.single;
+
+    await _pumpEditor(
+      tester,
+      service: service,
+      existingEntry: originallyCreated,
+      repository: repository,
+    );
+    await tester.enterText(
+      find.byKey(const Key('entry-title-field')),
+      'Edited title',
+    );
+    await tester.tap(find.byKey(const Key('save-entry-button')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('save-confirm-confirm')));
+    await tester.pumpAndSettle();
+
+    final updated = repository.updates.last;
+    expect(updated.creationOrderAt, originallyCreated.creationOrderAt);
+    expect(updated.updatedAt.isBefore(originallyCreated.updatedAt), isFalse);
+  });
+
   testWidgets('rapid Save taps issue one create with one stable UUID pair', (
     tester,
   ) async {

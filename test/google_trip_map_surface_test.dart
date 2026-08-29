@@ -68,6 +68,34 @@ void main() {
     expect(selected.single.key, model.groups.single.key);
   });
 
+  test('different coordinates keep distinct native marker IDs', () {
+    final model = modelFor([
+      entry(
+        id: 'day-2-second',
+        createdAt: tripStart.add(const Duration(days: 1, hours: 2)),
+        latitude: 3.1579,
+        longitude: 101.7123,
+        placeId: 'broad-place-id',
+      ),
+      entry(
+        id: 'day-3',
+        createdAt: tripStart.add(const Duration(days: 2)),
+        latitude: 3.1390,
+        longitude: 101.6869,
+        placeId: 'broad-place-id',
+      ),
+    ]);
+
+    final markers = googleTripMapMarkers(model: model, onSelected: (_) {});
+
+    expect(markers, hasLength(2));
+    expect(markers.map((marker) => marker.markerId).toSet(), hasLength(2));
+    expect(markers.map((marker) => marker.position).toSet(), {
+      const LatLng(3.1579, 101.7123),
+      const LatLng(3.1390, 101.6869),
+    });
+  });
+
   test('clustering starts only above twenty entry marker groups', () {
     TripMapModel groups(int count) => modelFor([
       for (var index = 0; index < count; index++)
@@ -127,7 +155,7 @@ void main() {
     );
   });
 
-  test('selected-day previous context marker is visually muted', () {
+  test('selected day renders cumulative markers with normal styling', () {
     final model = buildTripMapModel(
       entries: [
         entry(id: 'day-1', createdAt: tripStart, latitude: 1, longitude: 2),
@@ -144,49 +172,68 @@ void main() {
     );
 
     final markers = googleTripMapMarkers(model: model, onSelected: (_) {});
-    final contextMarker = markers.singleWhere(
-      (marker) => marker.markerId.value.startsWith('context:'),
-    );
-    final currentMarker = markers.singleWhere(
-      (marker) => !marker.markerId.value.startsWith('context:'),
-    );
 
-    expect(contextMarker.alpha, lessThan(currentMarker.alpha));
-    expect(contextMarker.infoWindow.title, 'D1 · Previous day');
-    expect(currentMarker.infoWindow.title, 'D2');
+    expect(markers, hasLength(2));
+    expect(markers.map((marker) => marker.alpha), everyElement(1));
+    expect(markers.map((marker) => marker.infoWindow.title).toSet(), {
+      'D1',
+      'D2',
+    });
+    expect(
+      markers.any((marker) => marker.markerId.value.startsWith('context:')),
+      isFalse,
+    );
   });
 
-  test('connectors use stable polylines and separate near-target arrows', () {
-    final model = modelFor([
-      entry(id: 'day-1', createdAt: tripStart, latitude: 0, longitude: 0),
-      entry(
-        id: 'day-2',
-        createdAt: tripStart.add(const Duration(days: 1)),
-        latitude: 0,
-        longitude: 10,
-      ),
-    ]);
+  test(
+    'route segments use stable polylines and separate near-target arrows',
+    () {
+      final model = modelFor([
+        entry(id: 'day-1', createdAt: tripStart, latitude: 0, longitude: 0),
+        entry(
+          id: 'nice',
+          createdAt: tripStart.add(const Duration(days: 1)),
+          latitude: 0,
+          longitude: 10,
+        ),
+        entry(
+          id: 'ur',
+          createdAt: tripStart.add(const Duration(days: 1, hours: 1)),
+          latitude: 0,
+          longitude: 20,
+        ),
+      ]);
 
-    final polylines = googleTripMapPolylines(model);
-    final arrows = googleTripMapArrowMarkers(model);
+      final polylines = googleTripMapPolylines(model);
+      final arrows = googleTripMapArrowMarkers(model);
 
-    expect(polylines, hasLength(1));
-    final polyline = polylines.single;
-    expect(polyline.polylineId.value, 'day-1-to-day-2');
-    expect(polyline.points, const [LatLng(0, 0), LatLng(0, 10)]);
-    expect(polyline.startCap, Cap.buttCap);
-    expect(polyline.endCap, Cap.buttCap);
+      expect(polylines.map((line) => line.polylineId.value).toSet(), {
+        'entry-day-1-to-nice',
+        'entry-nice-to-ur',
+      });
+      final polyline = polylines.singleWhere(
+        (line) => line.polylineId.value == 'entry-day-1-to-nice',
+      );
+      expect(polyline.points, const [LatLng(0, 0), LatLng(0, 10)]);
+      expect(polyline.geodesic, isTrue);
+      expect(polyline.startCap, Cap.buttCap);
+      expect(polyline.endCap, Cap.buttCap);
 
-    expect(arrows, hasLength(1));
-    final arrow = arrows.single;
-    expect(arrow.markerId.value, 'day-1-to-day-2-arrow');
-    expect(arrow.icon, isA<BytesMapBitmap>());
-    expect(arrow.flat, isTrue);
-    expect(arrow.rotation, closeTo(90, 0.0001));
-    expect(arrow.position.latitude, closeTo(0, 0.0001));
-    expect(arrow.position.longitude, greaterThan(5));
-    expect(arrow.position.longitude, lessThan(10));
-  });
+      expect(arrows.map((marker) => marker.markerId.value).toSet(), {
+        'entry-day-1-to-nice-arrow',
+        'entry-nice-to-ur-arrow',
+      });
+      final arrow = arrows.singleWhere(
+        (marker) => marker.markerId.value == 'entry-day-1-to-nice-arrow',
+      );
+      expect(arrow.icon, isA<BytesMapBitmap>());
+      expect(arrow.flat, isTrue);
+      expect(arrow.rotation, closeTo(90, 0.0001));
+      expect(arrow.position.latitude, closeTo(0, 0.0001));
+      expect(arrow.position.longitude, greaterThan(5));
+      expect(arrow.position.longitude, lessThan(10));
+    },
+  );
 
   test('arrow follows the geodesic course near an antimeridian target', () {
     final model = modelFor([
@@ -206,7 +253,7 @@ void main() {
     expect(arrow.rotation, closeTo(67.015901, 0.000001));
   });
 
-  test('antimeridian-equivalent endpoints emit no connector arrow', () {
+  test('antimeridian-equivalent endpoints emit no route segment arrow', () {
     final model = modelFor([
       entry(id: 'day-1', createdAt: tripStart, latitude: 10, longitude: 180),
       entry(
@@ -217,7 +264,7 @@ void main() {
       ),
     ]);
 
-    expect(model.connectors, isEmpty);
+    expect(model.routeSegments, isEmpty);
     expect(googleTripMapArrowMarkers(model), isEmpty);
   });
 
@@ -394,7 +441,9 @@ void main() {
     expect(map.polylines.single.polylineId.value, 'connector');
   });
 
-  testWidgets('platform builder receives connector overlays', (tester) async {
+  testWidgets('platform builder receives route segment overlays', (
+    tester,
+  ) async {
     final model = modelFor([
       entry(id: 'day-1', createdAt: tripStart, latitude: 1, longitude: 2),
       entry(
@@ -429,8 +478,8 @@ void main() {
       ),
     );
 
-    expect(receivedPolylines?.single.polylineId.value, 'day-1-to-day-2');
-    expect(receivedArrows?.single.markerId.value, 'day-1-to-day-2-arrow');
+    expect(receivedPolylines?.single.polylineId.value, 'entry-day-1-to-day-2');
+    expect(receivedArrows?.single.markerId.value, 'entry-day-1-to-day-2-arrow');
   });
 
   testWidgets('tapping a native cluster zooms to its bounds', (tester) async {

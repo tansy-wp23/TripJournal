@@ -51,6 +51,7 @@ Map<String, dynamic> _entryRow({
     'entry_date': '2026-08-06',
     'created_at': '2026-08-06T02:03:04.000Z',
     'updated_at': '2026-08-06T05:06:07.000Z',
+    'creation_order_at': '2026-08-29T01:02:03.000Z',
     'health_logs': healthLogs ?? [_healthLogRow()],
   };
 }
@@ -219,6 +220,20 @@ void main() {
         'https://cdn.example/b.jpg',
       ]);
       expect(entry.createdAt, DateTime.utc(2026, 8, 6, 2, 3, 4));
+      expect(entry.creationOrderAt, DateTime.utc(2026, 8, 29, 1, 2, 3));
+    });
+
+    test('getEntries falls back to updatedAt for legacy rows', () async {
+      final repository = _repository(
+        MockClient((request) async {
+          final legacyRow = _entryRow()..remove('creation_order_at');
+          return _jsonResponse([legacyRow], request: request);
+        }),
+      );
+
+      final entry = (await repository.getEntries(_tripId)).single;
+
+      expect(entry.creationOrderAt, entry.updatedAt);
     });
 
     test('getEntries maps the embedded health log and its meals', () async {
