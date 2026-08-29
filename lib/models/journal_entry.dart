@@ -37,7 +37,9 @@ class JournalEntry {
     if (title.trim().isNotEmpty) return title;
     final trimmedBody = body.trim();
     if (trimmedBody.isEmpty) return '(Untitled entry)';
-    return trimmedBody.length > 40 ? '${trimmedBody.substring(0, 40)}…' : trimmedBody;
+    return trimmedBody.length > 40
+        ? '${trimmedBody.substring(0, 40)}…'
+        : trimmedBody;
   }
 
   factory JournalEntry.fromJson(Map<String, dynamic> json) {
