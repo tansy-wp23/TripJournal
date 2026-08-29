@@ -86,10 +86,10 @@ class TripMapModel {
 
 /// Derives chronologically ordered marker groups for a trip.
 ///
-/// Entries with a non-blank Place ID are grouped by its trimmed value.
-/// Legacy coordinate-only locations are grouped using six-decimal rounded
-/// latitude and longitude keys. Day values are based on each DateTime's local
-/// calendar date, rather than elapsed hours from the trip start.
+/// Marker identity combines a non-blank trimmed Place ID with a six-decimal
+/// coordinate key. Legacy coordinate-only locations use the coordinate key
+/// alone. Day values are based on each DateTime's local calendar date, rather
+/// than elapsed hours from the trip start.
 TripMapModel buildTripMapModel({
   required List<JournalEntry> entries,
   required DateTime tripStartDate,

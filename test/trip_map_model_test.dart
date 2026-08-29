@@ -324,7 +324,7 @@ void main() {
           id: 'day-1-first',
           createdAt: tripStart,
           location: const GeoTag(
-            latitude: 1,
+            latitude: 1.0000004,
             longitude: 2,
             placeId: 'day-1-place',
           ),
@@ -333,8 +333,8 @@ void main() {
           id: 'day-1-last',
           createdAt: tripStart.add(const Duration(hours: 2)),
           location: const GeoTag(
-            latitude: -10,
-            longitude: 120,
+            latitude: 0.9999996,
+            longitude: 2,
             placeId: 'day-1-place',
           ),
         ),
@@ -348,8 +348,11 @@ void main() {
       tripEndDate: tripEnd,
     );
 
-    expect(model.bounds?.southWestLatitude, -10);
-    expect(model.bounds?.northEastLongitude, 120);
+    expect(model.groups, hasLength(2));
+    expect(model.groups.first.entries, hasLength(2));
+    expect(model.groups.first.latitude, 1.0000004);
+    expect(model.routeSegments.single.fromLatitude, 0.9999996);
+    expect(model.bounds?.southWestLatitude, 0.9999996);
   });
 
   test('bounds use the short wrapped interval across the antimeridian', () {
