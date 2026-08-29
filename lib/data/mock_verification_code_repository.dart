@@ -76,11 +76,13 @@ class MockVerificationCodeRepository implements VerificationCodeRepository {
     if (active.purpose != purpose) {
       return CodeValidationResult.invalid;
     }
+    // Locked codes are rejected before the expiry check, mirroring the order
+    // in the real Edge Function (`codes.ts`): the lockout is what matters.
+    if (_lockedOut) {
+      return CodeValidationResult.locked;
+    }
     if (active.isExpired) {
       return CodeValidationResult.expired;
-    }
-    if (_lockedOut) {
-      return CodeValidationResult.invalid;
     }
     if (code != mockCode) {
       _activeCode = active.copyWith(attemptCount: active.attemptCount + 1);

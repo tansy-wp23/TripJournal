@@ -163,8 +163,8 @@ void main() {
       expect(result, CodeValidationResult.expired);
     });
 
-    test('maps invalid, locked, and not_found to invalid', () async {
-      for (final serverResult in ['invalid', 'locked', 'not_found']) {
+    test('maps invalid and not_found to invalid', () async {
+      for (final serverResult in ['invalid', 'not_found']) {
         final repository = _repository(
           MockClient((request) async {
             return _jsonResponse({'result': serverResult}, request: request);
@@ -179,6 +179,21 @@ void main() {
         expect(result, CodeValidationResult.invalid,
             reason: 'server result "$serverResult" should map to invalid');
       }
+    });
+
+    test('maps locked result to locked', () async {
+      final repository = _repository(
+        MockClient((request) async {
+          return _jsonResponse({'result': 'locked'}, request: request);
+        }),
+      );
+
+      final result = await repository.validateCode(
+        code: '123456',
+        purpose: VerificationPurpose.reactivation,
+      );
+
+      expect(result, CodeValidationResult.locked);
     });
 
     test('maps a missing result field to invalid', () async {

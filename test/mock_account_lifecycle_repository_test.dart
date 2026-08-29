@@ -4,6 +4,7 @@ import 'package:tripjournal/data/account_lifecycle_repository.dart';
 import 'package:tripjournal/data/mock_account_lifecycle_repository.dart';
 import 'package:tripjournal/data/mock_profile_repository.dart';
 import 'package:tripjournal/data/mock_verification_code_repository.dart';
+import 'package:tripjournal/data/verification_code_repository.dart';
 import 'package:tripjournal/models/profile.dart';
 import 'package:tripjournal/models/verification_code.dart';
 
@@ -51,6 +52,38 @@ void main() {
       expect(
         () => lifecycleRepository.confirmDeactivation('000000'),
         throwsA(isA<CodeValidationException>()),
+      );
+
+      final profile = await profileRepository.getProfile('user-001');
+      expect(profile!.status, AccountStatus.active);
+    });
+
+    test('confirmDeactivation with a locked code throws locked, not invalid',
+        () async {
+      await lifecycleRepository.requestDeactivation();
+
+      // Exhaust the mock's wrong-attempt budget (default maxAttempts = 5).
+      for (var i = 0; i < 5; i++) {
+        try {
+          await lifecycleRepository.confirmDeactivation('000000');
+        } on CodeValidationException {
+          // expected on each wrong attempt
+        }
+      }
+
+      // Even the correct code now reports `locked`, so the UI can tell the
+      // user to resend instead of claiming their code is wrong.
+      expect(
+        () => lifecycleRepository.confirmDeactivation(
+          MockVerificationCodeRepository.mockCode,
+        ),
+        throwsA(
+          isA<CodeValidationException>().having(
+            (e) => e.result,
+            'result',
+            CodeValidationResult.locked,
+          ),
+        ),
       );
 
       final profile = await profileRepository.getProfile('user-001');

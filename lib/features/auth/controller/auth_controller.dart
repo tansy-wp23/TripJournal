@@ -146,12 +146,30 @@ class AuthController extends ChangeNotifier {
       if (!_ownsAuthOperation(operationVersion)) return;
       _session = session;
 
-      // Fetch or create the profile (PB-03).
-      final profile = await _profileRepository.createProfileIfMissing(
-        userId: session.userId!,
-        email: session.email!,
-        displayName: _deriveDisplayName(session.email!),
-      );
+      // Fetch or create the profile (PB-03). Kept in its own try/catch: a
+      // genuine new account whose profile row can't be created — or an
+      // existing profile whose last_login_at stamp fails — should get a
+      // friendly, specific message rather than the raw Supabase exception
+      // leaking through to the generic catch below. Google sign-in already
+      // succeeded here, so a "sign-in failed" message would be misleading.
+      final Profile profile;
+      try {
+        profile = await _profileRepository.createProfileIfMissing(
+          userId: session.userId!,
+          email: session.email!,
+          displayName: _deriveDisplayName(session.email!),
+        );
+      } catch (_) {
+        if (!_ownsAuthOperation(operationVersion)) return;
+        // Don't leave a half-set-up account with a valid session but no
+        // profile row; back to the login screen with a clear (non-technical)
+        // message so the user can simply try again.
+        _session = null;
+        _profile = null;
+        _error =
+            "We couldn't finish setting up your account. Please try again.";
+        return;
+      }
       if (!_ownsAuthOperation(operationVersion)) return;
       _profile = profile;
       _error = null;

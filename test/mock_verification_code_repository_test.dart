@@ -109,12 +109,13 @@ void main() {
         expect(result, CodeValidationResult.invalid);
       }
 
-      // Even the correct code is now rejected (locked out).
+      // Even the correct code is now rejected, reported as `locked` so the
+      // UI can tell the user to resend rather than claiming the code is wrong.
       final result = await repo.validateCode(
         code: MockVerificationCodeRepository.mockCode,
         purpose: VerificationPurpose.reactivation,
       );
-      expect(result, CodeValidationResult.invalid);
+      expect(result, CodeValidationResult.locked);
     });
   });
 }

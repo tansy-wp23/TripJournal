@@ -163,6 +163,48 @@ void main() {
         expect(profile.deactivatedAt, isNotNull);
       },
     );
+
+    testWidgets(
+      'shows a dedicated message when the code is locked out after 5 wrong '
+      'attempts',
+      (tester) async {
+        await harness.signIn();
+
+        await tester.pumpWidget(wrapped(VerificationPurpose.deactivation));
+        await tester.pumpAndSettle();
+
+        // The screen auto-sends a code on open; the mock's maxAttempts is 5.
+        for (var attempt = 0; attempt < 5; attempt++) {
+          for (var i = 0; i < 6; i++) {
+            await tester.enterText(find.byKey(Key('otp-digit-$i')), '0');
+            await tester.pump();
+          }
+          await tester.tap(find.byKey(const Key('code-entry-confirm')));
+          await tester.pumpAndSettle();
+        }
+
+        // Even the correct code is now rejected as `locked`, and the UI tells
+        // the user to resend rather than claiming their code is wrong.
+        for (var i = 0; i < 6; i++) {
+          await tester.enterText(
+            find.byKey(Key('otp-digit-$i')),
+            MockVerificationCodeRepository.mockCode[i],
+          );
+          await tester.pump();
+        }
+        await tester.tap(find.byKey(const Key('code-entry-confirm')));
+        await tester.pumpAndSettle();
+
+        expect(
+          find.text('Too many incorrect attempts. Please resend a new code.'),
+          findsOneWidget,
+        );
+
+        // Still signed in and active — nothing was deactivated.
+        final profile = await harness.profileRepository.getProfile('user-001');
+        expect(profile!.status, AccountStatus.active);
+      },
+    );
   });
 
   group('CodeEntryScreen (friendly send errors)', () {

@@ -10,6 +10,7 @@ import 'package:tripjournal/data/mock_profile_repository.dart';
 import 'package:tripjournal/data/mock_verification_code_repository.dart';
 import 'package:tripjournal/features/auth/controller/auth_controller.dart';
 import 'package:tripjournal/features/profile/controller/profile_controller.dart';
+import 'package:tripjournal/models/profile.dart';
 import 'package:tripjournal/validation/photo_validation.dart';
 import 'package:tripjournal/validation/profile_validation.dart';
 
@@ -58,6 +59,30 @@ void main() {
       expect(controller.error, 'Not signed in.');
     });
 
+    test('loadProfile shows a friendly error when retrieval throws', () async {
+      profileRepository = _ThrowingGetProfileRepository();
+      lifecycleRepository = MockAccountLifecycleRepository(
+        profileRepository: profileRepository,
+        verificationCodeRepository: verificationCodeRepository,
+      );
+      authController = AuthController(
+        authRepository,
+        profileRepository,
+        lifecycleRepository,
+      );
+      controller = ProfileController(
+        profileRepository,
+        authController,
+        avatarStorage,
+      );
+      await authController.signInWithGoogle();
+
+      await controller.loadProfile();
+
+      expect(controller.profile, isNull);
+      expect(controller.error, 'Failed to load profile. Please try again.');
+    });
+
     test('updateDisplayName updates the profile display name', () async {
       await authController.signInWithGoogle();
       await controller.loadProfile();
@@ -99,6 +124,34 @@ void main() {
       expect(error, isNotNull);
       expect(controller.profile!.displayName, 'Sang You');
     });
+
+    test(
+      'updateDisplayName returns a friendly message when the save throws',
+      () async {
+        profileRepository = _ThrowingUpdateProfileRepository();
+        lifecycleRepository = MockAccountLifecycleRepository(
+          profileRepository: profileRepository,
+          verificationCodeRepository: verificationCodeRepository,
+        );
+        authController = AuthController(
+          authRepository,
+          profileRepository,
+          lifecycleRepository,
+        );
+        controller = ProfileController(
+          profileRepository,
+          authController,
+          avatarStorage,
+        );
+        await authController.signInWithGoogle();
+        await controller.loadProfile();
+
+        final error = await controller.updateDisplayName('New Name');
+
+        expect(error, 'Failed to save profile. Please try again.');
+        expect(controller.profile!.displayName, 'Sang You');
+      },
+    );
 
     test('updateAvatar uploads the photo and sets avatarUrl', () async {
       await authController.signInWithGoogle();
@@ -223,6 +276,37 @@ void main() {
         expect(error, isNotNull);
         expect(controller.profile!.dateOfBirth, isNull);
       });
+
+      test('returns a friendly message when the save throws', () async {
+        profileRepository = _ThrowingUpdateProfileRepository(
+          state: MockProfileState.firstTime,
+        );
+        lifecycleRepository = MockAccountLifecycleRepository(
+          profileRepository: profileRepository,
+          verificationCodeRepository: verificationCodeRepository,
+        );
+        authController = AuthController(
+          authRepository,
+          profileRepository,
+          lifecycleRepository,
+        );
+        controller = ProfileController(
+          profileRepository,
+          authController,
+          avatarStorage,
+        );
+        await authController.signInWithGoogle();
+        expect(authController.status, AuthStatus.needsOnboarding);
+        await controller.loadProfile();
+
+        final error = await controller.completeOnboarding(
+          displayName: 'Sang You',
+          travelInterests: {},
+        );
+
+        expect(error, 'Failed to save profile. Please try again.');
+        expect(controller.profile!.profileCompleted, isFalse);
+      });
     });
 
     group('skipOnboarding', () {
@@ -289,4 +373,26 @@ void main() {
       });
     });
   });
+}
+
+/// A profile repository whose read throws, simulating a network or backend
+/// failure while fetching the profile row. Only `getProfile` fails — sign-in
+/// / profile creation still works so the test can reach the load path.
+final class _ThrowingGetProfileRepository extends MockProfileRepository {
+  @override
+  Future<Profile?> getProfile(String userId) {
+    throw Exception('profiles select unavailable');
+  }
+}
+
+/// A profile repository whose write throws, simulating a network or backend
+/// failure while persisting a profile update (name, travel details, avatar,
+/// onboarding completion, or skip).
+final class _ThrowingUpdateProfileRepository extends MockProfileRepository {
+  _ThrowingUpdateProfileRepository({super.state});
+
+  @override
+  Future<Profile> updateProfile(Profile profile) {
+    throw Exception('profiles update unavailable');
+  }
 }

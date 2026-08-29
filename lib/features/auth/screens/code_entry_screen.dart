@@ -227,9 +227,16 @@ class _CodeEntryScreenState extends ConsumerState<CodeEntryScreen> {
       });
     } on CodeValidationException catch (e) {
       setState(() {
-        _error = e.result == CodeValidationResult.expired
-            ? 'This code has expired. Please resend a new one.'
-            : 'Incorrect code. Please try again.';
+        _error = switch (e.result) {
+          CodeValidationResult.expired =>
+            'This code has expired. Please resend a new one.',
+          // A locked code means the 5-wrong-attempt limit was hit — even a
+          // correct code is rejected. Tell the user to resend (a fresh code
+          // resets the attempt counter) rather than implying theirs was wrong.
+          CodeValidationResult.locked =>
+            'Too many incorrect attempts. Please resend a new code.',
+          _ => 'Incorrect code. Please try again.',
+        };
       });
     } catch (e) {
       // Log the raw error for debugging; never show it to the user.

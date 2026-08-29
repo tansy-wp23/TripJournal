@@ -53,8 +53,8 @@ class ProfileController extends ChangeNotifier {
       if (_profile == null) {
         _error = 'No profile found.';
       }
-    } catch (e) {
-      _error = e.toString();
+    } catch (_) {
+      _error = 'Failed to load profile. Please try again.';
     } finally {
       _loading = false;
       notifyListeners();
@@ -87,8 +87,8 @@ class ProfileController extends ChangeNotifier {
       // until the next sign-in.
       await _authController.refreshProfile();
       return null;
-    } catch (e) {
-      _error = e.toString();
+    } catch (_) {
+      _error = 'Failed to save profile. Please try again.';
       notifyListeners();
       return _error;
     }
@@ -127,8 +127,8 @@ class ProfileController extends ChangeNotifier {
       // See the matching note in updateDisplayName().
       await _authController.refreshProfile();
       return null;
-    } catch (e) {
-      _error = e.toString();
+    } catch (_) {
+      _error = 'Failed to save profile. Please try again.';
       notifyListeners();
       return _error;
     }
@@ -186,8 +186,8 @@ class ProfileController extends ChangeNotifier {
       // screen would stay on screen forever after a successful save.
       await _authController.refreshProfile();
       return null;
-    } catch (e) {
-      _error = e.toString();
+    } catch (_) {
+      _error = 'Failed to save profile. Please try again.';
       notifyListeners();
       return _error;
     }
@@ -210,8 +210,8 @@ class ProfileController extends ChangeNotifier {
       notifyListeners();
       await _authController.refreshProfile();
       return null;
-    } catch (e) {
-      _error = e.toString();
+    } catch (_) {
+      _error = 'Failed to save profile. Please try again.';
       notifyListeners();
       return _error;
     }
@@ -251,8 +251,8 @@ class ProfileController extends ChangeNotifier {
       // See the matching note in updateDisplayName().
       await _authController.refreshProfile();
       return null;
-    } catch (e) {
-      _error = e.toString();
+    } catch (_) {
+      _error = "Couldn't update your profile photo. Please try again.";
       notifyListeners();
       return _error;
     }
@@ -276,8 +276,8 @@ class ProfileController extends ChangeNotifier {
       // See the matching note in updateDisplayName().
       await _authController.refreshProfile();
       return null;
-    } catch (e) {
-      _error = e.toString();
+    } catch (_) {
+      _error = "Couldn't update your profile photo. Please try again.";
       notifyListeners();
       return _error;
     }
