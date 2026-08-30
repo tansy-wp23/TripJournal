@@ -16,12 +16,19 @@ class ProfileAvatar extends StatelessWidget {
     this.avatarUrl,
     this.previewBytes,
     required this.initial,
+    this.initialStyle,
   });
 
   final double radius;
   final String? avatarUrl;
   final Uint8List? previewBytes;
   final String initial;
+
+  /// Overrides the fallback initial's style. Defaults to
+  /// [TextTheme.headlineMedium], sized for the profile screen's radius-40
+  /// avatar; smaller avatars (e.g. the home app bar) pass a smaller style so
+  /// the initial stays proportional to the circle.
+  final TextStyle? initialStyle;
 
   @override
   Widget build(BuildContext context) {
@@ -66,6 +73,9 @@ class ProfileAvatar extends StatelessWidget {
   }
 
   Widget _initial(BuildContext context) {
-    return Text(initial, style: Theme.of(context).textTheme.headlineMedium);
+    return Text(
+      initial,
+      style: initialStyle ?? Theme.of(context).textTheme.headlineMedium,
+    );
   }
 }

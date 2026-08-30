@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:tripjournal/features/home/home_screen.dart';
 import 'package:tripjournal/features/trip/trip_view_screen.dart';
 
-Widget _wrapped() => const ProviderScope(child: MaterialApp(home: HomeScreen()));
+import 'support/auth_test_harness.dart';
+
+Widget _wrapped(AuthTestHarness harness) => harness.wrap(const HomeScreen());
 
 void main() {
   testWidgets('tapping the stats area of the active-trip card opens the trip (no dead zone)', (tester) async {
@@ -14,7 +15,9 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
 
-    await tester.pumpWidget(_wrapped());
+    final harness = AuthTestHarness();
+    addTearDown(harness.dispose);
+    await tester.pumpWidget(_wrapped(harness));
     await tester.pumpAndSettle();
 
     // Tap inside the wellness stats row, not the card generally — this is
@@ -31,7 +34,9 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
 
-    await tester.pumpWidget(_wrapped());
+    final harness = AuthTestHarness();
+    addTearDown(harness.dispose);
+    await tester.pumpWidget(_wrapped(harness));
     await tester.pumpAndSettle();
 
     await tester.tap(find.byKey(const Key('write-today-entry-button')));

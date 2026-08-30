@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:tripjournal/features/home/home_screen.dart';
 import 'package:tripjournal/features/trip/widgets/trip_list_controls.dart';
+
+import 'support/auth_test_harness.dart';
 
 void main() {
   testWidgets(
@@ -39,9 +40,11 @@ void main() {
       addTearDown(tester.view.resetPhysicalSize);
       addTearDown(tester.view.resetDevicePixelRatio);
 
-      await tester.pumpWidget(
-        const ProviderScope(child: MaterialApp(home: HomeScreen())),
-      );
+      // AuthTestHarness overrides authControllerProvider so HomeScreen's
+      // app-bar avatar doesn't touch Supabase (not initialized in tests).
+      final harness = AuthTestHarness();
+      addTearDown(harness.dispose);
+      await tester.pumpWidget(harness.wrap(const HomeScreen()));
       await tester.pumpAndSettle();
 
       for (final key in ['all', 'active', 'upcoming', 'past']) {
