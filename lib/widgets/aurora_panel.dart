@@ -8,11 +8,13 @@ class AuroraPanel extends StatelessWidget {
     required this.child,
     this.padding = const EdgeInsets.all(20),
     this.semanticLabel,
+    this.onTap,
   });
 
   final Widget child;
   final EdgeInsetsGeometry padding;
   final String? semanticLabel;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -24,9 +26,7 @@ class AuroraPanel extends StatelessWidget {
       label: semanticLabel,
       child: Container(
         width: double.infinity,
-        padding: padding,
         decoration: BoxDecoration(
-          gradient: aurora.heroGradient,
           borderRadius: BorderRadius.circular(24),
           boxShadow: [
             BoxShadow(
@@ -36,11 +36,25 @@ class AuroraPanel extends StatelessWidget {
             ),
           ],
         ),
-        child: DefaultTextStyle.merge(
-          style: TextStyle(color: aurora.onHero),
-          child: IconTheme.merge(
-            data: IconThemeData(color: aurora.onHero),
-            child: child,
+        child: Material(
+          color: Colors.transparent,
+          borderRadius: BorderRadius.circular(24),
+          clipBehavior: Clip.antiAlias,
+          child: Ink(
+            decoration: BoxDecoration(gradient: aurora.heroGradient),
+            child: InkWell(
+              onTap: onTap,
+              child: Padding(
+                padding: padding,
+                child: DefaultTextStyle.merge(
+                  style: TextStyle(color: aurora.onHero),
+                  child: IconTheme.merge(
+                    data: IconThemeData(color: aurora.onHero),
+                    child: child,
+                  ),
+                ),
+              ),
+            ),
           ),
         ),
       ),

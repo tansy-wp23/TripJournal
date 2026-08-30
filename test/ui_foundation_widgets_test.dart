@@ -26,6 +26,29 @@ void main() {
     }
   });
 
+  testWidgets('AuroraPanel provides an optional full-surface action', (
+    tester,
+  ) async {
+    var taps = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light,
+        home: Scaffold(
+          body: AuroraPanel(
+            semanticLabel: 'Open active trip',
+            onTap: () => taps++,
+            child: const Text('Kuala Lumpur'),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.bySemanticsLabel('Open active trip'));
+
+    expect(taps, 1);
+    expect(find.byType(InkWell), findsOneWidget);
+  });
+
   testWidgets('AppSectionHeader omits an action unless it is actionable', (
     tester,
   ) async {

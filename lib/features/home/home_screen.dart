@@ -29,6 +29,8 @@ import '../trip/widgets/wellness_stats_row.dart';
 import '../../models/journal_entry.dart';
 import '../../models/profile.dart';
 import '../../models/trip.dart';
+import '../../theme/aurora_theme.dart';
+import '../../widgets/aurora_panel.dart';
 
 /// The screen shown after login (see IMPLEMENTATION_PLAN_HOMEPAGE.md Phase
 /// 4), reached via `AuthGate` once `authControllerProvider.status` is
@@ -376,95 +378,183 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             )
             .inDays +
         1;
+    final currentDay = dayNumber.clamp(1, trip.durationDays);
     final todaysEntry = _findTodaysEntry(journalController.entries);
     final stats = computeTripStats(
       entries: journalController.entries,
       totalDays: trip.durationDays,
     );
+    final theme = Theme.of(context);
+    final aurora = AuroraTheme.of(context);
 
-    return Card(
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        key: const Key('active-trip-card'),
-        onTap: () => _openTripView(trip),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            TripCoverPhoto(
-              photoPath: trip.coverPhotoPath,
-              // Capped against the viewport so the hero image doesn't swallow
-              // a landscape phone's ~320pt of height.
-              height: TripPhotoCarousel.resolveHeight(context, max: 140),
-              // Without an explicit width the image sized itself to its own
-              // aspect ratio and sat pillarboxed between grey bands, which got
-              // very obvious in landscape where the card is wide and short.
-              width: double.infinity,
-            ),
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    trip.title,
-                    style: Theme.of(context).textTheme.headlineSmall,
-                  ),
-                  Text('Day $dayNumber of ${trip.durationDays}'),
-                  const SizedBox(height: 12),
-                  if (todaysEntry == null) ...[
-                    const Text("You haven't written today's entry yet."),
-                    const SizedBox(height: 8),
-                    FilledButton.icon(
-                      key: const Key('write-today-entry-button'),
-                      onPressed: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => CreateEditEntryScreen(
-                            tripId: trip.id,
-                            initialDate: today,
-                            trip: trip,
+    return AuroraPanel(
+      key: const Key('active-trip-card'),
+      semanticLabel: 'Open active trip ${trip.title}',
+      padding: EdgeInsets.zero,
+      onTap: () => _openTripView(trip),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          TripCoverPhoto(
+            photoPath: trip.coverPhotoPath,
+            height: TripPhotoCarousel.resolveHeight(context, max: 152),
+            width: double.infinity,
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Flexible(
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 5,
+                        ),
+                        decoration: BoxDecoration(
+                          color: aurora.onHero.withValues(alpha: 0.16),
+                          borderRadius: BorderRadius.circular(999),
+                          border: Border.all(
+                            color: aurora.onHero.withValues(alpha: 0.24),
+                          ),
+                        ),
+                        child: Text(
+                          'ACTIVE TRIP',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.labelSmall?.copyWith(
+                            color: aurora.onHero,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 0.8,
                           ),
                         ),
                       ),
-                      icon: const Icon(Icons.edit_note),
-                      label: const Text("Write today's entry"),
                     ),
-                  ] else ...[
-                    Row(
-                      children: [
-                        const Icon(Icons.check_circle, color: Colors.green),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            "Today's entry: ${todaysEntry.displayTitle}",
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Day $currentDay of ${trip.durationDays}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        textAlign: TextAlign.end,
+                        style: theme.textTheme.labelLarge?.copyWith(
+                          color: aurora.onHero,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    const Icon(Icons.arrow_forward_rounded, size: 20),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                Text(
+                  trip.title,
+                  style: theme.textTheme.headlineSmall?.copyWith(
+                    color: aurora.onHero,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                if (trip.destination?.trim().isNotEmpty == true) ...[
+                  const SizedBox(height: 6),
+                  Row(
+                    children: [
+                      const Icon(Icons.location_on_outlined, size: 18),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          trip.destination!.trim(),
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: aurora.onHero.withValues(alpha: 0.9),
                           ),
                         ),
-                      ],
-                    ),
-                    const SizedBox(height: 4),
-                    Row(
-                      children: [
-                        if (todaysEntry.healthLog != null) ...[
-                          const Icon(Icons.directions_walk, size: 18),
-                          const SizedBox(width: 4),
-                          Text(
-                            '${formatThousands(todaysEntry.healthLog!.steps)} steps',
-                          ),
-                          const SizedBox(width: 16),
-                        ],
-                        Icon(moodIcon(todaysEntry.mood), size: 18),
-                        const SizedBox(width: 4),
-                        Text(moodLabel(todaysEntry.mood)),
-                      ],
-                    ),
-                  ],
-                  const SizedBox(height: 16),
-                  WellnessStatsRow(stats: stats),
+                      ),
+                    ],
+                  ),
                 ],
-              ),
+                const SizedBox(height: 14),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(999),
+                  child: LinearProgressIndicator(
+                    minHeight: 5,
+                    value: currentDay / trip.durationDays,
+                    backgroundColor: aurora.onHero.withValues(alpha: 0.2),
+                    valueColor: AlwaysStoppedAnimation<Color>(aurora.onHero),
+                  ),
+                ),
+                const SizedBox(height: 18),
+                if (todaysEntry == null) ...[
+                  Text(
+                    "You haven't written today's entry yet.",
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: aurora.onHero.withValues(alpha: 0.92),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  FilledButton.icon(
+                    key: const Key('write-today-entry-button'),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: theme.colorScheme.tertiary,
+                      foregroundColor: theme.colorScheme.onTertiary,
+                    ),
+                    onPressed: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => CreateEditEntryScreen(
+                          tripId: trip.id,
+                          initialDate: today,
+                          trip: trip,
+                        ),
+                      ),
+                    ),
+                    icon: const Icon(Icons.edit_note_rounded),
+                    label: const Text("Write today's entry"),
+                  ),
+                ] else ...[
+                  Row(
+                    children: [
+                      const Icon(Icons.check_circle_outline_rounded, size: 20),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          "Today's entry: ${todaysEntry.displayTitle}",
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: aurora.onHero,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  Row(
+                    children: [
+                      if (todaysEntry.healthLog != null) ...[
+                        const Icon(Icons.directions_walk, size: 18),
+                        const SizedBox(width: 4),
+                        Text(
+                          '${formatThousands(todaysEntry.healthLog!.steps)} steps',
+                        ),
+                        const SizedBox(width: 16),
+                      ],
+                      Icon(moodIcon(todaysEntry.mood), size: 18),
+                      const SizedBox(width: 4),
+                      Text(moodLabel(todaysEntry.mood)),
+                    ],
+                  ),
+                ],
+                const SizedBox(height: 20),
+                WellnessStatsRow(
+                  stats: stats,
+                  compact: true,
+                  foregroundColor: aurora.onHero,
+                ),
+              ],
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

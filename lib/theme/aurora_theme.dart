@@ -17,7 +17,25 @@ class AuroraTheme extends ThemeExtension<AuroraTheme> {
   final Color onHero;
 
   static AuroraTheme of(BuildContext context) {
-    return Theme.of(context).extension<AuroraTheme>()!;
+    final theme = Theme.of(context);
+    final extension = theme.extension<AuroraTheme>();
+    if (extension != null) return extension;
+
+    return theme.brightness == Brightness.dark
+        ? const AuroraTheme(
+            heroStart: Color(0xFF0E7490),
+            heroMiddle: Color(0xFF3157B7),
+            heroEnd: Color(0xFF6546A8),
+            raisedSurface: Color(0xFF143247),
+            onHero: Colors.white,
+          )
+        : const AuroraTheme(
+            heroStart: Color(0xFF11B7D5),
+            heroMiddle: Color(0xFF4475D8),
+            heroEnd: Color(0xFF8865D0),
+            raisedSurface: Color(0xFFE8F5FA),
+            onHero: Colors.white,
+          );
   }
 
   LinearGradient get heroGradient => LinearGradient(
