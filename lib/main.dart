@@ -9,6 +9,7 @@ import 'error_reporting.dart';
 import 'features/auth/auth_gate.dart';
 import 'features/settings/settings_providers.dart';
 import 'models/system_error_log.dart';
+import 'theme/app_theme.dart';
 
 Future<void> main() async {
   // Everything — including `ensureInitialized()` — runs inside the same
@@ -67,18 +68,15 @@ class TripJournalApp extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final themeMode = ref.watch(settingsControllerProvider).preferences.themeMode;
+    final themeMode = ref
+        .watch(settingsControllerProvider)
+        .preferences
+        .themeMode;
     return MaterialApp(
       title: 'TripJournal',
       themeMode: themeMode,
-      theme: ThemeData(colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple)),
-      darkTheme: ThemeData(
-        brightness: Brightness.dark,
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: Colors.deepPurple,
-          brightness: Brightness.dark,
-        ),
-      ),
+      theme: AppTheme.light,
+      darkTheme: AppTheme.dark,
       home: const AuthGate(),
     );
   }
