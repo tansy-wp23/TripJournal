@@ -5,6 +5,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:tripjournal/features/home/home_screen.dart';
 import 'package:tripjournal/features/trip/trip_view_screen.dart';
 
+import 'support/auth_test_harness.dart';
+
 void main() {
   testWidgets(
     'creating a trip with the default (today) dates is rejected — trip-001 is '
@@ -20,7 +22,9 @@ void main() {
       // validation reads from TripController's already-loaded trips
       // (see trip_controller.dart's _validate doc comment), which only
       // happens once Home has loaded them.
-      await tester.pumpWidget(const ProviderScope(child: MaterialApp(home: HomeScreen())));
+      final harness = AuthTestHarness();
+      addTearDown(harness.dispose);
+      await tester.pumpWidget(harness.wrap(const HomeScreen()));
       await tester.pumpAndSettle();
 
       await tester.tap(find.text('Create Trip'));

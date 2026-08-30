@@ -9,6 +9,7 @@ import '../admin/widgets/report_issue_button.dart';
 import '../auth/controller/auth_controller.dart';
 import '../community/community_screen.dart';
 import '../profile/screens/profile_view_screen.dart';
+import '../profile/widgets/profile_avatar.dart';
 import '../settings/settings_providers.dart';
 import '../settings/settings_screen.dart';
 import '../journal/controller/journal_controller.dart';
@@ -26,6 +27,7 @@ import '../trip/widgets/trip_photo_carousel.dart';
 import '../trip/widgets/trip_list_controls.dart';
 import '../trip/widgets/wellness_stats_row.dart';
 import '../../models/journal_entry.dart';
+import '../../models/profile.dart';
 import '../../models/trip.dart';
 
 /// The screen shown after login (see IMPLEMENTATION_PLAN_HOMEPAGE.md Phase
@@ -183,6 +185,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   Widget build(BuildContext context) {
     final tripController = ref.watch(tripControllerProvider);
     final journalController = ref.watch(journalControllerProvider);
+    // AuthController already caches the Profile (populated at sign-in /
+    // session restore), and ProfileController.refreshProfile() is called by
+    // every profile write, so this stays fresh after avatar/name edits —
+    // no extra fetch needed here. See the note in
+    // profile_controller.dart's updateDisplayName().
+    final authController = ref.watch(authControllerProvider);
     ref.listen(tripControllerProvider, (_, next) {
       unawaited(
         ref.read(journalReminderCoordinatorProvider).reconcile(next.trips),
@@ -219,7 +227,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             ],
             child: Padding(
               padding: const EdgeInsets.only(right: 16),
-              child: const CircleAvatar(child: Icon(Icons.person)),
+              child: _buildProfileMenuAvatar(context, authController.profile),
             ),
           ),
         ],
@@ -230,6 +238,25 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         icon: const Icon(Icons.add),
         label: const Text('Create Trip'),
       ),
+    );
+  }
+
+  /// The profile button in the app bar: the user's actual picture once
+  /// their profile is cached by [AuthController] (falling back to their
+  /// initial when no photo is set or the image fails to load), or a generic
+  /// person icon while no profile is available. A missing profile must
+  /// never break the dashboard — the profile screens own any load-error UI.
+  Widget _buildProfileMenuAvatar(BuildContext context, Profile? profile) {
+    if (profile == null) {
+      return const CircleAvatar(child: Icon(Icons.person));
+    }
+    return ProfileAvatar(
+      radius: 20,
+      avatarUrl: profile.avatarUrl,
+      initial: profile.displayName.isNotEmpty
+          ? profile.displayName[0].toUpperCase()
+          : '?',
+      initialStyle: Theme.of(context).textTheme.titleMedium,
     );
   }
 

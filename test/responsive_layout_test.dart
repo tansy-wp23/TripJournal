@@ -346,15 +346,26 @@ void main() {
   testWidgets('Home survives every screen size and orientation', (
     tester,
   ) async {
-    await _expectNoOverflow(tester, () => _app(const HomeScreen()));
+    // AuthTestHarness overrides authControllerProvider so HomeScreen's
+    // app-bar avatar doesn't touch Supabase (not initialized in tests).
+    final harness = AuthTestHarness();
+    addTearDown(harness.dispose);
+    await _expectNoOverflow(
+      tester,
+      () => _appWithMockAuth(harness, const HomeScreen()),
+    );
   });
 
   testWidgets(
     "the active trip's cover fills the card's width rather than pillarboxing",
     (tester) async {
+      // AuthTestHarness overrides authControllerProvider so HomeScreen's
+      // app-bar avatar doesn't touch Supabase (not initialized in tests).
+      final harness = AuthTestHarness();
+      addTearDown(harness.dispose);
       for (final size in [const Size(412, 915), const Size(915, 412)]) {
         _setSize(tester, size);
-        await tester.pumpWidget(_app(const HomeScreen()));
+        await tester.pumpWidget(_appWithMockAuth(harness, const HomeScreen()));
         await tester.pumpAndSettle();
 
         final card = tester.getSize(find.byKey(const Key('active-trip-card')));
@@ -543,10 +554,17 @@ void main() {
     });
 
     testWidgets('Home survives 1.3x text at every size', (tester) async {
+      // AuthTestHarness overrides authControllerProvider so HomeScreen's
+      // app-bar avatar doesn't touch Supabase (not initialized in tests).
+      final harness = AuthTestHarness();
+      addTearDown(harness.dispose);
       await _expectNoOverflowAtLargeText(
         tester,
-        ({double textScale = 1.0}) =>
-            _app(const HomeScreen(), textScale: textScale),
+        ({double textScale = 1.0}) => _appWithMockAuth(
+          harness,
+          const HomeScreen(),
+          textScale: textScale,
+        ),
       );
     });
 

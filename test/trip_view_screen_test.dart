@@ -6,6 +6,7 @@ import 'package:tripjournal/data/mock_journal_repository.dart';
 import 'package:tripjournal/data/mock_trip_cover_storage.dart';
 import 'package:tripjournal/data/mock_trip_repository.dart';
 import 'package:tripjournal/data/trip_repository.dart';
+import 'package:tripjournal/features/auth/controller/auth_controller.dart';
 import 'package:tripjournal/features/home/home_screen.dart';
 import 'package:tripjournal/features/trip/controller/trip_controller.dart';
 import 'package:tripjournal/features/trip/trip_view_screen.dart';
@@ -117,9 +118,17 @@ void main() {
         MockJournalRepository(),
         MockTripCoverStorage(),
       );
+      final harness = AuthTestHarness();
+      addTearDown(harness.dispose);
       await tester.pumpWidget(
         ProviderScope(
-          overrides: [tripControllerProvider.overrideWith((ref) => controller)],
+          overrides: [
+            tripControllerProvider.overrideWith((ref) => controller),
+            authControllerProvider.overrideWith(
+              (ref) => harness.controller,
+              disposeNotifier: false,
+            ),
+          ],
           child: const MaterialApp(home: HomeScreen()),
         ),
       );
@@ -153,9 +162,17 @@ void main() {
         MockJournalRepository(),
         MockTripCoverStorage(),
       );
+      final harness = AuthTestHarness();
+      addTearDown(harness.dispose);
       await tester.pumpWidget(
         ProviderScope(
-          overrides: [tripControllerProvider.overrideWith((ref) => controller)],
+          overrides: [
+            tripControllerProvider.overrideWith((ref) => controller),
+            authControllerProvider.overrideWith(
+              (ref) => harness.controller,
+              disposeNotifier: false,
+            ),
+          ],
           child: const MaterialApp(home: HomeScreen()),
         ),
       );
