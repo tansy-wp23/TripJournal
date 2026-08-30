@@ -7,6 +7,7 @@ import 'package:tripjournal/data/journal_repository.dart';
 import 'package:tripjournal/data/mock_journal_repository.dart';
 import 'package:tripjournal/data/mock_trip_cover_storage.dart';
 import 'package:tripjournal/data/trip_repository.dart';
+import 'package:tripjournal/features/auth/controller/auth_controller.dart';
 import 'package:tripjournal/features/home/home_screen.dart';
 import 'package:tripjournal/features/journal/ai/daily_advice_locator.dart';
 import 'package:tripjournal/features/journal/controller/journal_controller.dart';
@@ -15,6 +16,8 @@ import 'package:tripjournal/features/trip/trip_form_screen.dart';
 import 'package:tripjournal/features/trip/trip_view_screen.dart';
 import 'package:tripjournal/models/journal_entry.dart';
 import 'package:tripjournal/models/trip.dart';
+
+import 'support/auth_test_harness.dart';
 
 void main() {
   const userId = '11111111-1111-4111-8111-111111111111';
@@ -29,9 +32,17 @@ void main() {
       MockTripCoverStorage(),
     );
 
+    final harness = AuthTestHarness();
+    addTearDown(harness.dispose);
     await tester.pumpWidget(
       ProviderScope(
-        overrides: [tripControllerProvider.overrideWith((ref) => controller)],
+        overrides: [
+          tripControllerProvider.overrideWith((ref) => controller),
+          authControllerProvider.overrideWith(
+            (ref) => harness.controller,
+            disposeNotifier: false,
+          ),
+        ],
         child: const MaterialApp(
           home: HomeScreen(userIdProvider: _FixedUserIdProvider(userId)),
         ),
@@ -80,9 +91,17 @@ void main() {
       MockTripCoverStorage(),
     );
 
+    final harness = AuthTestHarness();
+    addTearDown(harness.dispose);
     await tester.pumpWidget(
       ProviderScope(
-        overrides: [tripControllerProvider.overrideWith((ref) => controller)],
+        overrides: [
+          tripControllerProvider.overrideWith((ref) => controller),
+          authControllerProvider.overrideWith(
+            (ref) => harness.controller,
+            disposeNotifier: false,
+          ),
+        ],
         child: const MaterialApp(
           home: HomeScreen(userIdProvider: _UnauthenticatedUserIdProvider()),
         ),

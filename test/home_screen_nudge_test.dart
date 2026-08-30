@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:tripjournal/data/repository_locator.dart';
@@ -7,8 +6,9 @@ import 'package:tripjournal/features/home/home_screen.dart';
 import 'package:tripjournal/models/journal_entry.dart';
 import 'package:tripjournal/models/mood.dart';
 
-Widget _wrapped() =>
-    const ProviderScope(child: MaterialApp(home: HomeScreen()));
+import 'support/auth_test_harness.dart';
+
+Widget _wrapped(AuthTestHarness harness) => harness.wrap(const HomeScreen());
 
 void main() {
   testWidgets('profile menu shows Recently Deleted above Settings', (
@@ -19,7 +19,9 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
 
-    await tester.pumpWidget(_wrapped());
+    final harness = AuthTestHarness();
+    addTearDown(harness.dispose);
+    await tester.pumpWidget(_wrapped(harness));
     await tester.pumpAndSettle();
 
     await tester.tap(find.byType(PopupMenuButton<String>));
@@ -40,7 +42,9 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
 
-    await tester.pumpWidget(_wrapped());
+    final harness = AuthTestHarness();
+    addTearDown(harness.dispose);
+    await tester.pumpWidget(_wrapped(harness));
     await tester.pumpAndSettle();
 
     // Seeded entries are all dated April 2026, so today's entry is missing.
@@ -70,7 +74,9 @@ void main() {
     );
     addTearDown(() => journalRepository.deleteEntry(added.id));
 
-    await tester.pumpWidget(_wrapped());
+    final harness = AuthTestHarness();
+    addTearDown(harness.dispose);
+    await tester.pumpWidget(_wrapped(harness));
     await tester.pumpAndSettle();
     expect(find.text('${before.length} entries'), findsOneWidget);
 
@@ -94,7 +100,9 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
 
-    await tester.pumpWidget(_wrapped());
+    final harness = AuthTestHarness();
+    addTearDown(harness.dispose);
+    await tester.pumpWidget(_wrapped(harness));
     await tester.pumpAndSettle();
 
     await tester.tap(find.byKey(const Key('write-today-entry-button')));

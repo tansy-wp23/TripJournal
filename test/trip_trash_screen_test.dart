@@ -8,12 +8,15 @@ import 'package:tripjournal/data/current_user_id_provider.dart';
 import 'package:tripjournal/data/mock_journal_repository.dart';
 import 'package:tripjournal/data/mock_trip_cover_storage.dart';
 import 'package:tripjournal/data/trip_repository.dart';
+import 'package:tripjournal/features/auth/controller/auth_controller.dart';
 import 'package:tripjournal/features/home/home_screen.dart';
 import 'package:tripjournal/features/trip/controller/trip_controller.dart';
 import 'package:tripjournal/features/trip/controller/trip_trash_controller.dart';
 import 'package:tripjournal/features/trip/mock_user.dart';
 import 'package:tripjournal/features/trip/screens/trip_trash_screen.dart';
 import 'package:tripjournal/models/trip.dart';
+
+import 'support/auth_test_harness.dart';
 
 void main() {
   final now = DateTime.utc(2026, 8, 5, 12);
@@ -242,11 +245,17 @@ void main() {
       MockTripCoverStorage(),
     );
 
+    final harness = AuthTestHarness();
+    addTearDown(harness.dispose);
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
           tripTrashControllerProvider.overrideWith((ref) => trashController),
           tripControllerProvider.overrideWith((ref) => tripController),
+          authControllerProvider.overrideWith(
+            (ref) => harness.controller,
+            disposeNotifier: false,
+          ),
         ],
         child: const MaterialApp(home: HomeScreen()),
       ),
