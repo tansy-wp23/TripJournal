@@ -312,7 +312,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               _buildActiveTripCard(context, activeTrip, journalController),
               const SizedBox(height: 28),
             ],
-            const AppSectionHeader(title: 'Your trips'),
+            const AppSectionHeader(title: 'Your Trips'),
             const SizedBox(height: 10),
             Card(
               child: Padding(

@@ -38,7 +38,7 @@ void main() {
     await pumpHome(tester);
 
     expect(find.byType(AppSectionHeader), findsOneWidget);
-    expect(find.text('Your trips'), findsOneWidget);
+    expect(find.text('Your Trips'), findsOneWidget);
     expect(find.text('Osaka, Japan'), findsOneWidget);
     expect(find.byKey(const Key('trip-card-trip-002')), findsOneWidget);
     expect(find.byKey(const Key('trip-card-status-trip-002')), findsOneWidget);
