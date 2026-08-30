@@ -1,9 +1,9 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../widgets/app_splash.dart';
 import '../guest/guest_home_screen.dart';
-import '../home/home_screen.dart';
+import '../navigation/authenticated_app_shell.dart';
 import '../profile/screens/profile_onboarding_screen.dart';
 import 'controller/auth_controller.dart';
 import 'screens/admin_account_screen.dart';
@@ -30,7 +30,7 @@ class AuthGate extends ConsumerWidget {
         // resolves, so there is no blank frame between the two.
         return const AppSplash();
       case AuthStatus.authenticated:
-        return const HomeScreen();
+        return const AuthenticatedAppShell();
       case AuthStatus.needsOnboarding:
         return const ProfileOnboardingScreen();
       case AuthStatus.deactivated:

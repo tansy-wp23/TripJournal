@@ -175,6 +175,23 @@ abstract final class AppTheme {
         foregroundColor: onTertiary,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
       ),
+      navigationBarTheme: NavigationBarThemeData(
+        backgroundColor: surface,
+        surfaceTintColor: Colors.transparent,
+        elevation: 0,
+        indicatorColor: primary.withValues(alpha: 0.18),
+        labelTextStyle: WidgetStateProperty.resolveWith((states) {
+          final selected = states.contains(WidgetState.selected);
+          return base.textTheme.labelMedium?.copyWith(
+            color: selected ? primary : muted,
+            fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+          );
+        }),
+        iconTheme: WidgetStateProperty.resolveWith((states) {
+          final selected = states.contains(WidgetState.selected);
+          return IconThemeData(color: selected ? primary : muted, size: 24);
+        }),
+      ),
       chipTheme: base.chipTheme.copyWith(
         backgroundColor: surface,
         selectedColor: primary.withValues(alpha: 0.16),
