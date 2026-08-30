@@ -16,7 +16,7 @@ class _AuthenticatedAppShellState extends State<AuthenticatedAppShell> {
   final _visited = <bool>[true, false, false];
 
   List<Widget> get _destinations => [
-    const HomeScreen(),
+    const HomeScreen(embeddedInRootShell: true),
     _visited[1] ? const CommunityScreen() : const SizedBox.shrink(),
     _visited[2] ? const ProfileViewScreen() : const SizedBox.shrink(),
   ];

@@ -53,6 +53,8 @@ void main() {
       expect(find.text('Community'), findsOneWidget);
       expect(find.text('Profile'), findsOneWidget);
       expect(find.byType(HomeScreen).hitTestable(), findsOneWidget);
+      expect(find.text('My journeys'), findsOneWidget);
+      expect(find.byKey(const Key('community-button')), findsNothing);
       expect(find.byType(ProfileViewScreen, skipOffstage: false), findsNothing);
     },
   );

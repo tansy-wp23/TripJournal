@@ -37,9 +37,14 @@ import '../../models/trip.dart';
 /// `LoginScreen` on its own, so no navigation happens here. Settings remains
 /// a "coming soon" placeholder.
 class HomeScreen extends ConsumerStatefulWidget {
-  const HomeScreen({super.key, this.userIdProvider});
+  const HomeScreen({
+    super.key,
+    this.userIdProvider,
+    this.embeddedInRootShell = false,
+  });
 
   final CurrentUserIdProvider? userIdProvider;
+  final bool embeddedInRootShell;
 
   @override
   ConsumerState<HomeScreen> createState() => _HomeScreenState();
@@ -199,17 +204,18 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('TripJournal'),
+        title: Text(widget.embeddedInRootShell ? 'My journeys' : 'TripJournal'),
         actions: [
-          IconButton(
-            key: const Key('community-button'),
-            icon: const Icon(Icons.public),
-            tooltip: 'Community',
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const CommunityScreen()),
+          if (!widget.embeddedInRootShell)
+            IconButton(
+              key: const Key('community-button'),
+              icon: const Icon(Icons.public),
+              tooltip: 'Community',
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const CommunityScreen()),
+              ),
             ),
-          ),
           ReportIssueButton(
             page: 'HomeScreen',
             userIdProvider: widget.userIdProvider,
