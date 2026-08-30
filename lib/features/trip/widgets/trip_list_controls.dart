@@ -84,18 +84,21 @@ class TripListControls extends StatelessWidget {
                 child: Text(_sortLabel(option)),
               ),
           ],
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 4),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(Icons.sort),
-                const SizedBox(width: 4),
-                Text(
-                  _sortLabel(sort),
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
-              ],
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 6),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.sort_rounded),
+                  const SizedBox(width: 4),
+                  Text(
+                    _sortLabel(sort),
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ],
+              ),
             ),
           ),
         ),

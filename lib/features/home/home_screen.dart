@@ -30,6 +30,7 @@ import '../../models/journal_entry.dart';
 import '../../models/profile.dart';
 import '../../models/trip.dart';
 import '../../theme/aurora_theme.dart';
+import '../../widgets/app_section_header.dart';
 import '../../widgets/aurora_panel.dart';
 
 /// The screen shown after login (see IMPLEMENTATION_PLAN_HOMEPAGE.md Phase
@@ -294,61 +295,81 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       query: _tripQuery,
     );
 
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        if (activeTrip != null) ...[
-          _buildActiveTripCard(context, activeTrip, journalController),
-          const SizedBox(height: 24),
-        ],
-        Text('Your Trips', style: Theme.of(context).textTheme.titleLarge),
-        const SizedBox(height: 8),
-        TripListControls(
-          sort: _sort,
-          statusFilter: _statusFilter,
-          onSortChanged: (sort) => setState(() => _sort = sort),
-          onStatusFilterChanged: (filter) =>
-              setState(() => _statusFilter = filter),
-          searchVisible: _tripSearchVisible,
-          onSearchToggle: () => setState(() {
-            _tripSearchVisible = !_tripSearchVisible;
-            if (!_tripSearchVisible) _tripQuery = '';
-          }),
-        ),
-        if (_tripSearchVisible) ...[
-          const SizedBox(height: 8),
-          TextField(
-            key: const Key('trip-search-field'),
-            autofocus: true,
-            decoration: const InputDecoration(
-              hintText: 'Search trips by title or destination...',
-              prefixIcon: Icon(Icons.search),
-              border: OutlineInputBorder(),
-              isDense: true,
-            ),
-            onChanged: (value) => setState(() => _tripQuery = value),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final horizontalPadding = constraints.maxWidth > 760
+            ? (constraints.maxWidth - 720) / 2
+            : 16.0;
+        return ListView(
+          padding: EdgeInsets.fromLTRB(
+            horizontalPadding,
+            12,
+            horizontalPadding,
+            96,
           ),
-        ],
-        const SizedBox(height: 8),
-        if (orderedTrips.isEmpty)
-          TripListNoMatchesState(
-            onClearFilter: () => setState(() {
-              _statusFilter = TripStatusFilter.all;
-              _tripQuery = '';
-              _tripSearchVisible = false;
-            }),
-          )
-        else
-          for (final trip in orderedTrips)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: _TripCard(
-                trip: trip,
-                entryCount: _entryCounts[trip.id] ?? 0,
-                onTap: () => _openTripView(trip),
+          children: [
+            if (activeTrip != null) ...[
+              _buildActiveTripCard(context, activeTrip, journalController),
+              const SizedBox(height: 28),
+            ],
+            const AppSectionHeader(title: 'Your trips'),
+            const SizedBox(height: 10),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(8),
+                child: Column(
+                  children: [
+                    TripListControls(
+                      sort: _sort,
+                      statusFilter: _statusFilter,
+                      onSortChanged: (sort) => setState(() => _sort = sort),
+                      onStatusFilterChanged: (filter) =>
+                          setState(() => _statusFilter = filter),
+                      searchVisible: _tripSearchVisible,
+                      onSearchToggle: () => setState(() {
+                        _tripSearchVisible = !_tripSearchVisible;
+                        if (!_tripSearchVisible) _tripQuery = '';
+                      }),
+                    ),
+                    if (_tripSearchVisible) ...[
+                      const SizedBox(height: 8),
+                      TextField(
+                        key: const Key('trip-search-field'),
+                        autofocus: true,
+                        decoration: const InputDecoration(
+                          hintText: 'Search title or destination',
+                          prefixIcon: Icon(Icons.search_rounded),
+                        ),
+                        onChanged: (value) =>
+                            setState(() => _tripQuery = value),
+                      ),
+                    ],
+                  ],
+                ),
               ),
             ),
-      ],
+            const SizedBox(height: 12),
+            if (orderedTrips.isEmpty)
+              TripListNoMatchesState(
+                onClearFilter: () => setState(() {
+                  _statusFilter = TripStatusFilter.all;
+                  _tripQuery = '';
+                  _tripSearchVisible = false;
+                }),
+              )
+            else
+              for (final trip in orderedTrips)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: _TripCard(
+                    trip: trip,
+                    entryCount: _entryCounts[trip.id] ?? 0,
+                    onTap: () => _openTripView(trip),
+                  ),
+                ),
+          ],
+        );
+      },
     );
   }
 
@@ -612,41 +633,126 @@ class _TripCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final now = DateTime.now();
+    final (statusLabel, statusColor) = trip.isActiveOn(now)
+        ? ('Active', theme.colorScheme.primary)
+        : trip.startDate.isAfter(now)
+        ? ('Upcoming', theme.colorScheme.tertiary)
+        : ('Past', theme.colorScheme.onSurfaceVariant);
+
     return Card(
+      key: Key('trip-card-${trip.id}'),
       clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
-        child: IntrinsicHeight(
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              TripCoverPhoto(
-                photoPath: trip.coverPhotoPath,
-                width: 88,
-                height: 88,
-              ),
-              Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text(
-                        trip.title,
-                        style: Theme.of(context).textTheme.titleMedium,
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        '${formatDate(trip.startDate)} - ${formatDate(trip.endDate)}',
-                      ),
-                      const SizedBox(height: 4),
-                      Text(entryCount == 1 ? '1 entry' : '$entryCount entries'),
-                    ],
+      child: Semantics(
+        button: true,
+        label: 'Open ${trip.title}, ${statusLabel.toLowerCase()} trip',
+        child: InkWell(
+          onTap: onTap,
+          child: IntrinsicHeight(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: 116),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  TripCoverPhoto(
+                    photoPath: trip.coverPhotoPath,
+                    width: 104,
+                    height: 116,
                   ),
-                ),
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(14, 12, 4, 12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text(
+                            trip.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          if (trip.destination?.trim().isNotEmpty == true) ...[
+                            const SizedBox(height: 3),
+                            Row(
+                              children: [
+                                Icon(
+                                  Icons.location_on_outlined,
+                                  size: 16,
+                                  color: theme.colorScheme.onSurfaceVariant,
+                                ),
+                                const SizedBox(width: 4),
+                                Expanded(
+                                  child: Text(
+                                    trip.destination!.trim(),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: theme.textTheme.bodySmall?.copyWith(
+                                      color: theme.colorScheme.onSurfaceVariant,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                          const SizedBox(height: 7),
+                          Text(
+                            '${formatDate(trip.startDate)} – ${formatDate(trip.endDate)}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.bodySmall,
+                          ),
+                          const SizedBox(height: 7),
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 4,
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            children: [
+                              Container(
+                                key: Key('trip-card-status-${trip.id}'),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 3,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: statusColor.withValues(alpha: 0.12),
+                                  borderRadius: BorderRadius.circular(999),
+                                ),
+                                child: Text(
+                                  statusLabel,
+                                  style: theme.textTheme.labelSmall?.copyWith(
+                                    color: statusColor,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ),
+                              Text(
+                                entryCount == 1
+                                    ? '1 entry'
+                                    : '$entryCount entries',
+                                style: theme.textTheme.labelMedium?.copyWith(
+                                  color: theme.colorScheme.onSurfaceVariant,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    child: Icon(
+                      Icons.chevron_right_rounded,
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
               ),
-            ],
+            ),
           ),
         ),
       ),
