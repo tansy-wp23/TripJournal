@@ -243,7 +243,9 @@ class _TripViewScreenState extends ConsumerState<TripViewScreen>
         );
     if (!mounted) return;
     if (error != null) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error)));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error)));
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Trip published to Community!')),
@@ -257,7 +259,9 @@ class _TripViewScreenState extends ConsumerState<TripViewScreen>
         .unpublishTrip(trip);
     if (!mounted) return;
     if (error != null) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error)));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error)));
     } else {
       ScaffoldMessenger.of(
         context,
@@ -445,12 +449,22 @@ class _TripViewScreenState extends ConsumerState<TripViewScreen>
     return Scaffold(
       appBar: AppBar(
         title: Text(trip.title),
-        bottom: TabBar(
-          controller: _tabController,
-          tabs: const [
-            Tab(key: Key('trip-view-entries-tab'), text: 'Entries'),
-            Tab(key: Key('trip-view-map-tab'), text: 'Map'),
-          ],
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(56),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+            child: TabBar(
+              controller: _tabController,
+              tabs: const [
+                Tab(
+                  key: Key('trip-view-entries-tab'),
+                  text: 'Entries',
+                  height: 44,
+                ),
+                Tab(key: Key('trip-view-map-tab'), text: 'Map', height: 44),
+              ],
+            ),
+          ),
         ),
         actions: [
           ReportIssueButton(
@@ -710,23 +724,81 @@ class _TripViewScreenState extends ConsumerState<TripViewScreen>
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                trip.title,
-                style: Theme.of(context).textTheme.headlineMedium,
+              Wrap(
+                spacing: 10,
+                runSpacing: 6,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  Text(
+                    trip.title,
+                    style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  if (trip.isPublic)
+                    Chip(
+                      key: const Key('trip-view-public-chip'),
+                      avatar: const Icon(Icons.public, size: 14),
+                      label: const Text('Public'),
+                      visualDensity: VisualDensity.compact,
+                    ),
+                ],
               ),
-              if (trip.isPublic)
-                Padding(
-                  padding: const EdgeInsets.only(top: 4),
-                  child: Chip(
-                    key: const Key('trip-view-public-chip'),
-                    avatar: const Icon(Icons.public, size: 14),
-                    label: const Text('Public'),
-                    visualDensity: VisualDensity.compact,
+              const SizedBox(height: 12),
+              Card(
+                key: const Key('trip-header-facts'),
+                child: Padding(
+                  padding: const EdgeInsets.all(14),
+                  child: Column(
+                    children: [
+                      if (trip.destination?.trim().isNotEmpty == true) ...[
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.location_on_outlined,
+                              color: Theme.of(context).colorScheme.primary,
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                trip.destination!.trim(),
+                                style: Theme.of(context).textTheme.titleSmall
+                                    ?.copyWith(fontWeight: FontWeight.w700),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                      ],
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(
+                            Icons.calendar_month_outlined,
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.onSurfaceVariant,
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              '${formatDate(trip.startDate)} – ${formatDate(trip.endDate)}',
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            '${trip.durationDays} days',
+                            style: Theme.of(context).textTheme.labelLarge
+                                ?.copyWith(
+                                  color: Theme.of(context).colorScheme.primary,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ),
                 ),
-              const SizedBox(height: 4),
-              Text(
-                '${formatDate(trip.startDate)} - ${formatDate(trip.endDate)}',
               ),
               // Hidden when there is nothing to toggle — a switch that can't
               // change anything is just noise.
@@ -745,26 +817,31 @@ class _TripViewScreenState extends ConsumerState<TripViewScreen>
                 ),
               ],
               const SizedBox(height: 12),
-              InkWell(
-                key: const Key('trip-wellness-link'),
-                borderRadius: BorderRadius.circular(8),
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) =>
-                        TripWellnessScreen(trip: trip, entries: entries),
+              Card(
+                clipBehavior: Clip.antiAlias,
+                child: InkWell(
+                  key: const Key('trip-wellness-link'),
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) =>
+                          TripWellnessScreen(trip: trip, entries: entries),
+                    ),
                   ),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 4),
-                  child: Row(
-                    children: [
-                      Expanded(child: WellnessStatsRow(stats: stats)),
-                      Icon(
-                        Icons.chevron_right,
-                        color: Theme.of(context).colorScheme.outline,
-                      ),
-                    ],
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 14,
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(child: WellnessStatsRow(stats: stats)),
+                        Icon(
+                          Icons.chevron_right_rounded,
+                          color: Theme.of(context).colorScheme.outline,
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -797,7 +874,6 @@ class _TripViewScreenState extends ConsumerState<TripViewScreen>
               ),
               const SizedBox(height: 16),
               Card(
-                color: Theme.of(context).colorScheme.secondaryContainer,
                 clipBehavior: Clip.antiAlias,
                 child: InkWell(
                   key: const Key('trip-notes-card'),
@@ -814,7 +890,11 @@ class _TripViewScreenState extends ConsumerState<TripViewScreen>
                       children: [
                         Row(
                           children: [
-                            const Icon(Icons.sticky_note_2_outlined, size: 18),
+                            Icon(
+                              Icons.sticky_note_2_outlined,
+                              size: 20,
+                              color: Theme.of(context).colorScheme.primary,
+                            ),
                             const SizedBox(width: 8),
                             Expanded(
                               child: Text(
@@ -1094,18 +1174,32 @@ class _TripSummaryCard extends StatelessWidget {
     final colorScheme = Theme.of(context).colorScheme;
     return Card(
       key: const Key('trip-summary-card'),
-      color: colorScheme.secondaryContainer,
       child: Padding(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Trip Summary', style: Theme.of(context).textTheme.titleSmall),
-            const SizedBox(height: 6),
+            Row(
+              children: [
+                Icon(
+                  Icons.auto_awesome_outlined,
+                  size: 20,
+                  color: colorScheme.primary,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  'Trip Summary',
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
             if (!hasEntries)
               Text(
                 'Add a journal entry to generate a summary of this trip.',
-                style: TextStyle(color: colorScheme.onSecondaryContainer),
+                style: TextStyle(color: colorScheme.onSurfaceVariant),
               )
             else if (isGenerating)
               const Row(

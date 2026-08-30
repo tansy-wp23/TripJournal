@@ -192,6 +192,22 @@ abstract final class AppTheme {
           return IconThemeData(color: selected ? primary : muted, size: 24);
         }),
       ),
+      tabBarTheme: TabBarThemeData(
+        labelColor: primary,
+        unselectedLabelColor: muted,
+        labelStyle: base.textTheme.labelLarge?.copyWith(
+          fontWeight: FontWeight.w700,
+        ),
+        unselectedLabelStyle: base.textTheme.labelLarge?.copyWith(
+          fontWeight: FontWeight.w600,
+        ),
+        indicatorSize: TabBarIndicatorSize.tab,
+        indicator: BoxDecoration(
+          color: primary.withValues(alpha: 0.14),
+          borderRadius: BorderRadius.circular(14),
+        ),
+        dividerColor: Colors.transparent,
+      ),
       chipTheme: base.chipTheme.copyWith(
         backgroundColor: surface,
         selectedColor: primary.withValues(alpha: 0.16),

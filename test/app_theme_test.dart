@@ -26,4 +26,12 @@ void main() {
     expect(theme.colorScheme.primary, const Color(0xFF38BDF8));
     expect(aurora?.raisedSurface, const Color(0xFF143247));
   });
+
+  test('local tabs use a rounded selected surface in both themes', () {
+    for (final theme in [AppTheme.light, AppTheme.dark]) {
+      expect(theme.tabBarTheme.indicator, isA<BoxDecoration>());
+      expect(theme.tabBarTheme.dividerColor, Colors.transparent);
+      expect(theme.tabBarTheme.labelColor, theme.colorScheme.primary);
+    }
+  });
 }

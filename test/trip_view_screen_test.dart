@@ -35,6 +35,9 @@ void main() {
       expect(find.byKey(const Key('trip-view-entries-tab')), findsOneWidget);
       expect(find.byKey(const Key('trip-view-map-tab')), findsOneWidget);
       expect(find.byKey(const Key('trip-photo-carousel')), findsOneWidget);
+      expect(find.byKey(const Key('trip-header-facts')), findsOneWidget);
+      expect(find.text('Kyoto, Japan'), findsOneWidget);
+      expect(find.textContaining('days'), findsWidgets);
       expect(find.byKey(const Key('trip-wellness-link')), findsOneWidget);
       expect(find.byKey(const Key('trip-summary-card')), findsOneWidget);
       expect(find.byKey(const Key('trip-notes-card')), findsOneWidget);
@@ -43,10 +46,7 @@ void main() {
       // Export PDF/Locations/Food showcase live behind the overflow menu now
       // — see trip_view_screen.dart's _TripViewMenuAction — so only the menu
       // trigger itself is on screen until it's opened.
-      expect(
-        find.byKey(const Key('trip-view-more-menu')),
-        findsOneWidget,
-      );
+      expect(find.byKey(const Key('trip-view-more-menu')), findsOneWidget);
       expect(find.byKey(const Key('report-issue-button')), findsOneWidget);
       expect(find.byKey(const Key('trip-view-edit-button')), findsOneWidget);
       expect(find.byKey(const Key('trip-view-delete-button')), findsOneWidget);
@@ -56,10 +56,7 @@ void main() {
 
       expect(find.byKey(const Key('trip-view-search-toggle')), findsNothing);
       expect(find.byKey(const Key('trip-view-filter-button')), findsNothing);
-      expect(
-        find.byKey(const Key('trip-view-more-menu')),
-        findsOneWidget,
-      );
+      expect(find.byKey(const Key('trip-view-more-menu')), findsOneWidget);
       expect(find.byKey(const Key('report-issue-button')), findsOneWidget);
       expect(find.byKey(const Key('trip-view-edit-button')), findsOneWidget);
       expect(find.byKey(const Key('trip-view-delete-button')), findsOneWidget);
