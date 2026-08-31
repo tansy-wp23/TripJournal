@@ -1,4 +1,4 @@
-﻿import 'dart:typed_data';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -6,6 +6,7 @@ import 'package:image_picker/image_picker.dart';
 
 import '../../../validation/photo_validation.dart';
 import '../../../validation/profile_validation.dart';
+import '../../../widgets/app_form_section.dart';
 import '../controller/profile_controller.dart';
 import '../widgets/country_selector.dart';
 import '../widgets/date_of_birth_field.dart';
@@ -189,110 +190,167 @@ class _ProfileEditScreenState extends ConsumerState<ProfileEditScreen> {
       body: SafeArea(
         child: Form(
           key: _formKey,
-          child: ListView(
-            padding: const EdgeInsets.all(16),
-            children: [
-              Center(
-                child: Stack(
-                  clipBehavior: Clip.none,
-                  children: [
-                    ProfileAvatar(
-                      radius: 48,
-                      avatarUrl: _avatarRemoved ? null : profile?.avatarUrl,
-                      previewBytes: _pickedAvatarBytes,
-                      initial: profile != null && profile.displayName.isNotEmpty
-                          ? profile.displayName[0].toUpperCase()
-                          : '?',
-                    ),
-                    Positioned(
-                      bottom: -4,
-                      right: -4,
-                      child: InkWell(
-                        key: const Key('profile-avatar-picker-button'),
-                        onTap: _saving ? null : _pickAvatar,
-                        customBorder: const CircleBorder(),
-                        child: CircleAvatar(
-                          radius: 16,
-                          backgroundColor: Theme.of(context).colorScheme.primary,
-                          child: Icon(
-                            Icons.camera_alt,
-                            size: 16,
-                            color: Theme.of(context).colorScheme.onPrimary,
+          child: LayoutBuilder(
+            builder: (context, viewport) => ListView(
+              padding: EdgeInsets.fromLTRB(
+                viewport.maxWidth < 480 ? 12 : 24,
+                12,
+                viewport.maxWidth < 480 ? 12 : 24,
+                32,
+              ),
+              children: [
+                Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 712),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        AppFormSection(
+                          title: 'Profile photo',
+                          icon: Icons.account_circle_outlined,
+                          helperText:
+                              'Choose a photo that helps friends recognise you.',
+                          child: Column(
+                            children: [
+                              Stack(
+                                clipBehavior: Clip.none,
+                                children: [
+                                  ProfileAvatar(
+                                    radius: 48,
+                                    avatarUrl: _avatarRemoved
+                                        ? null
+                                        : profile?.avatarUrl,
+                                    previewBytes: _pickedAvatarBytes,
+                                    initial:
+                                        profile != null &&
+                                            profile.displayName.isNotEmpty
+                                        ? profile.displayName[0].toUpperCase()
+                                        : '?',
+                                  ),
+                                  Positioned(
+                                    bottom: -4,
+                                    right: -4,
+                                    child: InkWell(
+                                      key: const Key(
+                                        'profile-avatar-picker-button',
+                                      ),
+                                      onTap: _saving ? null : _pickAvatar,
+                                      customBorder: const CircleBorder(),
+                                      child: CircleAvatar(
+                                        radius: 18,
+                                        backgroundColor: Theme.of(
+                                          context,
+                                        ).colorScheme.primary,
+                                        child: Icon(
+                                          Icons.camera_alt_outlined,
+                                          size: 18,
+                                          color: Theme.of(
+                                            context,
+                                          ).colorScheme.onPrimary,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              if (_pickedAvatarBytes != null ||
+                                  (profile?.avatarUrl != null &&
+                                      !_avatarRemoved)) ...[
+                                const SizedBox(height: 8),
+                                TextButton(
+                                  key: const Key(
+                                    'profile-remove-avatar-button',
+                                  ),
+                                  onPressed: _saving ? null : _removeAvatar,
+                                  child: const Text('Remove photo'),
+                                ),
+                              ],
+                            ],
                           ),
                         ),
-                      ),
+                        const SizedBox(height: 16),
+                        AppFormSection(
+                          title: 'Identity',
+                          icon: Icons.badge_outlined,
+                          helperText: 'How your name appears across the app.',
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              TextFormField(
+                                key: const Key('profile-display-name-field'),
+                                controller: _displayNameController,
+                                decoration: const InputDecoration(
+                                  labelText: 'Display name',
+                                ),
+                                textInputAction: TextInputAction.done,
+                                validator: validateProfileDisplayName,
+                                onFieldSubmitted: (_) => _save(),
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                profile?.email ?? '',
+                                style: Theme.of(context).textTheme.bodyMedium,
+                              ),
+                              const SizedBox(height: 3),
+                              Text(
+                                'Email is managed by your Google account and cannot be changed here.',
+                                style: Theme.of(context).textTheme.bodySmall
+                                    ?.copyWith(
+                                      color: Theme.of(
+                                        context,
+                                      ).colorScheme.onSurfaceVariant,
+                                    ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        AppFormSection(
+                          title: 'Travel preferences',
+                          icon: Icons.explore_outlined,
+                          helperText:
+                              'Tell TripJournal what kind of journeys inspire you.',
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              TravelInterestSelector(
+                                selected: _selectedInterests,
+                                onChanged: (next) => setState(() {
+                                  _selectedInterests
+                                    ..clear()
+                                    ..addAll(next);
+                                }),
+                              ),
+                              const SizedBox(height: 16),
+                              DateOfBirthField(
+                                value: _dateOfBirth,
+                                onChanged: (date) =>
+                                    setState(() => _dateOfBirth = date),
+                                errorText: validateDateOfBirth(_dateOfBirth),
+                              ),
+                              const SizedBox(height: 16),
+                              CountrySelector(
+                                value: _country,
+                                onChanged: (country) =>
+                                    setState(() => _country = country),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 20),
+                        OutlinedButton(
+                          key: const Key('profile-cancel-button'),
+                          onPressed: _saving
+                              ? null
+                              : () => Navigator.pop(context),
+                          child: const Text('Cancel'),
+                        ),
+                      ],
                     ),
-                  ],
-                ),
-              ),
-              if (_pickedAvatarBytes != null ||
-                  (profile?.avatarUrl != null && !_avatarRemoved))
-                Center(
-                  child: TextButton(
-                    key: const Key('profile-remove-avatar-button'),
-                    onPressed: _saving ? null : _removeAvatar,
-                    child: const Text('Remove photo'),
                   ),
                 ),
-              const SizedBox(height: 16),
-              TextFormField(
-                key: const Key('profile-display-name-field'),
-                controller: _displayNameController,
-                decoration: const InputDecoration(
-                  labelText: 'Display name',
-                  border: OutlineInputBorder(),
-                  helperText: 'How your name appears across the app.',
-                ),
-                textInputAction: TextInputAction.done,
-                validator: validateProfileDisplayName,
-                onFieldSubmitted: (_) => _save(),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Email: ${profile?.email ?? ''}',
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Email is managed by your Google account and cannot be changed here.',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
-              ),
-              const SizedBox(height: 24),
-              Text(
-                'Travel interests',
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
-              const SizedBox(height: 8),
-              TravelInterestSelector(
-                selected: _selectedInterests,
-                onChanged: (next) => setState(() {
-                  _selectedInterests
-                    ..clear()
-                    ..addAll(next);
-                }),
-              ),
-              const SizedBox(height: 16),
-              DateOfBirthField(
-                value: _dateOfBirth,
-                onChanged: (date) => setState(() => _dateOfBirth = date),
-                errorText: validateDateOfBirth(_dateOfBirth),
-              ),
-              const SizedBox(height: 16),
-              CountrySelector(
-                value: _country,
-                onChanged: (country) => setState(() => _country = country),
-              ),
-              const SizedBox(height: 24),
-              OutlinedButton(
-                key: const Key('profile-cancel-button'),
-                onPressed: _saving ? null : () => Navigator.pop(context),
-                child: const Text('Cancel'),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),

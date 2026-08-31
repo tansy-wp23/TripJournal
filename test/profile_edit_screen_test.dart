@@ -27,6 +27,49 @@ Future<Finder> _scrollToKey(WidgetTester tester, String key) async {
 }
 
 void main() {
+  testWidgets('presents identity and travel details as clear sections', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(900, 1800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final profileRepository = MockProfileRepository(
+      state: MockProfileState.active,
+    );
+    final authController = AuthController(
+      MockAuthRepository(),
+      profileRepository,
+      MockAccountLifecycleRepository(
+        profileRepository: profileRepository,
+        verificationCodeRepository: MockVerificationCodeRepository(),
+      ),
+    );
+    await authController.signInWithGoogle();
+    final controller = ProfileController(
+      profileRepository,
+      authController,
+      MockProfileAvatarStorage(),
+    );
+    await controller.loadProfile();
+    addTearDown(authController.dispose);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          profileControllerProvider.overrideWith((ref) => controller),
+        ],
+        child: const MaterialApp(home: ProfileEditScreen()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Profile photo'), findsOneWidget);
+    expect(find.text('Identity'), findsOneWidget);
+    expect(find.text('Travel preferences'), findsOneWidget);
+  });
+
   testWidgets(
     'avatar picker offers camera and gallery, matching the trip cover photo flow',
     (tester) async {
