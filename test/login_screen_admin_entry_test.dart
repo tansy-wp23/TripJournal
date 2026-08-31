@@ -54,6 +54,18 @@ void main() {
     },
   );
 
+  testWidgets('explains the benefits and exposes one clear sign-in action', (
+    tester,
+  ) async {
+    await tester.pumpWidget(buildLoginScreen());
+    await pumpAuthFrame(tester);
+
+    expect(find.text('Keep every trip in one place'), findsOneWidget);
+    expect(find.text('Remember places, photos and moods'), findsOneWidget);
+    expect(find.text('Follow your travel wellness'), findsOneWidget);
+    expect(find.bySemanticsLabel('Sign in with Google'), findsOneWidget);
+  });
+
   group('LoginScreen hidden admin entry', () {
     testWidgets('no visible "Admin Portal" text is shown to travelers', (
       tester,

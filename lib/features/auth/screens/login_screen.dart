@@ -51,9 +51,9 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   void _openAdminPortal(BuildContext context) {
-    Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const AdminGate()),
-    );
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const AdminGate()));
   }
 
   /// This screen is now only ever reached by being pushed on top of
@@ -83,55 +83,121 @@ class _LoginScreenState extends State<LoginScreen> {
           // opened this by mistake needs to return to browsing.
           appBar: AppBar(),
           body: CenteredFormBody(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
+            child: Card(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(24, 28, 24, 24),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
                     GestureDetector(
                       key: const Key('login-logo-tap-target'),
                       onTap: _onLogoTap,
-                      // The Column stretches this to full width, so the hidden
-                      // admin tap target stays as generous as it was with the
-                      // placeholder icon; AppLogo keeps the artwork square and
-                      // centred inside it.
-                      child: const AppLogo(size: 96),
+                      child: const AppLogo(size: 88),
                     ),
-                    const SizedBox(height: 24),
+                    const SizedBox(height: 18),
                     Text(
                       'TripJournal',
                       textAlign: TextAlign.center,
-                      style: Theme.of(context).textTheme.headlineMedium,
+                      style: Theme.of(context).textTheme.headlineMedium
+                          ?.copyWith(fontWeight: FontWeight.w700),
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 6),
                     Text(
-                      'Journal your travels and track your health.',
+                      'Your journeys, remembered beautifully.',
                       textAlign: TextAlign.center,
-                      style: Theme.of(context).textTheme.bodyLarge,
+                      style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
                     ),
-                    const SizedBox(height: 48),
+                    const SizedBox(height: 24),
+                    const _BenefitRow(
+                      icon: Icons.luggage_outlined,
+                      text: 'Keep every trip in one place',
+                    ),
+                    const SizedBox(height: 12),
+                    const _BenefitRow(
+                      icon: Icons.photo_camera_back_outlined,
+                      text: 'Remember places, photos and moods',
+                    ),
+                    const SizedBox(height: 12),
+                    const _BenefitRow(
+                      icon: Icons.favorite_outline,
+                      text: 'Follow your travel wellness',
+                    ),
+                    const SizedBox(height: 28),
                     if (auth.error != null) ...[
                       _ErrorBanner(message: auth.error!),
                       const SizedBox(height: 16),
                     ],
-                    FilledButton.icon(
-                      key: const Key('sign-in-with-google'),
-                      onPressed: auth.loading
-                          ? null
-                          : () => _signIn(context, ref),
-                      icon: auth.loading
-                          ? const SizedBox(
-                              width: 18,
-                              height: 18,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Icon(Icons.login),
-                  label: Text(auth.loading ? 'Signing in' : 'Sign in with Google'),
+                    Semantics(
+                      container: true,
+                      button: true,
+                      label: 'Sign in with Google',
+                      child: ExcludeSemantics(
+                        child: FilledButton.icon(
+                          key: const Key('sign-in-with-google'),
+                          onPressed: auth.loading
+                              ? null
+                              : () => _signIn(context, ref),
+                          icon: auth.loading
+                              ? const SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : const Icon(Icons.login),
+                          label: Text(
+                            auth.loading ? 'Signing in' : 'Sign in with Google',
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      'You can return to Community at any time.',
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
                 ),
-              ],
+              ),
             ),
           ),
         );
       },
+    );
+  }
+}
+
+class _BenefitRow extends StatelessWidget {
+  const _BenefitRow({required this.icon, required this.text});
+
+  final IconData icon;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Row(
+      children: [
+        Container(
+          width: 38,
+          height: 38,
+          decoration: BoxDecoration(
+            color: colors.primaryContainer,
+            borderRadius: BorderRadius.circular(13),
+          ),
+          child: Icon(icon, size: 20, color: colors.onPrimaryContainer),
+        ),
+        const SizedBox(width: 12),
+        Expanded(child: Text(text)),
+      ],
     );
   }
 }
