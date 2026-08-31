@@ -20,7 +20,11 @@ import 'meal_rating_stars.dart';
 import 'photo_thumbnail.dart';
 
 class HealthLogFormData {
-  const HealthLogFormData({required this.steps, required this.caloriesBurned, required this.meals});
+  const HealthLogFormData({
+    required this.steps,
+    required this.caloriesBurned,
+    required this.meals,
+  });
 
   final int steps;
   final int? caloriesBurned;
@@ -110,9 +114,12 @@ class _HealthLogFormState extends State<HealthLogForm> {
   @override
   void initState() {
     super.initState();
-    _stepsController = TextEditingController(text: widget.initialSteps.toString());
-    _caloriesBurnedController =
-        TextEditingController(text: widget.initialCaloriesBurned?.toString() ?? '');
+    _stepsController = TextEditingController(
+      text: widget.initialSteps.toString(),
+    );
+    _caloriesBurnedController = TextEditingController(
+      text: widget.initialCaloriesBurned?.toString() ?? '',
+    );
     _meals = List.of(widget.initialMeals);
     _stepsFromHealth = widget.initialStepsFromHealth;
     _caloriesFromHealth = widget.initialCaloriesFromHealth;
@@ -133,11 +140,13 @@ class _HealthLogFormState extends State<HealthLogForm> {
   void _emitChange() {
     final steps = int.tryParse(_stepsController.text) ?? 0;
     setState(() => _stepsError = validateSteps(steps));
-    widget.onChanged(HealthLogFormData(
-      steps: steps,
-      caloriesBurned: int.tryParse(_caloriesBurnedController.text),
-      meals: _meals,
-    ));
+    widget.onChanged(
+      HealthLogFormData(
+        steps: steps,
+        caloriesBurned: int.tryParse(_caloriesBurnedController.text),
+        meals: _meals,
+      ),
+    );
   }
 
   /// Explicit, on-demand re-pull from the health platform — the natural
@@ -180,14 +189,20 @@ class _HealthLogFormState extends State<HealthLogForm> {
     if (!granted) {
       setState(() => _showConnectNote = true);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Permission denied — you can still enter steps and calories manually.')),
+        const SnackBar(
+          content: Text(
+            'Permission denied — you can still enter steps and calories manually.',
+          ),
+        ),
       );
       return;
     }
 
     setState(() => _syncing = true);
     final steps = await _healthDataSource.getStepsForDate(widget.entryDate);
-    final caloriesBurned = await _healthDataSource.getCaloriesBurnedForDate(widget.entryDate);
+    final caloriesBurned = await _healthDataSource.getCaloriesBurnedForDate(
+      widget.entryDate,
+    );
     if (!mounted) return;
 
     setState(() {
@@ -213,10 +228,8 @@ class _HealthLogFormState extends State<HealthLogForm> {
   Future<void> _addMeal() async {
     final meal = await showDialog<Meal>(
       context: context,
-      builder: (_) => _MealDialog(
-        photoStorage: _photoStorage,
-        tripId: widget.tripId,
-      ),
+      builder: (_) =>
+          _MealDialog(photoStorage: _photoStorage, tripId: widget.tripId),
     );
     if (meal == null) return;
     setState(() => _meals = [..._meals, meal]);
@@ -259,18 +272,24 @@ class _HealthLogFormState extends State<HealthLogForm> {
                   color: Theme.of(context).colorScheme.surfaceContainerHighest,
                   borderRadius: BorderRadius.circular(8),
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
                     child: Row(
                       children: [
                         const Icon(Icons.favorite_border, size: 18),
                         const SizedBox(width: 8),
                         const Expanded(
-                          child: Text('Connect a health app to auto-fill steps and calories.'),
+                          child: Text(
+                            'Connect a health app to auto-fill steps and calories.',
+                          ),
                         ),
                         IconButton(
                           key: const Key('dismiss-connect-health-note'),
                           icon: const Icon(Icons.close, size: 18),
-                          onPressed: () => setState(() => _showConnectNote = false),
+                          onPressed: () =>
+                              setState(() => _showConnectNote = false),
                         ),
                       ],
                     ),
@@ -310,9 +329,9 @@ class _HealthLogFormState extends State<HealthLogForm> {
                 child: Text(
                   'Synced from health app',
                   key: const Key('steps-from-health-hint'),
-                  style: Theme.of(
-                    context,
-                  ).textTheme.bodySmall?.copyWith(color: Theme.of(context).colorScheme.primary),
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
                 ),
               ),
             if (_stepsError != null)
@@ -343,14 +362,16 @@ class _HealthLogFormState extends State<HealthLogForm> {
                 child: Text(
                   'Synced from health app',
                   key: const Key('calories-from-health-hint'),
-                  style: Theme.of(
-                    context,
-                  ).textTheme.bodySmall?.copyWith(color: Theme.of(context).colorScheme.primary),
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
                 ),
               ),
             const SizedBox(height: 12),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            Wrap(
+              alignment: WrapAlignment.spaceBetween,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: 8,
               children: [
                 Text('Meals', style: Theme.of(context).textTheme.titleSmall),
                 TextButton.icon(
@@ -502,13 +523,19 @@ class _MealDialogState extends State<_MealDialog> {
     final initial = widget.initialMeal;
     _photoPath = initial?.photoPath;
     _nameController = TextEditingController(text: initial?.name ?? '');
-    _caloriesController = TextEditingController(text: initial?.calories.toString() ?? '');
-    _restaurantController = TextEditingController(text: initial?.restaurantName ?? '');
+    _caloriesController = TextEditingController(
+      text: initial?.calories.toString() ?? '',
+    );
+    _restaurantController = TextEditingController(
+      text: initial?.restaurantName ?? '',
+    );
     _reviewController = TextEditingController(text: initial?.foodReview ?? '');
     _mealType = initial?.mealType ?? MealType.breakfast;
     _portion = initial?.portion ?? PortionSize.regular;
     _rating = initial?.rating;
-    _baseCalories = initial == null ? 0 : initial.calories / initial.portion.calorieMultiplier;
+    _baseCalories = initial == null
+        ? 0
+        : initial.calories / initial.portion.calorieMultiplier;
   }
 
   @override
@@ -531,7 +558,9 @@ class _MealDialogState extends State<_MealDialog> {
     setState(() {
       _portion = portion;
       if (_baseCalories > 0) {
-        _caloriesController.text = (_baseCalories * portion.calorieMultiplier).round().toString();
+        _caloriesController.text = (_baseCalories * portion.calorieMultiplier)
+            .round()
+            .toString();
       }
     });
   }
@@ -573,16 +602,18 @@ class _MealDialogState extends State<_MealDialog> {
         // anything are the same null here. Saying so out loud costs the user
         // who cancelled nothing, and stops a broken picker looking like a
         // button that does nothing at all.
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('No photo selected.')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('No photo selected.')));
         return;
       }
 
       final sizeError = validatePhotoSize(await picked.length());
       if (sizeError != null) {
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(sizeError)));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(sizeError)));
         return;
       }
 
@@ -606,7 +637,11 @@ class _MealDialogState extends State<_MealDialog> {
         // usable as a plain "attach a food photo" upload.
         setState(() => _detecting = false);
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Couldn't detect food from that photo — enter it manually.")),
+          const SnackBar(
+            content: Text(
+              "Couldn't detect food from that photo — enter it manually.",
+            ),
+          ),
         );
         return;
       }
@@ -621,7 +656,11 @@ class _MealDialogState extends State<_MealDialog> {
       if (!mounted) return;
       setState(() => _detecting = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Couldn't access photos — you can still enter the meal manually.")),
+        const SnackBar(
+          content: Text(
+            "Couldn't access photos — you can still enter the meal manually.",
+          ),
+        ),
       );
     }
   }
@@ -723,12 +762,17 @@ class _MealDialogState extends State<_MealDialog> {
             key: const Key('meal-restaurant-field'),
             controller: _restaurantController,
             maxLength: kMealRestaurantNameMaxLength,
-            decoration: const InputDecoration(labelText: 'Restaurant (optional)'),
+            decoration: const InputDecoration(
+              labelText: 'Restaurant (optional)',
+            ),
           ),
           if (_restaurantError != null)
             Padding(
               padding: const EdgeInsets.only(top: 4),
-              child: Text(_restaurantError!, style: TextStyle(color: errorColor)),
+              child: Text(
+                _restaurantError!,
+                style: TextStyle(color: errorColor),
+              ),
             ),
           Align(
             alignment: Alignment.centerLeft,
@@ -775,7 +819,10 @@ class _MealDialogState extends State<_MealDialog> {
           const SizedBox(height: 12),
           Align(
             alignment: Alignment.centerLeft,
-            child: Text('Portion', style: Theme.of(context).textTheme.labelMedium),
+            child: Text(
+              'Portion',
+              style: Theme.of(context).textTheme.labelMedium,
+            ),
           ),
           const SizedBox(height: 4),
           SegmentedButton<PortionSize>(
@@ -795,12 +842,16 @@ class _MealDialogState extends State<_MealDialog> {
               for (final type in MealType.values)
                 DropdownMenuItem(value: type, child: Text(mealTypeLabel(type))),
             ],
-            onChanged: (value) => setState(() => _mealType = value ?? _mealType),
+            onChanged: (value) =>
+                setState(() => _mealType = value ?? _mealType),
           ),
           const SizedBox(height: 8),
           Align(
             alignment: Alignment.centerLeft,
-            child: Text('Rating', style: Theme.of(context).textTheme.labelMedium),
+            child: Text(
+              'Rating',
+              style: Theme.of(context).textTheme.labelMedium,
+            ),
           ),
           const SizedBox(height: 4),
           Align(

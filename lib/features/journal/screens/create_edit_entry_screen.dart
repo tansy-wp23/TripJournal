@@ -15,6 +15,7 @@ import '../../../data/photo_storage.dart';
 import '../../../data/repository_locator.dart' as photo_locator;
 import '../../../validation/journal_entry_validation.dart';
 import '../../../validation/photo_validation.dart';
+import '../../../widgets/app_form_section.dart';
 import '../../health/health_data_source.dart';
 import '../../health/health_data_source_locator.dart' as locator;
 import '../../location/google_place_picker_map.dart';
@@ -629,181 +630,237 @@ class _CreateEditEntryScreenState extends ConsumerState<CreateEditEntryScreen> {
       canPop: !_dirty && !_saving,
       onPopInvokedWithResult: _handleBackAttempt,
       child: Scaffold(
-        appBar: AppBar(title: Text(_isEditing ? 'Edit entry' : 'New entry')),
+        appBar: AppBar(
+          title: Text(_isEditing ? 'Edit entry' : 'New entry'),
+          actions: [
+            IconButton(
+              key: const Key('add-photo-button'),
+              onPressed: _saving ? null : _addPhoto,
+              icon: const Icon(Icons.add_photo_alternate_outlined),
+              tooltip: 'Add photo',
+            ),
+          ],
+        ),
         body: AbsorbPointer(
           absorbing: _saving,
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                TextField(
-                  key: const Key('entry-title-field'),
-                  controller: _titleController,
-                  decoration: const InputDecoration(labelText: 'Title'),
-                  maxLength: kEntryTitleMaxLength,
-                  onChanged: (_) => _markDirty(),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  key: const Key('entry-body-field'),
-                  controller: _bodyController,
-                  decoration: const InputDecoration(labelText: 'Body'),
-                  maxLines: 5,
-                  maxLength: kEntryBodyMaxLength,
-                  onChanged: (_) => _markDirty(),
-                ),
-                const SizedBox(height: 16),
-                Text('Mood', style: Theme.of(context).textTheme.titleSmall),
-                const SizedBox(height: 8),
-                MoodPicker(
-                  selected: _mood,
-                  onSelected: (mood) => setState(() {
-                    _mood = mood;
-                    _dirty = true;
-                    _justSaved = false;
-                  }),
-                ),
-                const SizedBox(height: 16),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      'Photos',
-                      style: Theme.of(context).textTheme.titleSmall,
+          child: LayoutBuilder(
+            builder: (context, viewport) => SingleChildScrollView(
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 760),
+                  child: Padding(
+                    padding: EdgeInsets.fromLTRB(
+                      viewport.maxWidth < 480 ? 12 : 24,
+                      12,
+                      viewport.maxWidth < 480 ? 12 : 24,
+                      32,
                     ),
-                    TextButton.icon(
-                      key: const Key('add-photo-button'),
-                      onPressed: _addPhoto,
-                      icon: const Icon(Icons.add_a_photo),
-                      label: const Text('Add photo'),
-                    ),
-                  ],
-                ),
-                if (_photoPaths.isEmpty)
-                  const Text('No photos added.')
-                else
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      for (var i = 0; i < _photoPaths.length; i++)
-                        PhotoThumbnail(
-                          key: Key('photo-thumbnail-$i'),
-                          photoPath: _photoPaths[i],
-                          onTap: () => Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => PhotoViewerScreen(
-                                photoPaths: _photoPaths,
-                                initialIndex: i,
-                              ),
-                            ),
-                          ),
-                          onRemove: () => _removePhoto(i),
-                          removeButtonKey: Key('remove-photo-$i'),
-                        ),
-                    ],
-                  ),
-                const SizedBox(height: 16),
-                _LocationSection(
-                  location: _location,
-                  onAddOrChange: _pickLocation,
-                  onRemove: _removeLocation,
-                ),
-                const SizedBox(height: 16),
-                if (_prefillingHealthData)
-                  const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 24),
-                    child: Center(
-                      child: Column(
-                        children: [
-                          CircularProgressIndicator(),
-                          SizedBox(height: 8),
-                          Text('Checking your health data…'),
-                        ],
-                      ),
-                    ),
-                  )
-                else
-                  HealthLogForm(
-                    initialSteps: _steps,
-                    initialCaloriesBurned: _caloriesBurned,
-                    initialMeals: _meals,
-                    entryDate:
-                        _persistedEntry?.createdAt ??
-                        widget.initialDate ??
-                        DateTime.now(),
-                    initialStepsFromHealth: _stepsFromHealth,
-                    initialCaloriesFromHealth: _caloriesFromHealth,
-                    initialShowConnectHealthNote: _showConnectHealthNote,
-                    tripId: _tripId,
-                    healthDataSource: widget.healthDataSource,
-                    onChanged: (data) {
-                      _steps = data.steps;
-                      _caloriesBurned = data.caloriesBurned;
-                      _meals = data.meals;
-                      _markDirty();
-                    },
-                  ),
-                const SizedBox(height: 24),
-                if (_generatingAdvice ||
-                    _adviceFailed ||
-                    _aiAdviceText != null) ...[
-                  Card(
-                    child: Padding(
-                      padding: const EdgeInsets.all(12),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'AI Suggestion',
-                            style: Theme.of(context).textTheme.titleMedium,
-                          ),
-                          const SizedBox(height: 8),
-                          if (_generatingAdvice)
-                            const Row(
-                              key: Key('ai-advice-loading'),
-                              children: [
-                                SizedBox(
-                                  width: 16,
-                                  height: 16,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                  ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        AppFormSection(
+                          title: 'Your story',
+                          icon: Icons.auto_stories_outlined,
+                          helperText: 'Capture the moment in your own words.',
+                          child: Column(
+                            children: [
+                              TextField(
+                                key: const Key('entry-title-field'),
+                                controller: _titleController,
+                                decoration: const InputDecoration(
+                                  labelText: 'Entry title',
+                                  hintText: 'What made this moment memorable?',
                                 ),
-                                SizedBox(width: 8),
-                                Text('Generating suggestion…'),
-                              ],
-                            )
-                          else if (_adviceFailed)
-                            InkWell(
-                              key: const Key('ai-advice-retry'),
-                              onTap: () {
+                                maxLength: kEntryTitleMaxLength,
+                                onChanged: (_) => _markDirty(),
+                              ),
+                              const SizedBox(height: 8),
+                              TextField(
+                                key: const Key('entry-body-field'),
+                                controller: _bodyController,
+                                decoration: const InputDecoration(
+                                  labelText: 'Journal entry',
+                                  hintText: 'Write what happened…',
+                                  alignLabelWithHint: true,
+                                ),
+                                minLines: 5,
+                                maxLines: 8,
+                                maxLength: kEntryBodyMaxLength,
+                                onChanged: (_) => _markDirty(),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        AppFormSection(
+                          title: 'Mood',
+                          icon: Icons.sentiment_satisfied_alt_outlined,
+                          helperText: 'How did this part of the trip feel?',
+                          child: MoodPicker(
+                            selected: _mood,
+                            onSelected: (mood) => setState(() {
+                              _mood = mood;
+                              _dirty = true;
+                              _justSaved = false;
+                            }),
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        AppFormSection(
+                          title: 'Photos',
+                          icon: Icons.photo_library_outlined,
+                          helperText:
+                              '${_photoPaths.length} of $kMaxPhotosPerEntry added',
+                          action: TextButton.icon(
+                            onPressed: _addPhoto,
+                            icon: const Icon(Icons.add_a_photo_outlined),
+                            label: const Text('Add photo'),
+                          ),
+                          child: _photoPaths.isEmpty
+                              ? const _FormEmptyState(
+                                  icon: Icons.photo_outlined,
+                                  text: 'No photos added.',
+                                )
+                              : Wrap(
+                                  spacing: 8,
+                                  runSpacing: 8,
+                                  children: [
+                                    for (var i = 0; i < _photoPaths.length; i++)
+                                      PhotoThumbnail(
+                                        key: Key('photo-thumbnail-$i'),
+                                        photoPath: _photoPaths[i],
+                                        onTap: () => Navigator.push(
+                                          context,
+                                          MaterialPageRoute(
+                                            builder: (_) => PhotoViewerScreen(
+                                              photoPaths: _photoPaths,
+                                              initialIndex: i,
+                                            ),
+                                          ),
+                                        ),
+                                        onRemove: () => _removePhoto(i),
+                                        removeButtonKey: Key('remove-photo-$i'),
+                                      ),
+                                  ],
+                                ),
+                        ),
+                        const SizedBox(height: 16),
+                        AppFormSection(
+                          title: 'Place',
+                          icon: Icons.place_outlined,
+                          helperText:
+                              'Pin this memory so it can appear on the trip map.',
+                          action: _location == null
+                              ? TextButton.icon(
+                                  key: const Key('add-location-button'),
+                                  onPressed: _pickLocation,
+                                  icon: const Icon(
+                                    Icons.add_location_alt_outlined,
+                                  ),
+                                  label: const Text('Add location'),
+                                )
+                              : TextButton.icon(
+                                  key: const Key('change-location-button'),
+                                  onPressed: _pickLocation,
+                                  icon: const Icon(
+                                    Icons.edit_location_outlined,
+                                  ),
+                                  label: const Text('Change'),
+                                ),
+                          child: _LocationSection(
+                            location: _location,
+                            onRemove: _removeLocation,
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        AppFormSection(
+                          title: 'Wellness',
+                          icon: Icons.favorite_outline,
+                          helperText:
+                              'Review movement, energy and meals for this day.',
+                          child: _prefillingHealthData
+                              ? const Padding(
+                                  padding: EdgeInsets.symmetric(vertical: 24),
+                                  child: Center(
+                                    child: Column(
+                                      children: [
+                                        CircularProgressIndicator(),
+                                        SizedBox(height: 8),
+                                        Text('Checking your health data…'),
+                                      ],
+                                    ),
+                                  ),
+                                )
+                              : HealthLogForm(
+                                  initialSteps: _steps,
+                                  initialCaloriesBurned: _caloriesBurned,
+                                  initialMeals: _meals,
+                                  entryDate:
+                                      _persistedEntry?.createdAt ??
+                                      widget.initialDate ??
+                                      DateTime.now(),
+                                  initialStepsFromHealth: _stepsFromHealth,
+                                  initialCaloriesFromHealth:
+                                      _caloriesFromHealth,
+                                  initialShowConnectHealthNote:
+                                      _showConnectHealthNote,
+                                  tripId: _tripId,
+                                  healthDataSource: widget.healthDataSource,
+                                  onChanged: (data) {
+                                    _steps = data.steps;
+                                    _caloriesBurned = data.caloriesBurned;
+                                    _meals = data.meals;
+                                    _markDirty();
+                                  },
+                                ),
+                        ),
+                        if (_generatingAdvice ||
+                            _adviceFailed ||
+                            _aiAdviceText != null) ...[
+                          const SizedBox(height: 16),
+                          AppFormSection(
+                            title: 'AI suggestion',
+                            icon: Icons.auto_awesome_outlined,
+                            helperText:
+                                'A short reflection generated after saving.',
+                            child: _AdviceContent(
+                              generating: _generatingAdvice,
+                              failed: _adviceFailed,
+                              advice: _aiAdviceText,
+                              onRetry: () {
                                 final entry = _persistedEntry;
                                 if (entry != null) _generateAdvice(entry);
                               },
-                              child: const Text(
-                                "Couldn't generate suggestion — tap to retry.",
-                              ),
-                            )
-                          else
-                            Text(
-                              _aiAdviceText ?? '',
-                              key: const Key('ai-advice-text'),
                             ),
+                          ),
                         ],
-                      ),
+                      ],
                     ),
                   ),
-                  const SizedBox(height: 16),
-                ],
-                FilledButton(
-                  key: const Key('save-entry-button'),
-                  onPressed: _saving ? null : _save,
-                  child: Text(_justSaved ? 'Saved' : 'Save'),
                 ),
-              ],
+              ),
+            ),
+          ),
+        ),
+        bottomNavigationBar: SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+            child: Center(
+              heightFactor: 1,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 712),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: FilledButton(
+                    key: const Key('save-entry-button'),
+                    onPressed: _saving ? null : _save,
+                    child: _saving
+                        ? const Text('Saving…')
+                        : Text(_justSaved ? 'Saved' : 'Save'),
+                  ),
+                ),
+              ),
             ),
           ),
         ),
@@ -813,14 +870,9 @@ class _CreateEditEntryScreenState extends ConsumerState<CreateEditEntryScreen> {
 }
 
 class _LocationSection extends StatelessWidget {
-  const _LocationSection({
-    required this.location,
-    required this.onAddOrChange,
-    required this.onRemove,
-  });
+  const _LocationSection({required this.location, required this.onRemove});
 
   final GeoTag? location;
-  final VoidCallback onAddOrChange;
   final VoidCallback onRemove;
 
   @override
@@ -830,21 +882,12 @@ class _LocationSection extends StatelessWidget {
       key: const Key('location-section'),
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text('Location', style: Theme.of(context).textTheme.titleSmall),
-        const SizedBox(height: 8),
-        if (selected == null) ...[
-          const Text('No location added.'),
-          const SizedBox(height: 4),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: TextButton.icon(
-              key: const Key('add-location-button'),
-              onPressed: onAddOrChange,
-              icon: const Icon(Icons.add_location_alt_outlined),
-              label: const Text('Add location'),
-            ),
-          ),
-        ] else ...[
+        if (selected == null)
+          const _FormEmptyState(
+            icon: Icons.location_off_outlined,
+            text: 'No location added.',
+          )
+        else
           Card(
             margin: EdgeInsets.zero,
             child: Padding(
@@ -869,11 +912,6 @@ class _LocationSection extends StatelessWidget {
                     runSpacing: 4,
                     children: [
                       TextButton(
-                        key: const Key('change-location-button'),
-                        onPressed: onAddOrChange,
-                        child: const Text('Change'),
-                      ),
-                      TextButton(
                         key: const Key('remove-location-button'),
                         onPressed: onRemove,
                         child: const Text('Remove'),
@@ -884,9 +922,81 @@ class _LocationSection extends StatelessWidget {
               ),
             ),
           ),
-        ],
       ],
     );
+  }
+}
+
+class _FormEmptyState extends StatelessWidget {
+  const _FormEmptyState({required this.icon, required this.text});
+
+  final IconData icon;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+      decoration: BoxDecoration(
+        color: colors.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: colors.outlineVariant),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: colors.onSurfaceVariant),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(text, style: TextStyle(color: colors.onSurfaceVariant)),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AdviceContent extends StatelessWidget {
+  const _AdviceContent({
+    required this.generating,
+    required this.failed,
+    required this.advice,
+    required this.onRetry,
+  });
+
+  final bool generating;
+  final bool failed;
+  final String? advice;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    if (generating) {
+      return const Row(
+        key: Key('ai-advice-loading'),
+        children: [
+          SizedBox(
+            width: 18,
+            height: 18,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+          SizedBox(width: 10),
+          Expanded(child: Text('Generating suggestion…')),
+        ],
+      );
+    }
+    if (failed) {
+      return InkWell(
+        key: const Key('ai-advice-retry'),
+        onTap: onRetry,
+        borderRadius: BorderRadius.circular(12),
+        child: const Padding(
+          padding: EdgeInsets.symmetric(vertical: 8),
+          child: Text("Couldn't generate suggestion — tap to retry."),
+        ),
+      );
+    }
+    return Text(advice ?? '', key: const Key('ai-advice-text'));
   }
 }
 
