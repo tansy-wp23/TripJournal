@@ -46,6 +46,7 @@ class _JournalSearchBarState extends State<JournalSearchBar> {
   }
 
   void _onQueryChanged(String value) {
+    setState(() {});
     _debounce?.cancel();
     _debounce = Timer(const Duration(milliseconds: 300), () {
       widget.onChanged(widget.filter.copyWith(query: value));
@@ -59,25 +60,25 @@ class _JournalSearchBarState extends State<JournalSearchBar> {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: TextField(
-            key: const Key('journal-search-field'),
-            controller: _textController,
-            decoration: InputDecoration(
-              hintText: 'Search entries...',
-              prefixIcon: const Icon(Icons.search),
-              suffixIcon: _textController.text.isEmpty
-                  ? null
-                  : IconButton(
-                      icon: const Icon(Icons.clear),
-                      onPressed: () {
-                        _textController.clear();
-                        _debounce?.cancel();
-                        widget.onChanged(filter.copyWith(query: ''));
-                      },
-                    ),
-              isDense: true,
-              border: const OutlineInputBorder(),
-            ),
-            onChanged: _onQueryChanged,
+        key: const Key('journal-search-field'),
+        controller: _textController,
+        decoration: InputDecoration(
+          labelText: 'Search entries',
+          hintText: 'Title or journal text',
+          prefixIcon: const Icon(Icons.search_rounded),
+          suffixIcon: _textController.text.isEmpty
+              ? null
+              : IconButton(
+                  tooltip: 'Clear search',
+                  icon: const Icon(Icons.clear_rounded),
+                  onPressed: () {
+                    setState(_textController.clear);
+                    _debounce?.cancel();
+                    widget.onChanged(filter.copyWith(query: ''));
+                  },
+                ),
+        ),
+        onChanged: _onQueryChanged,
       ),
     );
   }

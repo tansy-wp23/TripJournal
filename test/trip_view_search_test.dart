@@ -5,7 +5,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:tripjournal/features/trip/trip_view_screen.dart';
 
 Widget _wrapped(String tripId) {
-  return ProviderScope(child: MaterialApp(home: TripViewScreen(tripId: tripId)));
+  return ProviderScope(
+    child: MaterialApp(home: TripViewScreen(tripId: tripId)),
+  );
 }
 
 void main() {
@@ -22,7 +24,9 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  testWidgets('the search bar is hidden until the search icon is tapped', (tester) async {
+  testWidgets('the search bar is hidden until the search icon is tapped', (
+    tester,
+  ) async {
     await setUpScreen(tester);
 
     expect(find.byKey(const Key('journal-search-field')), findsNothing);
@@ -33,25 +37,47 @@ void main() {
     expect(find.byKey(const Key('journal-search-field')), findsOneWidget);
   });
 
-  testWidgets('typing a query narrows the timeline to matching entries after the debounce', (
+  testWidgets(
+    'typing a query narrows the timeline to matching entries after the debounce',
+    (tester) async {
+      await setUpScreen(tester);
+
+      await tester.tap(find.byKey(const Key('trip-view-search-toggle')));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(
+        find.byKey(const Key('journal-search-field')),
+        'Fushimi',
+      );
+      // Debounce is 300ms -- pump past it.
+      await tester.pump(const Duration(milliseconds: 350));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Fushimi Inari hike'), findsOneWidget);
+      expect(find.text('Arrival in Kyoto'), findsNothing);
+      expect(find.text('Rainy day at the museum'), findsNothing);
+    },
+  );
+
+  testWidgets('the clear-search control has an accessible name', (
     tester,
   ) async {
     await setUpScreen(tester);
 
     await tester.tap(find.byKey(const Key('trip-view-search-toggle')));
     await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const Key('journal-search-field')),
+      'Kyoto',
+    );
+    await tester.pump();
 
-    await tester.enterText(find.byKey(const Key('journal-search-field')), 'Fushimi');
-    // Debounce is 300ms -- pump past it.
-    await tester.pump(const Duration(milliseconds: 350));
-    await tester.pumpAndSettle();
-
-    expect(find.text('Fushimi Inari hike'), findsOneWidget);
-    expect(find.text('Arrival in Kyoto'), findsNothing);
-    expect(find.text('Rainy day at the museum'), findsNothing);
+    expect(find.byTooltip('Clear search'), findsOneWidget);
   });
 
-  testWidgets('filter button opens a sheet and applies mood independently', (tester) async {
+  testWidgets('filter button opens a sheet and applies mood independently', (
+    tester,
+  ) async {
     await setUpScreen(tester);
 
     await tester.tap(find.byKey(const Key('trip-view-filter-button')));
@@ -66,20 +92,24 @@ void main() {
     expect(find.byKey(const Key('journal-filter-count-1')), findsOneWidget);
   });
 
-  testWidgets('a query with no matches shows the "No matching entries" empty state', (
-    tester,
-  ) async {
-    await setUpScreen(tester);
+  testWidgets(
+    'a query with no matches shows the "No matching entries" empty state',
+    (tester) async {
+      await setUpScreen(tester);
 
-    await tester.tap(find.byKey(const Key('trip-view-search-toggle')));
-    await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('trip-view-search-toggle')));
+      await tester.pumpAndSettle();
 
-    await tester.enterText(find.byKey(const Key('journal-search-field')), 'volcano eruption');
-    await tester.pump(const Duration(milliseconds: 350));
-    await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('journal-search-field')),
+        'volcano eruption',
+      );
+      await tester.pump(const Duration(milliseconds: 350));
+      await tester.pumpAndSettle();
 
-    expect(find.text('No matching entries'), findsOneWidget);
-  });
+      expect(find.text('No matching entries'), findsOneWidget);
+    },
+  );
 
   testWidgets('closing search clears only query and preserves mood filter', (
     tester,
@@ -88,7 +118,10 @@ void main() {
 
     await tester.tap(find.byKey(const Key('trip-view-search-toggle')));
     await tester.pumpAndSettle();
-    await tester.enterText(find.byKey(const Key('journal-search-field')), 'Fushimi');
+    await tester.enterText(
+      find.byKey(const Key('journal-search-field')),
+      'Fushimi',
+    );
     await tester.pump(const Duration(milliseconds: 350));
     await tester.tap(find.byKey(const Key('trip-view-filter-button')));
     await tester.pumpAndSettle();

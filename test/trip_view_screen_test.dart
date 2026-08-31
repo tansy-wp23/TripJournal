@@ -84,6 +84,14 @@ void main() {
 
     expect(find.byKey(const Key('add-entry-day-1')), findsOneWidget);
     expect(find.byKey(const Key('add-entry-day-2')), findsOneWidget);
+    expect(
+      find.bySemanticsLabel('Day 1, Friday, Mar 20, 2026'),
+      findsOneWidget,
+    );
+    final addEntrySize = tester.getSize(
+      find.byKey(const Key('add-entry-day-1')),
+    );
+    expect(addEntrySize.height, greaterThanOrEqualTo(48));
     expect(find.text('Upcoming'), findsNothing);
   });
 

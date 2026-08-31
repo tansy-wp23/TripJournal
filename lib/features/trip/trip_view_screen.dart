@@ -978,22 +978,92 @@ class _DayGroupTile extends StatelessWidget {
     final colorScheme = Theme.of(context).colorScheme;
 
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-      padding: const EdgeInsets.all(12),
+      key: Key('day-group-${group.dayNumber}'),
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        border: isToday
-            ? Border.all(color: colorScheme.primary, width: 2)
-            : null,
-        borderRadius: BorderRadius.circular(12),
-        color: colorScheme.surfaceContainerLow,
+        border: Border.all(
+          color: isToday ? colorScheme.primary : colorScheme.outlineVariant,
+          width: isToday ? 2 : 1,
+        ),
+        borderRadius: BorderRadius.circular(18),
+        color: colorScheme.surface,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'Day ${group.dayNumber} — ${formatWeekday(group.date)} ${formatDate(group.date)}',
-            style: Theme.of(context).textTheme.titleSmall?.copyWith(
-              fontWeight: isToday ? FontWeight.bold : FontWeight.normal,
+          Semantics(
+            header: true,
+            label:
+                'Day ${group.dayNumber}, ${formatWeekday(group.date)}, ${formatDate(group.date)}',
+            child: ExcludeSemantics(
+              child: Row(
+                children: [
+                  Container(
+                    width: 44,
+                    height: 44,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: isToday
+                          ? colorScheme.primary
+                          : colorScheme.primary.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: Text(
+                      '${group.dayNumber}',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        color: isToday
+                            ? colorScheme.onPrimary
+                            : colorScheme.primary,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Day ${group.dayNumber}',
+                          style: Theme.of(context).textTheme.titleSmall
+                              ?.copyWith(fontWeight: FontWeight.w800),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          '${formatWeekday(group.date)} · ${formatDate(group.date)}',
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(color: colorScheme.onSurfaceVariant),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (isToday || isFuture)
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 9,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color:
+                            (isToday
+                                    ? colorScheme.primary
+                                    : colorScheme.onSurfaceVariant)
+                                .withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Text(
+                        isToday ? 'Today' : 'Upcoming',
+                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                          color: isToday
+                              ? colorScheme.primary
+                              : colorScheme.onSurfaceVariant,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
             ),
           ),
           // Omitted entirely rather than reserved as empty space, so days
@@ -1019,16 +1089,13 @@ class _DayGroupTile extends StatelessWidget {
           const SizedBox(height: 8),
           if (isFuture)
             Text(
-              'Upcoming',
-              style: TextStyle(
-                color: colorScheme.outline,
-                fontStyle: FontStyle.italic,
-              ),
+              'Entries open when this travel day arrives.',
+              style: TextStyle(color: colorScheme.onSurfaceVariant),
             )
           else if (group.isEmpty)
             Text(
               'No entry logged',
-              style: TextStyle(color: colorScheme.outline),
+              style: TextStyle(color: colorScheme.onSurfaceVariant),
             )
           else
             for (final entry in group.entries)
@@ -1045,6 +1112,10 @@ class _DayGroupTile extends StatelessWidget {
             const SizedBox(height: 4),
             TextButton.icon(
               key: Key('add-entry-day-${group.dayNumber}'),
+              style: TextButton.styleFrom(
+                minimumSize: const Size(0, 48),
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+              ),
               onPressed: () => Navigator.push(
                 context,
                 MaterialPageRoute(
@@ -1082,60 +1153,83 @@ class _EntryTile extends StatelessWidget {
     final quickStats = healthLog != null
         ? '${formatThousands(healthLog.steps)} steps · ${moodLabel(entry.mood)}'
         : moodLabel(entry.mood);
+    final locationLabel = entry.location?.locationTag;
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      decoration: BoxDecoration(
-        color: colorScheme.surface,
-        borderRadius: BorderRadius.circular(10),
-        boxShadow: [
-          BoxShadow(
-            color: colorScheme.shadow.withValues(alpha: 0.08),
-            blurRadius: 4,
-            offset: const Offset(0, 1),
+    return Semantics(
+      container: true,
+      button: true,
+      label:
+          'Open entry ${entry.displayTitle}. $quickStats${locationLabel == null ? '' : '. $locationLabel'}',
+      child: ExcludeSemantics(
+        child: Container(
+          margin: const EdgeInsets.only(bottom: 8),
+          decoration: BoxDecoration(
+            color: colorScheme.surface,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: colorScheme.outlineVariant),
           ),
-        ],
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          key: Key('entry-tile-${entry.id}'),
-          onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            child: Row(
-              children: [
-                Icon(moodIcon(entry.mood), size: 18),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        entry.displayTitle,
-                        overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.bodyMedium,
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        quickStats,
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                      if (entry.location?.locationTag case final tag?)
-                        Text(
-                          tag,
-                          style: Theme.of(context).textTheme.bodySmall
-                              ?.copyWith(color: colorScheme.primary),
-                        ),
-                    ],
-                  ),
+          clipBehavior: Clip.antiAlias,
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              key: Key('entry-tile-${entry.id}'),
+              onTap: onTap,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
                 ),
-                const SizedBox(width: 4),
-                Icon(Icons.chevron_right, color: colorScheme.outline),
-              ],
+                child: Row(
+                  children: [
+                    Container(
+                      width: 40,
+                      height: 40,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: colorScheme.primary.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Icon(
+                        moodIcon(entry.mood),
+                        size: 20,
+                        color: colorScheme.primary,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            entry.displayTitle,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context).textTheme.bodyMedium
+                                ?.copyWith(fontWeight: FontWeight.w700),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            quickStats,
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(color: colorScheme.onSurfaceVariant),
+                          ),
+                          if (locationLabel case final tag?)
+                            Text(
+                              tag,
+                              style: Theme.of(context).textTheme.bodySmall
+                                  ?.copyWith(color: colorScheme.primary),
+                            ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    Icon(
+                      Icons.chevron_right,
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+                  ],
+                ),
+              ),
             ),
           ),
         ),
