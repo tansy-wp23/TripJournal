@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:printing/printing.dart';
 
 import '../../../models/journal_entry.dart';
+import '../../../widgets/app_action_menu.dart';
+import '../../../widgets/app_content_toolbar.dart';
 import '../controller/journal_controller.dart';
 import '../pdf/journal_pdf_export.dart';
 import '../widgets/delete_confirmation_dialog.dart';
@@ -51,6 +53,20 @@ class EntryDetailScreen extends ConsumerWidget {
     }
   }
 
+  Future<void> _deleteEntry(
+    BuildContext context,
+    WidgetRef ref,
+    JournalEntry entry,
+  ) async {
+    final confirmed = await showDeleteConfirmationDialog(
+      context,
+      entryTitle: entry.displayTitle,
+    );
+    if (!confirmed || !context.mounted) return;
+    await ref.read(journalControllerProvider.notifier).remove(entry.id);
+    if (context.mounted) Navigator.pop(context);
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final controller = ref.watch(journalControllerProvider);
@@ -66,49 +82,57 @@ class EntryDetailScreen extends ConsumerWidget {
       appBar: AppBar(
         title: Text(entry.displayTitle),
         actions: [
-          IconButton(
-            key: const Key('export-entry-pdf-button'),
-            icon: const Icon(Icons.picture_as_pdf_outlined),
-            tooltip: 'Export as PDF',
-            onPressed: () => _exportPdf(context, entry),
-          ),
-          IconButton(
-            key: const Key('edit-entry-button'),
-            icon: const Icon(Icons.edit),
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => CreateEditEntryScreen(existingEntry: entry),
-              ),
-            ),
-          ),
-          IconButton(
-            key: const Key('delete-entry-button'),
-            icon: const Icon(Icons.delete_outline),
-            onPressed: () async {
-              final confirmed = await showDeleteConfirmationDialog(
-                context,
-                entryTitle: entry.displayTitle,
-              );
-              if (!confirmed || !context.mounted) return;
-              await ref
-                  .read(journalControllerProvider.notifier)
-                  .remove(entry.id);
-              if (context.mounted) Navigator.pop(context);
+          AppActionMenu<_EntryDetailAction>(
+            key: const Key('entry-detail-more-menu'),
+            tooltip: 'More entry actions',
+            onSelected: (action) {
+              switch (action) {
+                case _EntryDetailAction.exportPdf:
+                  _exportPdf(context, entry);
+                case _EntryDetailAction.delete:
+                  _deleteEntry(context, ref, entry);
+              }
             },
+            items: const [
+              AppActionMenuItem(
+                key: Key('export-entry-pdf-button'),
+                value: _EntryDetailAction.exportPdf,
+                label: 'Export entry as PDF',
+                icon: Icons.picture_as_pdf_outlined,
+              ),
+              AppActionMenuItem(
+                key: Key('delete-entry-button'),
+                value: _EntryDetailAction.delete,
+                label: 'Move to Trash',
+                icon: Icons.delete_outline,
+                destructive: true,
+                startsSection: true,
+              ),
+            ],
           ),
         ],
       ),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          Row(
+          AppContentToolbar(
             children: [
-              Icon(moodIcon(entry.mood)),
-              const SizedBox(width: 8),
-              Text(moodLabel(entry.mood)),
-              const Spacer(),
+              Chip(
+                avatar: Icon(moodIcon(entry.mood), size: 18),
+                label: Text(moodLabel(entry.mood)),
+              ),
               Text(formatDate(entry.createdAt)),
+              OutlinedButton.icon(
+                key: const Key('edit-entry-button'),
+                icon: const Icon(Icons.edit_outlined),
+                label: const Text('Edit entry'),
+                onPressed: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => CreateEditEntryScreen(existingEntry: entry),
+                  ),
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 16),
@@ -194,7 +218,9 @@ class EntryDetailScreen extends ConsumerWidget {
                                 padding: const EdgeInsets.only(top: 2),
                                 child: Text(
                                   meal.restaurantName!,
-                                  key: Key('meal-restaurant-display-${meal.id}'),
+                                  key: Key(
+                                    'meal-restaurant-display-${meal.id}',
+                                  ),
                                 ),
                               ),
                             if (meal.foodReview != null)
@@ -233,3 +259,5 @@ class EntryDetailScreen extends ConsumerWidget {
     );
   }
 }
+
+enum _EntryDetailAction { exportPdf, delete }

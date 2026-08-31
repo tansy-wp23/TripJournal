@@ -55,8 +55,11 @@ void main() {
 
     await _pumpScreen(tester, controller);
 
+    expect(tester.widget<AppBar>(find.byType(AppBar)).actions, isEmpty);
     expect(find.text('Discover journeys'), findsOneWidget);
     expect(find.text('Stories shared by fellow travellers.'), findsOneWidget);
+    expect(find.text('Search destinations'), findsOneWidget);
+    expect(find.text('Open trip by ID'), findsOneWidget);
     expect(
       find.bySemanticsLabel('Open public trip Public Trip public-1'),
       findsOneWidget,
@@ -373,9 +376,12 @@ void main() {
           find.byKey(const Key('guest-create-first-trip-button')),
           findsOneWidget,
         );
-        await tester.tap(
-          find.byKey(const Key('guest-create-first-trip-button')),
+        final createButton = find.byKey(
+          const Key('guest-create-first-trip-button'),
         );
+        await tester.ensureVisible(createButton);
+        await tester.pumpAndSettle();
+        await tester.tap(createButton);
 
         expect(signInTapped, isTrue);
       },

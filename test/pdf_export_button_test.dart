@@ -62,14 +62,19 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
 
-    await tester.pumpWidget(ProviderScope(
-      overrides: [
-        journalControllerProvider.overrideWith(
-          (ref) => JournalController(_FilePhotoJournalRepository(), dailyAdviceService),
-        ),
-      ],
-      child: const MaterialApp(home: TripViewScreen(tripId: 'trip-001')),
-    ));
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          journalControllerProvider.overrideWith(
+            (ref) => JournalController(
+              _FilePhotoJournalRepository(),
+              dailyAdviceService,
+            ),
+          ),
+        ],
+        child: const MaterialApp(home: TripViewScreen(tripId: 'trip-001')),
+      ),
+    );
     await tester.pumpAndSettle();
   }
 
@@ -80,6 +85,8 @@ void main() {
       await tester.tap(find.byKey(const Key('entry-tile-entry-1')));
       await tester.pumpAndSettle();
 
+      await tester.tap(find.byKey(const Key('entry-detail-more-menu')));
+      await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('export-entry-pdf-button')));
       await tester.pump(); // shows the loading dialog
       expect(find.byType(CircularProgressIndicator), findsOneWidget);

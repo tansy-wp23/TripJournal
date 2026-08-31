@@ -8,6 +8,7 @@ import '../../auth/screens/delete_account_screen.dart';
 import '../../settings/settings_screen.dart';
 import '../../trip/screens/trip_trash_screen.dart';
 import '../../../widgets/app_form_section.dart';
+import '../../../widgets/app_page_header.dart';
 import '../controller/profile_controller.dart';
 import '../widgets/profile_avatar.dart';
 import 'profile_edit_screen.dart';
@@ -34,17 +35,7 @@ class _ProfileViewScreenState extends ConsumerState<ProfileViewScreen> {
     final profile = profileController.profile;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Profile'),
-        actions: [
-          IconButton(
-            key: const Key('profile-edit-button'),
-            icon: const Icon(Icons.edit),
-            tooltip: 'Edit profile',
-            onPressed: () => _openEdit(context),
-          ),
-        ],
-      ),
+      appBar: AppBar(title: const Text('Profile')),
       body: _buildBody(context, profileController, profile),
     );
   }
@@ -74,6 +65,16 @@ class _ProfileViewScreenState extends ConsumerState<ProfileViewScreen> {
         32,
       ),
       children: [
+        AppPageHeader(
+          title: 'Your travel profile',
+          subtitle: 'Keep your identity and travel preferences up to date.',
+          action: OutlinedButton.icon(
+            key: const Key('profile-edit-button'),
+            icon: const Icon(Icons.edit_outlined),
+            label: const Text('Edit profile'),
+            onPressed: () => _openEdit(context),
+          ),
+        ),
         _ProfileHero(profile: profile),
         const SizedBox(height: 16),
         AppFormSection(

@@ -630,17 +630,7 @@ class _CreateEditEntryScreenState extends ConsumerState<CreateEditEntryScreen> {
       canPop: !_dirty && !_saving,
       onPopInvokedWithResult: _handleBackAttempt,
       child: Scaffold(
-        appBar: AppBar(
-          title: Text(_isEditing ? 'Edit entry' : 'New entry'),
-          actions: [
-            IconButton(
-              key: const Key('add-photo-button'),
-              onPressed: _saving ? null : _addPhoto,
-              icon: const Icon(Icons.add_photo_alternate_outlined),
-              tooltip: 'Add photo',
-            ),
-          ],
-        ),
+        appBar: AppBar(title: Text(_isEditing ? 'Edit entry' : 'New entry')),
         body: AbsorbPointer(
           absorbing: _saving,
           child: LayoutBuilder(
@@ -712,7 +702,8 @@ class _CreateEditEntryScreenState extends ConsumerState<CreateEditEntryScreen> {
                           helperText:
                               '${_photoPaths.length} of $kMaxPhotosPerEntry added',
                           action: TextButton.icon(
-                            onPressed: _addPhoto,
+                            key: const Key('add-photo-button'),
+                            onPressed: _saving ? null : _addPhoto,
                             icon: const Icon(Icons.add_a_photo_outlined),
                             label: const Text('Add photo'),
                           ),

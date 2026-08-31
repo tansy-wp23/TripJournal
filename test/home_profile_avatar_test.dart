@@ -10,7 +10,9 @@ import 'support/auth_test_harness.dart';
 /// profile picture (falling back to their initial) instead of a generic
 /// person icon, once AuthController has a cached profile.
 void main() {
-  testWidgets('shows the person icon while no profile is cached', (tester) async {
+  testWidgets('shows the person icon while no profile is cached', (
+    tester,
+  ) async {
     // No sign-in: AuthController has no session/profile yet, so the app bar
     // falls back to the generic icon (mirrors a not-yet-loaded state).
     final harness = AuthTestHarness();
@@ -45,5 +47,11 @@ void main() {
     );
     final expectedInitial = profile!.displayName[0].toUpperCase();
     expect(find.text(expectedInitial), findsOneWidget);
+
+    expect(find.byKey(const Key('report-issue-button')), findsNothing);
+    await tester.tap(find.byType(ProfileAvatar));
+    await tester.pumpAndSettle();
+    expect(find.text('Report an issue'), findsOneWidget);
+    expect(find.byKey(const Key('report-issue-button')), findsOneWidget);
   });
 }

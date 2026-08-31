@@ -303,15 +303,6 @@ class _TripFormScreenState extends ConsumerState<TripFormScreen> {
               ? 'Edit trip'
               : 'New trip',
         ),
-        actions: [
-          if (_isEditing && !_isRestoring)
-            IconButton(
-              key: const Key('delete-trip-button'),
-              icon: const Icon(Icons.delete_outline),
-              tooltip: 'Move to Trash',
-              onPressed: _confirmAndDelete,
-            ),
-        ],
       ),
       body: Form(
         key: _formKey,
@@ -481,6 +472,29 @@ class _TripFormScreenState extends ConsumerState<TripFormScreen> {
                           maxLines: 4,
                         ),
                       ),
+                      if (_isEditing && !_isRestoring) ...[
+                        const SizedBox(height: 16),
+                        AppFormSection(
+                          title: 'Trip safety',
+                          icon: Icons.shield_outlined,
+                          helperText:
+                              'Removing a trip moves it to Recently Deleted.',
+                          child: OutlinedButton.icon(
+                            key: const Key('delete-trip-button'),
+                            icon: const Icon(Icons.delete_outline),
+                            label: const Text('Move to Trash'),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: Theme.of(
+                                context,
+                              ).colorScheme.error,
+                              side: BorderSide(
+                                color: Theme.of(context).colorScheme.error,
+                              ),
+                            ),
+                            onPressed: _confirmAndDelete,
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                 ),

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../models/trip.dart';
+import '../../widgets/app_content_toolbar.dart';
 import '../trip/widgets/trip_list_controls.dart';
 import 'controller/community_controller.dart';
 import 'public_trip_search.dart';
@@ -118,26 +119,49 @@ class _CommunityScreenState extends ConsumerState<CommunityScreen> {
               icon: const Icon(Icons.login),
               label: const Text('Sign in'),
             ),
-          IconButton(
-            key: const Key('community-destination-search-toggle'),
-            icon: Icon(
-              _destinationSearchVisible ? Icons.search_off : Icons.search,
-            ),
-            tooltip: 'Filter by destination',
-            onPressed: () => setState(() {
-              _destinationSearchVisible = !_destinationSearchVisible;
-              if (!_destinationSearchVisible) _destinationQuery = '';
-            }),
-          ),
-          IconButton(
-            key: const Key('community-search-by-id'),
-            icon: const Icon(Icons.travel_explore),
-            tooltip: 'Open trip by ID',
-            onPressed: _searchByTripId,
-          ),
         ],
       ),
-      body: _buildBody(context, controller),
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+            child: AppContentToolbar(
+              resultLabel: controller.loading
+                  ? 'Loading journeys'
+                  : '${controller.trips.length} ${controller.trips.length == 1 ? 'journey' : 'journeys'}',
+              activeFilterLabel: _destinationQuery.trim().isEmpty
+                  ? null
+                  : 'Destination filter active',
+              children: [
+                OutlinedButton.icon(
+                  key: const Key('community-destination-search-toggle'),
+                  icon: Icon(
+                    _destinationSearchVisible
+                        ? Icons.search_off_rounded
+                        : Icons.search_rounded,
+                  ),
+                  label: Text(
+                    _destinationSearchVisible
+                        ? 'Close search'
+                        : 'Search destinations',
+                  ),
+                  onPressed: () => setState(() {
+                    _destinationSearchVisible = !_destinationSearchVisible;
+                    if (!_destinationSearchVisible) _destinationQuery = '';
+                  }),
+                ),
+                OutlinedButton.icon(
+                  key: const Key('community-search-by-id'),
+                  icon: const Icon(Icons.travel_explore_outlined),
+                  label: const Text('Open trip by ID'),
+                  onPressed: _searchByTripId,
+                ),
+              ],
+            ),
+          ),
+          Expanded(child: _buildBody(context, controller)),
+        ],
+      ),
     );
   }
 

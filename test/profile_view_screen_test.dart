@@ -41,6 +41,12 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    expect(
+      tester.widget<AppBar>(find.byType(AppBar)).actions ?? const <Widget>[],
+      isEmpty,
+    );
+    expect(find.byKey(const Key('profile-edit-button')), findsOneWidget);
+    expect(find.text('Edit profile'), findsOneWidget);
     expect(find.text('Travel preferences'), findsOneWidget);
     expect(find.text('App preferences'), findsOneWidget);
     expect(find.text('Account safety'), findsOneWidget);

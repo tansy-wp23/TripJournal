@@ -81,6 +81,12 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Edit trip'), findsOneWidget);
+      expect(
+        tester.widget<AppBar>(find.byType(AppBar)).actions ?? const <Widget>[],
+        isEmpty,
+      );
+      expect(find.byKey(const Key('delete-trip-button')), findsOneWidget);
+      expect(find.text('Move to Trash'), findsOneWidget);
       await tester.tap(find.byKey(const Key('save-trip-button')));
       await tester.pumpAndSettle();
 

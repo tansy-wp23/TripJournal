@@ -28,6 +28,10 @@ void main() {
 
     await _openCreateEntryForKyotoDay1(tester);
 
+    expect(
+      tester.widget<AppBar>(find.byType(AppBar)).actions ?? const <Widget>[],
+      isEmpty,
+    );
     expect(find.text('Your story'), findsOneWidget);
     expect(find.text('Mood'), findsOneWidget);
     expect(find.text('Photos'), findsOneWidget);
@@ -36,6 +40,7 @@ void main() {
     expect(find.byKey(const Key('entry-title-field')), findsOneWidget);
     expect(find.byKey(const Key('entry-body-field')), findsOneWidget);
     expect(find.byKey(const Key('add-photo-button')), findsOneWidget);
+    expect(find.text('Add photo'), findsOneWidget);
     expect(find.byKey(const Key('add-location-button')), findsOneWidget);
     expect(find.byKey(const Key('save-entry-button')), findsOneWidget);
   });

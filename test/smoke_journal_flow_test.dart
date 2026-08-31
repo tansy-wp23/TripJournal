@@ -5,7 +5,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:tripjournal/features/trip/trip_view_screen.dart';
 
 void main() {
-  testWidgets('create -> view -> edit -> delete golden path', (WidgetTester tester) async {
+  testWidgets('create -> view -> edit -> delete golden path', (
+    WidgetTester tester,
+  ) async {
     // Tall virtual screen so the create/edit form never needs scrolling —
     // avoids scroll-helper flakiness around mid-animation frames.
     tester.view.physicalSize = const Size(1200, 2600);
@@ -16,7 +18,11 @@ void main() {
     // Pump the trip view directly (Kyoto = trip-001) rather than the full
     // app: this golden-path test is about the journal flow, not auth
     // routing or Home's trip list.
-    await tester.pumpWidget(const ProviderScope(child: MaterialApp(home: TripViewScreen(tripId: 'trip-001'))));
+    await tester.pumpWidget(
+      const ProviderScope(
+        child: MaterialApp(home: TripViewScreen(tripId: 'trip-001')),
+      ),
+    );
     await tester.pumpAndSettle();
 
     // Trip View shows seeded mock entries grouped onto their days.
@@ -27,14 +33,26 @@ void main() {
     await tester.tap(find.byKey(const Key('add-entry-day-1')));
     await tester.pumpAndSettle();
 
-    await tester.enterText(find.byKey(const Key('entry-title-field')), 'Widget test entry');
-    await tester.enterText(find.byKey(const Key('entry-body-field')), 'Body written by the smoke test.');
-    await tester.enterText(find.byKey(const Key('health-log-steps-field')), '4321');
+    await tester.enterText(
+      find.byKey(const Key('entry-title-field')),
+      'Widget test entry',
+    );
+    await tester.enterText(
+      find.byKey(const Key('entry-body-field')),
+      'Body written by the smoke test.',
+    );
+    await tester.enterText(
+      find.byKey(const Key('health-log-steps-field')),
+      '4321',
+    );
 
     // Add a meal through the Health Log sub-form's dialog.
     await tester.tap(find.byKey(const Key('add-meal-button')));
     await tester.pumpAndSettle();
-    await tester.enterText(find.byKey(const Key('meal-name-field')), 'Test Snack');
+    await tester.enterText(
+      find.byKey(const Key('meal-name-field')),
+      'Test Snack',
+    );
     await tester.enterText(find.byKey(const Key('meal-calories-field')), '200');
     await tester.tap(find.byKey(const Key('confirm-meal-button')));
     await tester.pumpAndSettle();
@@ -72,7 +90,10 @@ void main() {
     // avoid matching those instead.)
     await tester.tap(find.byKey(const Key('edit-entry-button')));
     await tester.pumpAndSettle();
-    await tester.enterText(find.byKey(const Key('entry-title-field')), 'Widget test entry (edited)');
+    await tester.enterText(
+      find.byKey(const Key('entry-title-field')),
+      'Widget test entry (edited)',
+    );
     await tester.tap(find.byKey(const Key('save-entry-button')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('save-confirm-confirm')));
@@ -81,9 +102,14 @@ void main() {
 
     await tester.pageBack();
     await tester.pumpAndSettle();
-    expect(find.text('Widget test entry (edited)'), findsOneWidget); // back on Entry Detail
+    expect(
+      find.text('Widget test entry (edited)'),
+      findsOneWidget,
+    ); // back on Entry Detail
 
     // Delete it, with confirmation dialog.
+    await tester.tap(find.byKey(const Key('entry-detail-more-menu')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('delete-entry-button')));
     await tester.pumpAndSettle();
     expect(find.text('Delete entry?'), findsOneWidget);

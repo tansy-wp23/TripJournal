@@ -158,6 +158,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   Future<void> _onProfileMenuSelected(String value) async {
+    if (value == 'report-issue') {
+      await showReportIssueSheet(
+        context,
+        page: 'HomeScreen',
+        userIdProvider: widget.userIdProvider,
+      );
+      return;
+    }
     if (value == 'recently-deleted') {
       final restored = await Navigator.push<bool>(
         context,
@@ -219,13 +227,18 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 MaterialPageRoute(builder: (_) => const CommunityScreen()),
               ),
             ),
-          ReportIssueButton(
-            page: 'HomeScreen',
-            userIdProvider: widget.userIdProvider,
-          ),
           PopupMenuButton<String>(
             onSelected: _onProfileMenuSelected,
             itemBuilder: (context) => const [
+              PopupMenuItem(
+                key: Key('report-issue-button'),
+                value: 'report-issue',
+                child: ListTile(
+                  leading: Icon(Icons.report_problem_outlined),
+                  title: Text('Report an issue'),
+                ),
+              ),
+              PopupMenuDivider(),
               PopupMenuItem(
                 value: 'recently-deleted',
                 child: Text('Recently Deleted'),
