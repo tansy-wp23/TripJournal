@@ -76,10 +76,32 @@ class _TripMapViewState extends State<TripMapView> {
       children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-          child: Text(
-            '${model.mappedEntryCount} mapped · ${model.unmappedEntryCount} without location',
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
+          child: Container(
+            key: const Key('trip-map-summary'),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.surface,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: Theme.of(context).colorScheme.outlineVariant,
+              ),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.pin_drop_outlined,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    '${model.mappedEntryCount} mapped · ${model.unmappedEntryCount} without location',
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
         ),
@@ -93,19 +115,46 @@ class _TripMapViewState extends State<TripMapView> {
           ),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-            child: Text(
-              'Lines show journal order only — not roads or navigation.',
+            child: Container(
               key: const Key('trip-map-route-disclaimer'),
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surfaceContainerHigh,
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(
+                    Icons.info_outline_rounded,
+                    size: 18,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Lines show journal order only — not roads or navigation.',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
           Expanded(
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(12),
+              child: Container(
+                key: const Key('trip-map-frame'),
+                decoration: BoxDecoration(
+                  border: Border.all(
+                    color: Theme.of(context).colorScheme.outlineVariant,
+                  ),
+                  borderRadius: BorderRadius.circular(18),
+                ),
+                clipBehavior: Clip.antiAlias,
                 child: widget.mapBuilder(
                   model: model,
                   onSelected: _selectGroup,
@@ -270,52 +319,89 @@ class _EntryPreview extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final location = entry.location!;
-    return InkWell(
-      key: Key('trip-map-preview-${entry.id}'),
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            SizedBox(
-              width: 56,
-              child: entry.photoPaths.isEmpty
-                  ? const Padding(
-                      padding: EdgeInsets.only(top: 16),
-                      child: Icon(Icons.location_on_outlined),
-                    )
-                  : PhotoThumbnail(photoPath: entry.photoPaths.first, size: 56),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+    final locationLabel = _locationLabel(location);
+    return Semantics(
+      container: true,
+      button: true,
+      label:
+          'Open map entry ${entry.displayTitle} at $locationLabel. ${formatDate(entry.createdAt)}. ${moodLabel(entry.mood)}',
+      child: ExcludeSemantics(
+        child: Material(
+          color: Theme.of(context).colorScheme.surface,
+          borderRadius: BorderRadius.circular(14),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            key: Key('trip-map-preview-${entry.id}'),
+            onTap: onTap,
+            child: Padding(
+              padding: const EdgeInsets.all(10),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  Text(
-                    entry.displayTitle,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
+                  SizedBox(
+                    width: 56,
+                    child: entry.photoPaths.isEmpty
+                        ? Container(
+                            width: 56,
+                            height: 56,
+                            decoration: BoxDecoration(
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.primary.withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Icon(
+                              Icons.location_on_outlined,
+                              color: Theme.of(context).colorScheme.primary,
+                            ),
+                          )
+                        : PhotoThumbnail(
+                            photoPath: entry.photoPaths.first,
+                            size: 56,
+                          ),
                   ),
-                  const SizedBox(height: 2),
-                  Text(
-                    formatDate(entry.createdAt),
-                    overflow: TextOverflow.ellipsis,
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          entry.displayTitle,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.bodyMedium
+                              ?.copyWith(fontWeight: FontWeight.w700),
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          formatDate(entry.createdAt),
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                        Text(
+                          '$locationLabel · ${moodLabel(entry.mood)}',
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.primary,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                  Text(
-                    '${_locationLabel(location)} · ${moodLabel(entry.mood)}',
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
+                  const SizedBox(width: 4),
+                  Icon(
+                    Icons.chevron_right,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
                   ),
                 ],
               ),
             ),
-            const SizedBox(width: 4),
-            const Padding(
-              padding: EdgeInsets.only(top: 16),
-              child: Icon(Icons.chevron_right),
-            ),
-          ],
+          ),
         ),
       ),
     );

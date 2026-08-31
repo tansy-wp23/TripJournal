@@ -93,6 +93,8 @@ void main() {
     );
 
     expect(find.text('2 mapped · 1 without location'), findsOneWidget);
+    expect(find.byKey(const Key('trip-map-summary')), findsOneWidget);
+    expect(find.byKey(const Key('trip-map-frame')), findsOneWidget);
     expect(
       find.text('Lines show journal order only — not roads or navigation.'),
       findsOneWidget,
@@ -100,6 +102,10 @@ void main() {
     expect(find.byKey(const Key('trip-map-day-all')), findsOneWidget);
     expect(find.byKey(const Key('trip-map-day-1')), findsOneWidget);
     expect(find.byKey(const Key('trip-map-day-2')), findsOneWidget);
+    final allFilterSize = tester.getSize(
+      find.byKey(const Key('trip-map-day-all')),
+    );
+    expect(allFilterSize.height, greaterThanOrEqualTo(48));
     expect(
       find.byKey(const Key('fake-map-place:one:1.000000,2.000000')),
       findsOneWidget,
@@ -167,6 +173,12 @@ void main() {
       expect(find.text('Fushimi Inari · Excited'), findsNWidgets(2));
       expect(find.byKey(const Key('trip-map-preview-first')), findsOneWidget);
       expect(find.byKey(const Key('trip-map-preview-second')), findsOneWidget);
+      expect(
+        find.bySemanticsLabel(
+          RegExp(r'^Open map entry First visit at Fushimi Inari'),
+        ),
+        findsOneWidget,
+      );
 
       await tester.tap(find.byKey(const Key('trip-map-preview-second')));
       expect(opened, ['second']);
