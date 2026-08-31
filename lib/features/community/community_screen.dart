@@ -89,7 +89,9 @@ class _CommunityScreenState extends ConsumerState<CommunityScreen> {
     if (trip == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Trip not found. It may not be public or may not exist.'),
+          content: Text(
+            'Trip not found. It may not be public or may not exist.',
+          ),
         ),
       );
       return;
@@ -144,40 +146,33 @@ class _CommunityScreenState extends ConsumerState<CommunityScreen> {
       return const Center(child: CircularProgressIndicator());
     }
     if (controller.error != null) {
-      return Center(child: Text('Error: ${controller.error}'));
+      return _CommunityMessageState(
+        icon: Icons.cloud_off_outlined,
+        title: 'Couldn’t load journeys',
+        message: '${controller.error}',
+        action: FilledButton.icon(
+          onPressed: () =>
+              ref.read(communityControllerProvider.notifier).loadPublicTrips(),
+          icon: const Icon(Icons.refresh),
+          label: const Text('Try again'),
+        ),
+      );
     }
     if (controller.trips.isEmpty) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.public, size: 64),
-              const SizedBox(height: 16),
-              Text(
-                'No trips published yet',
-                style: Theme.of(context).textTheme.titleLarge,
+      return _CommunityMessageState(
+        icon: Icons.travel_explore_outlined,
+        title: 'No trips published yet',
+        message: widget.onSignIn != null
+            ? 'Sign in to create and share your own trips!'
+            : 'Be the first to share a trip with the community!',
+        action: widget.onSignIn == null
+            ? null
+            : FilledButton.icon(
+                key: const Key('guest-empty-state-sign-in-button'),
+                onPressed: widget.onSignIn,
+                icon: const Icon(Icons.login),
+                label: const Text('Sign in with Google'),
               ),
-              const SizedBox(height: 8),
-              Text(
-                widget.onSignIn != null
-                    ? 'Sign in to create and share your own trips!'
-                    : 'Be the first to share a trip with the community!',
-                textAlign: TextAlign.center,
-              ),
-              if (widget.onSignIn != null) ...[
-                const SizedBox(height: 24),
-                FilledButton.icon(
-                  key: const Key('guest-empty-state-sign-in-button'),
-                  onPressed: widget.onSignIn,
-                  icon: const Icon(Icons.login),
-                  label: const Text('Sign in with Google'),
-                ),
-              ],
-            ],
-          ),
-        ),
       );
     }
 
@@ -190,47 +185,165 @@ class _CommunityScreenState extends ConsumerState<CommunityScreen> {
       onRefresh: () =>
           ref.read(communityControllerProvider.notifier).loadPublicTrips(),
       child: ListView(
-        padding: const EdgeInsets.all(16),
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(12, 12, 12, 32),
         children: [
-          if (_destinationSearchVisible) ...[
-            TextField(
-              key: const Key('community-destination-search-field'),
-              autofocus: true,
-              decoration: const InputDecoration(
-                hintText: 'Search by destination...',
-                prefixIcon: Icon(Icons.search),
-                border: OutlineInputBorder(),
-                isDense: true,
+          Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 760),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const _DiscoveryHeader(),
+                  if (_destinationSearchVisible) ...[
+                    const SizedBox(height: 16),
+                    TextField(
+                      key: const Key('community-destination-search-field'),
+                      autofocus: true,
+                      decoration: const InputDecoration(
+                        labelText: 'Destination',
+                        hintText: 'Search city, region, or country',
+                        prefixIcon: Icon(Icons.search),
+                      ),
+                      onChanged: (value) =>
+                          setState(() => _destinationQuery = value),
+                    ),
+                  ],
+                  const SizedBox(height: 16),
+                  if (filteredTrips.isEmpty)
+                    TripListNoMatchesState(
+                      onClearFilter: () =>
+                          setState(() => _destinationQuery = ''),
+                    )
+                  else
+                    for (final trip in filteredTrips)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: PublicTripCard(
+                          trip: trip,
+                          onTap: () => _openPublicTrip(trip),
+                        ),
+                      ),
+                  if (widget.onSignIn != null) ...[
+                    const SizedBox(height: 12),
+                    FilledButton.icon(
+                      key: const Key('guest-create-first-trip-button'),
+                      onPressed: widget.onSignIn,
+                      icon: const Icon(Icons.add),
+                      label: const Text('Create your first trip'),
+                    ),
+                  ],
+                ],
               ),
-              onChanged: (value) => setState(() => _destinationQuery = value),
             ),
-            const SizedBox(height: 8),
-          ],
-          if (filteredTrips.isEmpty)
-            TripListNoMatchesState(
-              onClearFilter: () => setState(() => _destinationQuery = ''),
-            )
-          else
-            for (final trip in filteredTrips)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: PublicTripCard(
-                  trip: trip,
-                  onTap: () => _openPublicTrip(trip),
-                ),
-              ),
-          if (widget.onSignIn != null) ...[
-            const SizedBox(height: 24),
-            Center(
-              child: FilledButton.icon(
-                key: const Key('guest-create-first-trip-button'),
-                onPressed: widget.onSignIn,
-                icon: const Icon(Icons.add),
-                label: const Text('Create your first trip'),
-              ),
-            ),
-          ],
+          ),
         ],
+      ),
+    );
+  }
+}
+
+class _DiscoveryHeader extends StatelessWidget {
+  const _DiscoveryHeader();
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Semantics(
+      header: true,
+      child: Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: colors.primaryContainer.withValues(alpha: 0.58),
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(color: colors.outlineVariant),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                color: colors.primary,
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Icon(Icons.public, color: colors.onPrimary),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Discover journeys',
+                    style: Theme.of(context).textTheme.titleLarge,
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    'Stories shared by fellow travellers.',
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: colors.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _CommunityMessageState extends StatelessWidget {
+  const _CommunityMessageState({
+    required this.icon,
+    required this.title,
+    required this.message,
+    this.action,
+  });
+
+  final IconData icon;
+  final String title;
+  final String message;
+  final Widget? action;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Center(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(24),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 440),
+          child: Card(
+            child: Padding(
+              padding: const EdgeInsets.all(28),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(icon, size: 56, color: colors.primary),
+                  const SizedBox(height: 16),
+                  Text(
+                    title,
+                    style: Theme.of(context).textTheme.titleLarge,
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    message,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: colors.onSurfaceVariant),
+                  ),
+                  if (action case final action?) ...[
+                    const SizedBox(height: 20),
+                    action,
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }

@@ -68,6 +68,8 @@ class _PublicTripViewScreenState extends ConsumerState<PublicTripViewScreen> {
   Widget build(BuildContext context) {
     final trip = widget.trip;
     final colorScheme = Theme.of(context).colorScheme;
+    final horizontalPadding = ((MediaQuery.sizeOf(context).width - 760) / 2)
+        .clamp(12.0, double.infinity);
 
     return Scaffold(
       appBar: AppBar(
@@ -86,13 +88,22 @@ class _PublicTripViewScreenState extends ConsumerState<PublicTripViewScreen> {
           : _error != null
           ? Center(child: Text('Error: $_error'))
           : ListView(
-              padding: const EdgeInsets.all(0),
+              padding: EdgeInsets.fromLTRB(
+                horizontalPadding,
+                12,
+                horizontalPadding,
+                32,
+              ),
               children: [
                 Container(
-                  color: colorScheme.primaryContainer,
+                  decoration: BoxDecoration(
+                    color: colorScheme.primaryContainer,
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(color: colorScheme.outlineVariant),
+                  ),
                   padding: const EdgeInsets.symmetric(
                     horizontal: 16,
-                    vertical: 10,
+                    vertical: 12,
                   ),
                   child: Row(
                     children: [
@@ -113,24 +124,45 @@ class _PublicTripViewScreenState extends ConsumerState<PublicTripViewScreen> {
                               ?.copyWith(color: colorScheme.onPrimaryContainer),
                         ),
                       ),
-                      Icon(
-                        Icons.public,
-                        size: 18,
-                        color: colorScheme.onPrimaryContainer,
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 9,
+                          vertical: 5,
+                        ),
+                        decoration: BoxDecoration(
+                          color: colorScheme.surface.withValues(alpha: 0.72),
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        child: Text(
+                          'Public journey',
+                          style: Theme.of(context).textTheme.labelSmall
+                              ?.copyWith(
+                                color: colorScheme.primary,
+                                fontWeight: FontWeight.w700,
+                              ),
+                        ),
                       ),
                     ],
                   ),
                 ),
 
-                if (trip.coverPhotoPath != null)
-                  TripCoverPhoto(
-                    photoPath: trip.coverPhotoPath,
-                    height: TripPhotoCarousel.resolveHeight(context, max: 180),
-                    width: double.infinity,
+                if (trip.coverPhotoPath != null) ...[
+                  const SizedBox(height: 12),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(22),
+                    child: TripCoverPhoto(
+                      photoPath: trip.coverPhotoPath,
+                      height: TripPhotoCarousel.resolveHeight(
+                        context,
+                        max: 210,
+                      ),
+                      width: double.infinity,
+                    ),
                   ),
+                ],
 
                 Padding(
-                  padding: const EdgeInsets.all(16),
+                  padding: const EdgeInsets.fromLTRB(4, 20, 4, 8),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -206,7 +238,7 @@ class _PublicTripViewScreenState extends ConsumerState<PublicTripViewScreen> {
       if (group.isEmpty) continue;
       widgets.add(
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -245,11 +277,7 @@ class _PublicTripViewScreenState extends ConsumerState<PublicTripViewScreen> {
                             spacing: 8,
                             runSpacing: 8,
                             children: [
-                              for (
-                                var i = 0;
-                                i < entry.photoPaths.length;
-                                i++
-                              )
+                              for (var i = 0; i < entry.photoPaths.length; i++)
                                 PhotoThumbnail(
                                   key: Key('public-entry-photo-${entry.id}-$i'),
                                   photoPath: entry.photoPaths[i],
@@ -279,7 +307,9 @@ class _PublicTripViewScreenState extends ConsumerState<PublicTripViewScreen> {
                                   const SizedBox(width: 4),
                                   Text(
                                     '${formatThousands(entry.healthLog!.steps)} steps',
-                                    style: Theme.of(context).textTheme.bodySmall,
+                                    style: Theme.of(
+                                      context,
+                                    ).textTheme.bodySmall,
                                   ),
                                 ],
                               ),
@@ -293,7 +323,9 @@ class _PublicTripViewScreenState extends ConsumerState<PublicTripViewScreen> {
                                   const SizedBox(width: 4),
                                   Text(
                                     '${entry.healthLog!.caloriesEaten} kcal eaten',
-                                    style: Theme.of(context).textTheme.bodySmall,
+                                    style: Theme.of(
+                                      context,
+                                    ).textTheme.bodySmall,
                                   ),
                                 ],
                               ),

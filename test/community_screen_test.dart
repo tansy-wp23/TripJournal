@@ -33,7 +33,9 @@ Future<void> _pumpScreen(
 }) async {
   await tester.pumpWidget(
     ProviderScope(
-      overrides: [communityControllerProvider.overrideWith((ref) => controller)],
+      overrides: [
+        communityControllerProvider.overrideWith((ref) => controller),
+      ],
       child: MaterialApp(home: CommunityScreen(onSignIn: onSignIn)),
     ),
   );
@@ -42,6 +44,25 @@ Future<void> _pumpScreen(
 }
 
 void main() {
+  testWidgets('presents public trips as an accessible discovery feed', (
+    tester,
+  ) async {
+    final repository = MockTripRepository();
+    await repository.addTrip(
+      _publicTrip('public-1', destination: 'Kyoto, Japan'),
+    );
+    final controller = CommunityController(repository);
+
+    await _pumpScreen(tester, controller);
+
+    expect(find.text('Discover journeys'), findsOneWidget);
+    expect(find.text('Stories shared by fellow travellers.'), findsOneWidget);
+    expect(
+      find.bySemanticsLabel('Open public trip Public Trip public-1'),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('shows the empty state when no trips are published', (
     tester,
   ) async {
@@ -114,9 +135,7 @@ void main() {
       );
     });
 
-    testWidgets('Cancel closes the dialog without navigating', (
-      tester,
-    ) async {
+    testWidgets('Cancel closes the dialog without navigating', (tester) async {
       final controller = CommunityController(MockTripRepository());
 
       await _pumpScreen(tester, controller);
@@ -160,8 +179,12 @@ void main() {
       tester,
     ) async {
       final repository = MockTripRepository();
-      await repository.addTrip(_publicTrip('public-1', destination: 'Kyoto, Japan'));
-      await repository.addTrip(_publicTrip('public-2', destination: 'Melaka, Malaysia'));
+      await repository.addTrip(
+        _publicTrip('public-1', destination: 'Kyoto, Japan'),
+      );
+      await repository.addTrip(
+        _publicTrip('public-2', destination: 'Melaka, Malaysia'),
+      );
       final controller = CommunityController(repository);
 
       await _pumpScreen(tester, controller);
@@ -183,7 +206,9 @@ void main() {
       tester,
     ) async {
       final repository = MockTripRepository();
-      await repository.addTrip(_publicTrip('public-1', destination: 'Kyoto, Japan'));
+      await repository.addTrip(
+        _publicTrip('public-1', destination: 'Kyoto, Japan'),
+      );
       final controller = CommunityController(repository);
 
       await _pumpScreen(tester, controller);
@@ -205,7 +230,9 @@ void main() {
       tester,
     ) async {
       final repository = MockTripRepository();
-      await repository.addTrip(_publicTrip('public-1', destination: 'Kyoto, Japan'));
+      await repository.addTrip(
+        _publicTrip('public-1', destination: 'Kyoto, Japan'),
+      );
       final controller = CommunityController(repository);
 
       await _pumpScreen(tester, controller);
@@ -226,7 +253,9 @@ void main() {
 
     testWidgets('toggling the search off clears the query', (tester) async {
       final repository = MockTripRepository();
-      await repository.addTrip(_publicTrip('public-1', destination: 'Kyoto, Japan'));
+      await repository.addTrip(
+        _publicTrip('public-1', destination: 'Kyoto, Japan'),
+      );
       final controller = CommunityController(repository);
 
       await _pumpScreen(tester, controller);
@@ -262,10 +291,7 @@ void main() {
 
         await _pumpScreen(tester, controller);
 
-        expect(
-          find.byKey(const Key('guest-sign-in-button')),
-          findsNothing,
-        );
+        expect(find.byKey(const Key('guest-sign-in-button')), findsNothing);
       },
     );
 
@@ -290,28 +316,25 @@ void main() {
       },
     );
 
-    testWidgets(
-      'the empty state invites the guest to sign in instead of the '
-      'signed-in "be the first" message',
-      (tester) async {
-        final controller = CommunityController(MockTripRepository());
+    testWidgets('the empty state invites the guest to sign in instead of the '
+        'signed-in "be the first" message', (tester) async {
+      final controller = CommunityController(MockTripRepository());
 
-        await _pumpScreen(tester, controller, onSignIn: () {});
+      await _pumpScreen(tester, controller, onSignIn: () {});
 
-        expect(
-          find.text('Sign in to create and share your own trips!'),
-          findsOneWidget,
-        );
-        expect(
-          find.text('Be the first to share a trip with the community!'),
-          findsNothing,
-        );
-        expect(
-          find.byKey(const Key('guest-empty-state-sign-in-button')),
-          findsOneWidget,
-        );
-      },
-    );
+      expect(
+        find.text('Sign in to create and share your own trips!'),
+        findsOneWidget,
+      );
+      expect(
+        find.text('Be the first to share a trip with the community!'),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const Key('guest-empty-state-sign-in-button')),
+        findsOneWidget,
+      );
+    });
 
     testWidgets(
       'the signed-in empty state is unchanged when onSignIn is null',
@@ -350,27 +373,26 @@ void main() {
           find.byKey(const Key('guest-create-first-trip-button')),
           findsOneWidget,
         );
-        await tester.tap(find.byKey(const Key('guest-create-first-trip-button')));
+        await tester.tap(
+          find.byKey(const Key('guest-create-first-trip-button')),
+        );
 
         expect(signInTapped, isTrue);
       },
     );
 
-    testWidgets(
-      'no "Create your first trip" button on the signed-in path '
-      '(onSignIn null)',
-      (tester) async {
-        final repository = MockTripRepository();
-        await repository.addTrip(_publicTrip('public-1'));
-        final controller = CommunityController(repository);
+    testWidgets('no "Create your first trip" button on the signed-in path '
+        '(onSignIn null)', (tester) async {
+      final repository = MockTripRepository();
+      await repository.addTrip(_publicTrip('public-1'));
+      final controller = CommunityController(repository);
 
-        await _pumpScreen(tester, controller);
+      await _pumpScreen(tester, controller);
 
-        expect(
-          find.byKey(const Key('guest-create-first-trip-button')),
-          findsNothing,
-        );
-      },
-    );
+      expect(
+        find.byKey(const Key('guest-create-first-trip-button')),
+        findsNothing,
+      );
+    });
   });
 }

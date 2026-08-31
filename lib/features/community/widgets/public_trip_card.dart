@@ -13,89 +13,155 @@ class PublicTripCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    return Card(
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (trip.coverPhotoPath != null)
-              TripCoverPhoto(
-                photoPath: trip.coverPhotoPath,
-                height: 140,
-                width: double.infinity,
-              ),
-            Padding(
-              padding: const EdgeInsets.all(12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    trip.title,
-                    style: Theme.of(context).textTheme.titleMedium,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  if (trip.destination != null &&
-                      trip.destination!.trim().isNotEmpty) ...[
-                    const SizedBox(height: 4),
-                    Row(
-                      children: [
-                        Icon(
-                          Icons.place_outlined,
-                          size: 16,
-                          color: colorScheme.outline,
+    return Semantics(
+      container: true,
+      button: true,
+      label: 'Open public trip ${trip.title}',
+      child: ExcludeSemantics(
+        child: Card(
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: onTap,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Stack(
+                  children: [
+                    TripCoverPhoto(
+                      photoPath: trip.coverPhotoPath,
+                      height: 156,
+                      width: double.infinity,
+                    ),
+                    Positioned(
+                      left: 12,
+                      top: 12,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 6,
                         ),
-                        const SizedBox(width: 4),
-                        Expanded(
-                          child: Text(
-                            trip.destination!,
-                            style: Theme.of(context).textTheme.bodySmall
-                                ?.copyWith(color: colorScheme.outline),
-                            overflow: TextOverflow.ellipsis,
-                          ),
+                        decoration: BoxDecoration(
+                          color: colorScheme.surface.withValues(alpha: 0.92),
+                          borderRadius: BorderRadius.circular(999),
                         ),
-                      ],
+                        child: Text(
+                          'Shared journey',
+                          style: Theme.of(context).textTheme.labelMedium
+                              ?.copyWith(
+                                color: colorScheme.primary,
+                                fontWeight: FontWeight.w700,
+                              ),
+                        ),
+                      ),
                     ),
                   ],
-                  const SizedBox(height: 4),
-                  Text(
-                    '${formatDate(trip.startDate)} – ${formatDate(trip.endDate)}',
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
+                ),
+                Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      CircleAvatar(
-                        radius: 12,
-                        backgroundImage: trip.publisherAvatarUrl != null
-                            ? NetworkImage(trip.publisherAvatarUrl!)
-                            : null,
-                        child: trip.publisherAvatarUrl == null
-                            ? const Icon(Icons.person, size: 14)
-                            : null,
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              trip.title,
+                              style: Theme.of(context).textTheme.titleMedium
+                                  ?.copyWith(fontWeight: FontWeight.w700),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Icon(
+                            Icons.chevron_right,
+                            color: colorScheme.onSurfaceVariant,
+                          ),
+                        ],
                       ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          trip.publisherDisplayName ?? 'Anonymous',
-                          style: Theme.of(context).textTheme.bodySmall,
-                          overflow: TextOverflow.ellipsis,
+                      if (trip.destination != null &&
+                          trip.destination!.trim().isNotEmpty) ...[
+                        const SizedBox(height: 4),
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.place_outlined,
+                              size: 16,
+                              color: colorScheme.primary,
+                            ),
+                            const SizedBox(width: 4),
+                            Expanded(
+                              child: Text(
+                                trip.destination!,
+                                style: Theme.of(context).textTheme.bodyMedium
+                                    ?.copyWith(
+                                      color: colorScheme.onSurfaceVariant,
+                                    ),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
                         ),
+                      ],
+                      const SizedBox(height: 6),
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.calendar_today_outlined,
+                            size: 15,
+                            color: colorScheme.onSurfaceVariant,
+                          ),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              '${formatDate(trip.startDate)} – ${formatDate(trip.endDate)}',
+                              style: Theme.of(context).textTheme.bodySmall,
+                            ),
+                          ),
+                        ],
                       ),
-                      if (trip.publishedAt != null)
-                        Text(
-                          'Published ${formatDate(trip.publishedAt!)}',
-                          style: Theme.of(context).textTheme.bodySmall
-                              ?.copyWith(color: colorScheme.outline),
-                        ),
+                      const SizedBox(height: 12),
+                      Divider(color: colorScheme.outlineVariant),
+                      const SizedBox(height: 10),
+                      Row(
+                        children: [
+                          CircleAvatar(
+                            radius: 12,
+                            backgroundImage: trip.publisherAvatarUrl != null
+                                ? NetworkImage(trip.publisherAvatarUrl!)
+                                : null,
+                            child: trip.publisherAvatarUrl == null
+                                ? const Icon(Icons.person, size: 14)
+                                : null,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              trip.publisherDisplayName ?? 'Anonymous',
+                              style: Theme.of(context).textTheme.bodySmall,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          if (trip.publishedAt != null)
+                            Flexible(
+                              child: Text(
+                                'Shared ${formatDate(trip.publishedAt!)}',
+                                textAlign: TextAlign.end,
+                                overflow: TextOverflow.ellipsis,
+                                style: Theme.of(context).textTheme.bodySmall
+                                    ?.copyWith(
+                                      color: colorScheme.onSurfaceVariant,
+                                    ),
+                              ),
+                            ),
+                        ],
+                      ),
                     ],
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );
