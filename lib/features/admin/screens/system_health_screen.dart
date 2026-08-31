@@ -79,7 +79,7 @@ class _SystemHealthScreenState extends State<SystemHealthScreen> {
               detail: _geminiConfigured
                   ? 'GEMINI_API_KEY is set — AI features call the real Gemini API.'
                   : 'GEMINI_API_KEY is not set — AI features fall back to '
-                      'built-in offline mocks.',
+                        'built-in offline mocks.',
               trailing: _geminiConfigured ? _buildGeminiTestButton() : null,
             ),
             _HealthIndicatorCard(
@@ -93,12 +93,15 @@ class _SystemHealthScreenState extends State<SystemHealthScreen> {
                 _CheckState.failed => 'Unreachable',
                 _CheckState.idle => 'Not checked',
               },
-              detail: 'A live read against the profiles table, checked automatically on open.',
-              trailing: IconButton(
+              detail:
+                  'A live read against the profiles table, checked automatically on open.',
+              trailing: TextButton.icon(
                 key: const Key('admin-system-health-supabase-retry'),
-                tooltip: 'Re-check',
-                icon: const Icon(Icons.refresh),
-                onPressed: _supabaseState == _CheckState.checking ? null : _checkSupabase,
+                icon: const Icon(Icons.refresh_rounded),
+                label: const Text('Re-check'),
+                onPressed: _supabaseState == _CheckState.checking
+                    ? null
+                    : _checkSupabase,
               ),
             ),
           ],
@@ -111,7 +114,11 @@ class _SystemHealthScreenState extends State<SystemHealthScreen> {
     if (_geminiTestState == _CheckState.checking) {
       return const Padding(
         padding: EdgeInsets.symmetric(horizontal: 8),
-        child: SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
+        child: SizedBox(
+          width: 18,
+          height: 18,
+          child: CircularProgressIndicator(strokeWidth: 2),
+        ),
       );
     }
     if (_geminiTestState == _CheckState.idle) {

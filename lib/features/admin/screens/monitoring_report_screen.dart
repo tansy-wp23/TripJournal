@@ -25,10 +25,12 @@ class MonitoringReportScreen extends ConsumerStatefulWidget {
   const MonitoringReportScreen({super.key});
 
   @override
-  ConsumerState<MonitoringReportScreen> createState() => _MonitoringReportScreenState();
+  ConsumerState<MonitoringReportScreen> createState() =>
+      _MonitoringReportScreenState();
 }
 
-class _MonitoringReportScreenState extends ConsumerState<MonitoringReportScreen> {
+class _MonitoringReportScreenState
+    extends ConsumerState<MonitoringReportScreen> {
   bool _loadInProgress = false;
 
   @override
@@ -55,15 +57,23 @@ class _MonitoringReportScreenState extends ConsumerState<MonitoringReportScreen>
       context: context,
       firstDate: DateTime(now.year - 5),
       lastDate: now,
-      initialDateRange:
-          startDate != null && endDate != null ? DateTimeRange(start: startDate, end: endDate) : null,
+      initialDateRange: startDate != null && endDate != null
+          ? DateTimeRange(start: startDate, end: endDate)
+          : null,
     );
     if (picked == null) return;
 
     // The picker returns midnight-to-midnight — extend the end to the last
     // moment of that day so entries recorded later on the end date aren't
     // excluded, same reasoning as AuditLogScreen's own date-range handling.
-    final inclusiveEnd = DateTime(picked.end.year, picked.end.month, picked.end.day, 23, 59, 59);
+    final inclusiveEnd = DateTime(
+      picked.end.year,
+      picked.end.month,
+      picked.end.day,
+      23,
+      59,
+      59,
+    );
     await ref
         .read(monitoringReportControllerProvider.notifier)
         .setDateRange(start: picked.start, end: inclusiveEnd);
@@ -86,7 +96,9 @@ class _MonitoringReportScreenState extends ConsumerState<MonitoringReportScreen>
       if (mounted) Navigator.pop(context);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not export the report as a PDF.')),
+          const SnackBar(
+            content: Text('Could not export the report as a PDF.'),
+          ),
         );
       }
     }
@@ -106,14 +118,22 @@ class _MonitoringReportScreenState extends ConsumerState<MonitoringReportScreen>
       // except web (per its own doc comment) — fileNameOverrides is what
       // actually names the shared file elsewhere.
       await Share.shareXFiles(
-        [XFile.fromData(utf8.encode(csv), name: filename, mimeType: 'text/csv')],
+        [
+          XFile.fromData(
+            utf8.encode(csv),
+            name: filename,
+            mimeType: 'text/csv',
+          ),
+        ],
         fileNameOverrides: [filename],
       );
     } catch (_) {
       if (mounted) Navigator.pop(context);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not export the report as a CSV file.')),
+          const SnackBar(
+            content: Text('Could not export the report as a CSV file.'),
+          ),
         );
       }
     }
@@ -139,7 +159,10 @@ class _MonitoringReportScreenState extends ConsumerState<MonitoringReportScreen>
     );
   }
 
-  Widget _buildBody(BuildContext context, MonitoringReportController controller) {
+  Widget _buildBody(
+    BuildContext context,
+    MonitoringReportController controller,
+  ) {
     if (controller.loading && controller.report == null) {
       return const Center(child: CircularProgressIndicator());
     }
@@ -180,7 +203,10 @@ class _MonitoringReportScreenState extends ConsumerState<MonitoringReportScreen>
           total: report.totalErrors,
           rows: [
             for (final severity in ErrorSeverity.values)
-              (errorSeverityLabel(severity), report.errorCountsBySeverity[severity] ?? 0),
+              (
+                errorSeverityLabel(severity),
+                report.errorCountsBySeverity[severity] ?? 0,
+              ),
           ],
         ),
         const SizedBox(height: 12),
@@ -190,7 +216,10 @@ class _MonitoringReportScreenState extends ConsumerState<MonitoringReportScreen>
           total: report.totalAiRequests,
           rows: [
             for (final status in AiRequestStatus.values)
-              (aiRequestStatusLabel(status), report.aiRequestCountsByStatus[status] ?? 0),
+              (
+                aiRequestStatusLabel(status),
+                report.aiRequestCountsByStatus[status] ?? 0,
+              ),
           ],
         ),
         const SizedBox(height: 12),
@@ -200,7 +229,10 @@ class _MonitoringReportScreenState extends ConsumerState<MonitoringReportScreen>
           total: report.totalIssues,
           rows: [
             for (final status in IssueReportStatus.values)
-              (issueReportStatusLabel(status), report.issueCountsByStatus[status] ?? 0),
+              (
+                issueReportStatusLabel(status),
+                report.issueCountsByStatus[status] ?? 0,
+              ),
           ],
         ),
         const SizedBox(height: 20),
@@ -231,7 +263,10 @@ class _MonitoringReportScreenState extends ConsumerState<MonitoringReportScreen>
 }
 
 class _DateRangeBar extends StatelessWidget {
-  const _DateRangeBar({required this.controller, required this.onPickDateRange});
+  const _DateRangeBar({
+    required this.controller,
+    required this.onPickDateRange,
+  });
 
   final MonitoringReportController controller;
   final VoidCallback onPickDateRange;
@@ -251,14 +286,16 @@ class _DateRangeBar extends StatelessWidget {
             onPressed: onPickDateRange,
             icon: const Icon(Icons.date_range),
             label: Text(
-              start != null && end != null ? '${formatDate(start)} – ${formatDate(end)}' : 'All time',
+              start != null && end != null
+                  ? '${formatDate(start)} – ${formatDate(end)}'
+                  : 'All time',
             ),
           ),
           if (start != null || end != null)
-            IconButton(
+            TextButton.icon(
               key: const Key('admin-monitoring-report-date-range-clear'),
-              tooltip: 'Clear date range',
-              icon: const Icon(Icons.close),
+              icon: const Icon(Icons.close_rounded),
+              label: const Text('Clear date'),
               onPressed: () => controller.setDateRange(start: null, end: null),
             ),
         ],
@@ -303,8 +340,18 @@ class _ReportSection extends StatelessWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text('Total', style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.bold)),
-                Text('$total', style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.bold)),
+                Text(
+                  'Total',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                Text(
+                  '$total',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
               ],
             ),
           ],

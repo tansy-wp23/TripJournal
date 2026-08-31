@@ -19,22 +19,32 @@ void main() {
         'button, when no key is set', (tester) async {
       await pumpScreen(tester);
 
-      expect(find.byKey(const Key('admin-system-health-gemini')), findsOneWidget);
+      expect(
+        find.byKey(const Key('admin-system-health-gemini')),
+        findsOneWidget,
+      );
       expect(find.text('Not configured'), findsOneWidget);
-      expect(find.byKey(const Key('admin-system-health-gemini-test')), findsNothing);
+      expect(
+        find.byKey(const Key('admin-system-health-gemini-test')),
+        findsNothing,
+      );
     });
 
     testWidgets('shows Gemini as "Configured" with a Test Connection button '
         'once GEMINI_API_KEY is set — the button is never tapped here, since '
-        'doing so would make a real network call to Google\'s Gemini API',
-        (tester) async {
+        'doing so would make a real network call to Google\'s Gemini API', (
+      tester,
+    ) async {
       dotenv.loadFromString(envString: 'GEMINI_API_KEY=test-key-123');
 
       await pumpScreen(tester);
 
       expect(find.text('Configured'), findsOneWidget);
       expect(find.text('Not configured'), findsNothing);
-      expect(find.byKey(const Key('admin-system-health-gemini-test')), findsOneWidget);
+      expect(
+        find.byKey(const Key('admin-system-health-gemini-test')),
+        findsOneWidget,
+      );
       expect(find.text('Test Connection'), findsOneWidget);
     });
 
@@ -43,7 +53,10 @@ void main() {
         'Supabase.initialize() ever runs under flutter_test)', (tester) async {
       await pumpScreen(tester);
 
-      expect(find.byKey(const Key('admin-system-health-supabase')), findsOneWidget);
+      expect(
+        find.byKey(const Key('admin-system-health-supabase')),
+        findsOneWidget,
+      );
       expect(find.text('Unreachable'), findsOneWidget);
       // Never claims something unchecked/unreachable is "Connected".
       expect(find.text('Connected'), findsNothing);
@@ -57,7 +70,11 @@ void main() {
       // retry tests, so this checks the durable outcome instead.
       await pumpScreen(tester);
 
-      await tester.tap(find.byKey(const Key('admin-system-health-supabase-retry')));
+      expect(find.text('Re-check'), findsOneWidget);
+
+      await tester.tap(
+        find.byKey(const Key('admin-system-health-supabase-retry')),
+      );
       await tester.pumpAndSettle();
 
       expect(find.text('Unreachable'), findsOneWidget);
@@ -68,9 +85,18 @@ void main() {
         '(Phase 21, see the screen\'s own doc comment)', (tester) async {
       await pumpScreen(tester);
 
-      expect(find.byKey(const Key('admin-system-health-gemini')), findsOneWidget);
-      expect(find.byKey(const Key('admin-system-health-supabase')), findsOneWidget);
-      expect(find.byKey(const Key('admin-system-health-database')), findsNothing);
+      expect(
+        find.byKey(const Key('admin-system-health-gemini')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('admin-system-health-supabase')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('admin-system-health-database')),
+        findsNothing,
+      );
       expect(find.byKey(const Key('admin-system-health-api')), findsNothing);
     });
   });

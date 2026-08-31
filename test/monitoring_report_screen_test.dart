@@ -18,10 +18,10 @@ void main() {
   late MockIssueReportRepository issueRepository;
 
   MonitoringReportController buildController() => MonitoringReportController(
-        errorRepository,
-        aiRepository,
-        issueRepository,
-      );
+    errorRepository,
+    aiRepository,
+    issueRepository,
+  );
 
   setUp(() {
     errorRepository = MockSystemErrorLogRepository(seed: []);
@@ -32,7 +32,10 @@ void main() {
     );
   });
 
-  Future<void> pumpScreen(WidgetTester tester, MonitoringReportController controller) async {
+  Future<void> pumpScreen(
+    WidgetTester tester,
+    MonitoringReportController controller,
+  ) async {
     // Three report-section cards plus the export button row run taller than
     // flutter_test's default 800x600 surface — without this, the export
     // buttons (last in the list) sit outside the built/cached extent and
@@ -46,7 +49,9 @@ void main() {
 
     await tester.pumpWidget(
       ProviderScope(
-        overrides: [monitoringReportControllerProvider.overrideWith((ref) => controller)],
+        overrides: [
+          monitoringReportControllerProvider.overrideWith((ref) => controller),
+        ],
         child: const MaterialApp(home: MonitoringReportScreen()),
       ),
     );
@@ -57,56 +62,92 @@ void main() {
   group('MonitoringReportScreen', () {
     testWidgets('auto-generates an all-time report on open and shows every '
         'section with its total', (tester) async {
-      await errorRepository.recordError(SystemErrorLog(
-        logId: 'err-1',
-        module: 'journal',
-        severity: ErrorSeverity.warning,
-        message: 'seeded',
-        createdAt: DateTime.now(),
-      ));
-      await aiRepository.recordRequest(AiRequestLog(
-        logId: 'ai-1',
-        userId: 'user-101',
-        requestType: AiRequestType.dailyAdvice,
-        status: AiRequestStatus.succeeded,
-        executionTimeMs: 100,
-        createdAt: DateTime.now(),
-      ));
+      await errorRepository.recordError(
+        SystemErrorLog(
+          logId: 'err-1',
+          module: 'journal',
+          severity: ErrorSeverity.warning,
+          message: 'seeded',
+          createdAt: DateTime.now(),
+        ),
+      );
+      await aiRepository.recordRequest(
+        AiRequestLog(
+          logId: 'ai-1',
+          userId: 'user-101',
+          requestType: AiRequestType.dailyAdvice,
+          status: AiRequestStatus.succeeded,
+          executionTimeMs: 100,
+          createdAt: DateTime.now(),
+        ),
+      );
       await pumpScreen(tester, buildController());
 
-      expect(find.byKey(const Key('admin-monitoring-report-body')), findsOneWidget);
-      expect(find.byKey(const Key('admin-monitoring-report-errors')), findsOneWidget);
-      expect(find.byKey(const Key('admin-monitoring-report-ai-requests')), findsOneWidget);
-      expect(find.byKey(const Key('admin-monitoring-report-issues')), findsOneWidget);
+      expect(
+        find.byKey(const Key('admin-monitoring-report-body')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('admin-monitoring-report-errors')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('admin-monitoring-report-ai-requests')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('admin-monitoring-report-issues')),
+        findsOneWidget,
+      );
       expect(find.text('All time'), findsOneWidget);
     });
 
-    testWidgets('the date range clear icon only appears once a range is set',
-        (tester) async {
+    testWidgets('the date range clear icon only appears once a range is set', (
+      tester,
+    ) async {
       final controller = buildController();
       await pumpScreen(tester, controller);
 
-      expect(find.byKey(const Key('admin-monitoring-report-date-range-clear')), findsNothing);
+      expect(
+        find.byKey(const Key('admin-monitoring-report-date-range-clear')),
+        findsNothing,
+      );
 
-      await controller.setDateRange(start: DateTime(2026, 1, 1), end: DateTime(2026, 1, 31));
+      await controller.setDateRange(
+        start: DateTime(2026, 1, 1),
+        end: DateTime(2026, 1, 31),
+      );
       await tester.pumpAndSettle();
 
-      expect(find.byKey(const Key('admin-monitoring-report-date-range-clear')), findsOneWidget);
+      expect(
+        find.byKey(const Key('admin-monitoring-report-date-range-clear')),
+        findsOneWidget,
+      );
+      expect(find.text('Clear date'), findsOneWidget);
       expect(find.textContaining('–'), findsOneWidget);
     });
 
-    testWidgets('tapping the clear icon resets the range back to "All time"',
-        (tester) async {
+    testWidgets('tapping the clear icon resets the range back to "All time"', (
+      tester,
+    ) async {
       final controller = buildController();
       await pumpScreen(tester, controller);
-      await controller.setDateRange(start: DateTime(2026, 1, 1), end: DateTime(2026, 1, 31));
+      await controller.setDateRange(
+        start: DateTime(2026, 1, 1),
+        end: DateTime(2026, 1, 31),
+      );
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byKey(const Key('admin-monitoring-report-date-range-clear')));
+      await tester.tap(
+        find.byKey(const Key('admin-monitoring-report-date-range-clear')),
+      );
       await tester.pumpAndSettle();
 
       expect(find.text('All time'), findsOneWidget);
-      expect(find.byKey(const Key('admin-monitoring-report-date-range-clear')), findsNothing);
+      expect(
+        find.byKey(const Key('admin-monitoring-report-date-range-clear')),
+        findsNothing,
+      );
     });
 
     testWidgets('tapping Export PDF builds the document without throwing '
@@ -118,7 +159,9 @@ void main() {
         'the durable outcome, no error SnackBar, instead)', (tester) async {
       await pumpScreen(tester, buildController());
 
-      await tester.tap(find.byKey(const Key('admin-monitoring-report-export-pdf')));
+      await tester.tap(
+        find.byKey(const Key('admin-monitoring-report-export-pdf')),
+      );
       await tester.pump();
 
       expect(find.byType(SnackBar), findsNothing);
@@ -128,19 +171,30 @@ void main() {
         'reasoning as the PDF export test above)', (tester) async {
       await pumpScreen(tester, buildController());
 
-      await tester.tap(find.byKey(const Key('admin-monitoring-report-export-csv')));
+      await tester.tap(
+        find.byKey(const Key('admin-monitoring-report-export-csv')),
+      );
       await tester.pump();
 
       expect(find.byType(SnackBar), findsNothing);
     });
 
-    testWidgets('a failing repository shows an error with a retry button', (tester) async {
+    testWidgets('a failing repository shows an error with a retry button', (
+      tester,
+    ) async {
       await pumpScreen(
         tester,
-        MonitoringReportController(_FailingSystemErrorLogRepository(), aiRepository, issueRepository),
+        MonitoringReportController(
+          _FailingSystemErrorLogRepository(),
+          aiRepository,
+          issueRepository,
+        ),
       );
 
-      expect(find.byKey(const Key('admin-monitoring-report-retry')), findsOneWidget);
+      expect(
+        find.byKey(const Key('admin-monitoring-report-retry')),
+        findsOneWidget,
+      );
     });
   });
 }
@@ -150,7 +204,10 @@ class _FailingSystemErrorLogRepository implements SystemErrorLogRepository {
   Future<void> recordError(SystemErrorLog entry) async {}
 
   @override
-  Future<List<SystemErrorLog>> getAllErrors({String? module, ErrorSeverity? severity}) async {
+  Future<List<SystemErrorLog>> getAllErrors({
+    String? module,
+    ErrorSeverity? severity,
+  }) async {
     throw Exception('mock backend unreachable');
   }
 }
