@@ -9,6 +9,7 @@ import '../../data/trip_repository_locator.dart';
 import '../../models/trip.dart';
 import '../../validation/photo_validation.dart';
 import '../../validation/trip_validation.dart';
+import '../../widgets/app_form_section.dart';
 import '../journal/widgets/format_utils.dart';
 import 'controller/trip_controller.dart';
 import 'controller/trip_trash_controller.dart';
@@ -314,118 +315,239 @@ class _TripFormScreenState extends ConsumerState<TripFormScreen> {
       ),
       body: Form(
         key: _formKey,
-        child: ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
-            TextFormField(
-              key: const Key('trip-title-field'),
-              controller: _titleController,
-              decoration: const InputDecoration(labelText: 'Title'),
-              maxLength: kTripTitleMaxLength,
-              validator: validateTripTitle,
-            ),
-            const SizedBox(height: 8),
-            TextFormField(
-              key: const Key('trip-destination-field'),
-              controller: _destinationController,
-              decoration: const InputDecoration(
-                labelText: 'Destination',
-                hintText: 'City, region, or country',
-              ),
-              validator: validateTripDestination,
-            ),
-            const SizedBox(height: 16),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: _DatePickerField(
-                    key: const Key('trip-start-date-field'),
-                    label: 'Start date',
-                    date: _startDate,
-                    onTap: _pickStartDate,
+        child: LayoutBuilder(
+          builder: (context, viewport) => SingleChildScrollView(
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 760),
+                child: Padding(
+                  padding: EdgeInsets.fromLTRB(
+                    viewport.maxWidth < 480 ? 12 : 24,
+                    12,
+                    viewport.maxWidth < 480 ? 12 : 24,
+                    32,
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      AppFormSection(
+                        title: 'Trip details',
+                        icon: Icons.luggage_outlined,
+                        helperText: 'Give this journey a name and destination.',
+                        child: Column(
+                          children: [
+                            TextFormField(
+                              key: const Key('trip-title-field'),
+                              controller: _titleController,
+                              decoration: const InputDecoration(
+                                labelText: 'Trip title',
+                                hintText: 'A name you will remember',
+                              ),
+                              maxLength: kTripTitleMaxLength,
+                              validator: validateTripTitle,
+                            ),
+                            const SizedBox(height: 8),
+                            TextFormField(
+                              key: const Key('trip-destination-field'),
+                              controller: _destinationController,
+                              decoration: const InputDecoration(
+                                labelText: 'Destination',
+                                hintText: 'City, region, or country',
+                              ),
+                              validator: validateTripDestination,
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      AppFormSection(
+                        title: 'Travel dates',
+                        icon: Icons.calendar_month_outlined,
+                        helperText: 'Entries must stay within this date range.',
+                        child: LayoutBuilder(
+                          builder: (context, section) {
+                            final fields = [
+                              _DatePickerField(
+                                key: const Key('trip-start-date-field'),
+                                label: 'Start date',
+                                date: _startDate,
+                                onTap: _pickStartDate,
+                              ),
+                              _DatePickerField(
+                                key: const Key('trip-end-date-field'),
+                                label: 'End date',
+                                date: _endDate,
+                                onTap: _pickEndDate,
+                              ),
+                            ];
+                            return Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                if (section.maxWidth < 420) ...[
+                                  fields.first,
+                                  const SizedBox(height: 12),
+                                  fields.last,
+                                ] else
+                                  Row(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Expanded(child: fields.first),
+                                      const SizedBox(width: 12),
+                                      Expanded(child: fields.last),
+                                    ],
+                                  ),
+                                if (_dateRangeError != null) ...[
+                                  const SizedBox(height: 12),
+                                  Text(
+                                    _dateRangeError!,
+                                    style: TextStyle(
+                                      color: Theme.of(
+                                        context,
+                                      ).colorScheme.error,
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            );
+                          },
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      AppFormSection(
+                        title: 'Cover photo',
+                        icon: Icons.landscape_outlined,
+                        helperText: _isRestoring
+                            ? 'The existing cover will be kept while restoring.'
+                            : 'Choose one image to set the mood for this trip.',
+                        action: _isRestoring
+                            ? null
+                            : TextButton.icon(
+                                key: const Key('add-cover-photo-button'),
+                                onPressed: _addCoverPhoto,
+                                icon: const Icon(Icons.add_a_photo_outlined),
+                                label: Text(
+                                  _coverPhotoPath == null &&
+                                          _coverPhotoDraft == null
+                                      ? 'Add photo'
+                                      : 'Change',
+                                ),
+                              ),
+                        child:
+                            _coverPhotoPath == null && _coverPhotoDraft == null
+                            ? const _EmptyCoverPhoto()
+                            : Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  ClipRRect(
+                                    borderRadius: BorderRadius.circular(16),
+                                    child: TripCoverPhoto(
+                                      photoPath: _coverPhotoPath,
+                                      coverDraft: _coverPhotoDraft,
+                                      height: TripPhotoCarousel.resolveHeight(
+                                        context,
+                                      ),
+                                      width: double.infinity,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 10),
+                                  Chip(
+                                    avatar: const Icon(Icons.photo, size: 18),
+                                    label: Text(
+                                      _coverPhotoDraft?.name ??
+                                          basename(_coverPhotoPath!),
+                                    ),
+                                    onDeleted: _isRestoring
+                                        ? null
+                                        : _removeCoverPhoto,
+                                  ),
+                                ],
+                              ),
+                      ),
+                      const SizedBox(height: 16),
+                      AppFormSection(
+                        title: 'Notes',
+                        icon: Icons.notes_outlined,
+                        helperText:
+                            'Keep useful details together for easy reference.',
+                        child: TextFormField(
+                          key: const Key('trip-notes-field'),
+                          controller: _notesController,
+                          decoration: const InputDecoration(
+                            labelText: 'Notes and reminders (optional)',
+                            hintText: 'Packing list, booking refs, addresses…',
+                            alignLabelWithHint: true,
+                          ),
+                          maxLines: 4,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _DatePickerField(
-                    key: const Key('trip-end-date-field'),
-                    label: 'End date',
-                    date: _endDate,
-                    onTap: _pickEndDate,
-                  ),
-                ),
-              ],
-            ),
-            if (_dateRangeError != null) ...[
-              const SizedBox(height: 8),
-              Text(
-                _dateRangeError!,
-                style: TextStyle(color: Theme.of(context).colorScheme.error),
               ),
-            ],
-            const SizedBox(height: 16),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                // Flexible so the label yields to the button on a narrow
-                // phone instead of the pair overflowing the row.
-                Flexible(
-                  child: Text(
-                    'Cover photo',
-                    style: Theme.of(context).textTheme.titleSmall,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-                if (!_isRestoring)
-                  TextButton.icon(
-                    key: const Key('add-cover-photo-button'),
-                    onPressed: _addCoverPhoto,
-                    icon: const Icon(Icons.add_a_photo),
-                    label: const Text('Add photo'),
-                  ),
-              ],
             ),
-            if (_coverPhotoPath == null && _coverPhotoDraft == null)
-              const Text('No cover photo added.')
-            else
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  TripCoverPhoto(
-                    photoPath: _coverPhotoPath,
-                    coverDraft: _coverPhotoDraft,
-                    height: TripPhotoCarousel.resolveHeight(context),
-                    width: double.infinity,
-                  ),
-                  const SizedBox(height: 8),
-                  Chip(
-                    avatar: const Icon(Icons.photo, size: 18),
-                    label: Text(
-                      _coverPhotoDraft?.name ?? basename(_coverPhotoPath!),
-                    ),
-                    onDeleted: _isRestoring ? null : _removeCoverPhoto,
-                  ),
-                ],
-              ),
-            const SizedBox(height: 16),
-            TextFormField(
-              key: const Key('trip-notes-field'),
-              controller: _notesController,
-              decoration: const InputDecoration(
-                labelText: 'Notes / Reminders (optional)',
-                hintText: 'Packing list, booking refs, addresses...',
-              ),
-              maxLines: 4,
-            ),
-            const SizedBox(height: 24),
-            FilledButton(
-              key: const Key('save-trip-button'),
-              onPressed: _saving ? null : _save,
-              child: Text(_isRestoring ? 'Restore' : 'Save'),
-            ),
-          ],
+          ),
         ),
+      ),
+      bottomNavigationBar: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+          child: Center(
+            heightFactor: 1,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 712),
+              child: SizedBox(
+                width: double.infinity,
+                child: FilledButton(
+                  key: const Key('save-trip-button'),
+                  onPressed: _saving ? null : _save,
+                  child: _saving
+                      ? Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            ),
+                            const SizedBox(width: 10),
+                            Text(_isRestoring ? 'Restoring…' : 'Saving…'),
+                          ],
+                        )
+                      : Text(_isRestoring ? 'Restore' : 'Save'),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _EmptyCoverPhoto extends StatelessWidget {
+  const _EmptyCoverPhoto();
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+      decoration: BoxDecoration(
+        color: colors.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: colors.outlineVariant),
+      ),
+      child: Column(
+        children: [
+          Icon(Icons.image_outlined, color: colors.onSurfaceVariant),
+          const SizedBox(height: 8),
+          Text(
+            'No cover photo added.',
+            style: TextStyle(color: colors.onSurfaceVariant),
+          ),
+        ],
       ),
     );
   }
