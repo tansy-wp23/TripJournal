@@ -22,7 +22,7 @@ Widget _wrapped(String tripId) {
 
 void main() {
   testWidgets(
-    'Entries and Map tabs coexist with the current Trip actions and carousel',
+    'Trip actions are labelled in one menu while Entry tools stay contextual',
     (tester) async {
       tester.view.physicalSize = const Size(1200, 2600);
       tester.view.devicePixelRatio = 1.0;
@@ -43,13 +43,23 @@ void main() {
       expect(find.byKey(const Key('trip-notes-card')), findsOneWidget);
       expect(find.byKey(const Key('trip-view-search-toggle')), findsOneWidget);
       expect(find.byKey(const Key('trip-view-filter-button')), findsOneWidget);
-      // Export PDF/Locations/Food showcase live behind the overflow menu now
-      // — see trip_view_screen.dart's _TripViewMenuAction — so only the menu
-      // trigger itself is on screen until it's opened.
       expect(find.byKey(const Key('trip-view-more-menu')), findsOneWidget);
-      expect(find.byKey(const Key('report-issue-button')), findsOneWidget);
-      expect(find.byKey(const Key('trip-view-edit-button')), findsOneWidget);
-      expect(find.byKey(const Key('trip-view-delete-button')), findsOneWidget);
+      expect(find.byKey(const Key('report-issue-button')), findsNothing);
+      expect(find.byKey(const Key('trip-view-edit-button')), findsNothing);
+      expect(find.byKey(const Key('trip-view-delete-button')), findsNothing);
+
+      final appBar = tester.widget<AppBar>(find.byType(AppBar));
+      expect(appBar.actions, hasLength(1));
+
+      await tester.tap(find.byKey(const Key('trip-view-more-menu')));
+      await tester.pumpAndSettle();
+      expect(find.text('Edit trip'), findsOneWidget);
+      expect(find.text('Export trip as PDF'), findsOneWidget);
+      expect(find.text('Food showcase'), findsOneWidget);
+      expect(find.text('Report an issue'), findsOneWidget);
+      expect(find.text('Move to Trash'), findsOneWidget);
+      await tester.tapAt(Offset.zero);
+      await tester.pumpAndSettle();
 
       await tester.tap(find.byKey(const Key('trip-view-map-tab')));
       await tester.pumpAndSettle();
@@ -57,9 +67,9 @@ void main() {
       expect(find.byKey(const Key('trip-view-search-toggle')), findsNothing);
       expect(find.byKey(const Key('trip-view-filter-button')), findsNothing);
       expect(find.byKey(const Key('trip-view-more-menu')), findsOneWidget);
-      expect(find.byKey(const Key('report-issue-button')), findsOneWidget);
-      expect(find.byKey(const Key('trip-view-edit-button')), findsOneWidget);
-      expect(find.byKey(const Key('trip-view-delete-button')), findsOneWidget);
+      expect(find.byKey(const Key('report-issue-button')), findsNothing);
+      expect(find.byKey(const Key('trip-view-edit-button')), findsNothing);
+      expect(find.byKey(const Key('trip-view-delete-button')), findsNothing);
 
       await tester.tap(find.byKey(const Key('trip-view-entries-tab')));
       await tester.pumpAndSettle();
@@ -142,6 +152,8 @@ void main() {
       expect(repository.getTripsCalls, 1);
       await tester.tap(find.text('Osaka Trip'));
       await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('trip-view-more-menu')));
+      await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('trip-view-delete-button')));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Move to Trash'));
@@ -198,6 +210,8 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('Create then trash'), findsWidgets);
 
+      await tester.tap(find.byKey(const Key('trip-view-more-menu')));
+      await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('trip-view-delete-button')));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Move to Trash'));

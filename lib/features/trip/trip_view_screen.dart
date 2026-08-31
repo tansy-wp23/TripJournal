@@ -7,6 +7,8 @@ import '../../data/current_user_id_provider.dart';
 import '../../data/trip_repository_locator.dart';
 import '../../models/journal_entry.dart';
 import '../../models/trip.dart';
+import '../../widgets/app_action_menu.dart';
+import '../../widgets/app_content_toolbar.dart';
 import '../admin/widgets/report_issue_button.dart';
 import '../auth/controller/auth_controller.dart';
 import '../journal/controller/journal_controller.dart';
@@ -445,6 +447,9 @@ class _TripViewScreenState extends ConsumerState<TripViewScreen>
             filteredTripEntries,
           ).where((g) => !g.isEmpty).toList()
         : dayGroups;
+    final activeFilterCount =
+        (filter.mood == null ? 0 : 1) +
+        (filter.startDate == null && filter.endDate == null ? 0 : 1);
 
     return Scaffold(
       appBar: AppBar(
@@ -467,22 +472,13 @@ class _TripViewScreenState extends ConsumerState<TripViewScreen>
           ),
         ),
         actions: [
-          ReportIssueButton(
-            page: 'TripViewScreen',
-            userIdProvider: widget.userIdProvider,
-          ),
-          // A single overflow menu for Export/Food showcase — kept out of
-          // separate always-visible IconButtons so the action row's icon
-          // count stays exactly what it was before Food showcase was added.
-          // One more standalone icon overflowed the AppBar at the 320px
-          // "small phone" breakpoint responsive_layout_test.dart checks;
-          // folding it in keeps the net count unchanged (Export PDF's own
-          // icon is replaced by this menu's icon, not added to).
-          PopupMenuButton<_TripViewMenuAction>(
+          AppActionMenu<_TripViewMenuAction>(
             key: const Key('trip-view-more-menu'),
-            icon: const Icon(Icons.more_vert),
+            tooltip: 'More trip actions',
             onSelected: (action) {
               switch (action) {
+                case _TripViewMenuAction.edit:
+                  _openEditTrip(trip);
                 case _TripViewMenuAction.exportPdf:
                   _exportTripPdf(trip, tripEntries);
                 case _TripViewMenuAction.foodShowcase:
@@ -502,95 +498,71 @@ class _TripViewScreenState extends ConsumerState<TripViewScreen>
                   _unpublishTrip(trip);
                 case _TripViewMenuAction.shareLink:
                   _shareTripLink(trip);
+                case _TripViewMenuAction.reportIssue:
+                  showReportIssueSheet(
+                    context,
+                    page: 'TripViewScreen',
+                    userIdProvider: widget.userIdProvider,
+                  );
+                case _TripViewMenuAction.moveToTrash:
+                  _confirmAndDeleteTrip(trip);
               }
             },
-            itemBuilder: (context) => [
-              const PopupMenuItem(
-                key: Key('trip-view-export-pdf-button'),
-                value: _TripViewMenuAction.exportPdf,
-                child: ListTile(
-                  leading: Icon(Icons.picture_as_pdf_outlined),
-                  title: Text('Export trip as PDF'),
-                ),
-              ),
-              const PopupMenuItem(
-                key: Key('trip-view-food-showcase-button'),
-                value: _TripViewMenuAction.foodShowcase,
-                child: ListTile(
-                  leading: Icon(Icons.restaurant_outlined),
-                  title: Text('Food showcase'),
-                ),
+            items: [
+              const AppActionMenuItem(
+                key: Key('trip-view-edit-button'),
+                value: _TripViewMenuAction.edit,
+                label: 'Edit trip',
+                icon: Icons.edit_outlined,
               ),
               if (trip.isPublic) ...[
-                const PopupMenuItem(
+                const AppActionMenuItem(
                   key: Key('trip-view-unpublish-button'),
                   value: _TripViewMenuAction.unpublish,
-                  child: ListTile(
-                    leading: Icon(Icons.public_off_outlined),
-                    title: Text('Unpublish'),
-                  ),
+                  label: 'Unpublish',
+                  icon: Icons.public_off_outlined,
                 ),
-                const PopupMenuItem(
+                const AppActionMenuItem(
                   key: Key('trip-view-share-link-button'),
                   value: _TripViewMenuAction.shareLink,
-                  child: ListTile(
-                    leading: Icon(Icons.share_outlined),
-                    title: Text('Share Link'),
-                  ),
+                  label: 'Share link',
+                  icon: Icons.share_outlined,
                 ),
               ] else
-                const PopupMenuItem(
+                const AppActionMenuItem(
                   key: Key('trip-view-publish-button'),
                   value: _TripViewMenuAction.publish,
-                  child: ListTile(
-                    leading: Icon(Icons.public_outlined),
-                    title: Text('Publish to Community'),
-                  ),
+                  label: 'Publish to Community',
+                  icon: Icons.public_outlined,
                 ),
-            ],
-          ),
-          if (_selectedTabIndex == 0) ...[
-            IconButton(
-              key: const Key('trip-view-search-toggle'),
-              icon: Icon(_searchVisible ? Icons.search_off : Icons.search),
-              onPressed: () {
-                setState(() => _searchVisible = !_searchVisible);
-                if (!_searchVisible) {
-                  ref
-                      .read(journalControllerProvider.notifier)
-                      .setFilter(filter.copyWith(query: ''));
-                }
-              },
-            ),
-            IconButton(
-              key: const Key('trip-view-filter-button'),
-              tooltip: 'Filter entries',
-              onPressed: () => _openEntryFilters(filter),
-              icon: Badge(
-                key: Key(
-                  'journal-filter-count-${(filter.mood == null ? 0 : 1) + (filter.startDate == null && filter.endDate == null ? 0 : 1)}',
-                ),
-                isLabelVisible:
-                    filter.mood != null ||
-                    filter.startDate != null ||
-                    filter.endDate != null,
-                label: Text(
-                  '${(filter.mood == null ? 0 : 1) + (filter.startDate == null && filter.endDate == null ? 0 : 1)}',
-                ),
-                child: const Icon(Icons.filter_alt_outlined),
+              const AppActionMenuItem(
+                key: Key('trip-view-export-pdf-button'),
+                value: _TripViewMenuAction.exportPdf,
+                label: 'Export trip as PDF',
+                icon: Icons.picture_as_pdf_outlined,
               ),
-            ),
-          ],
-          IconButton(
-            key: const Key('trip-view-edit-button'),
-            icon: const Icon(Icons.edit),
-            onPressed: () => _openEditTrip(trip),
-          ),
-          IconButton(
-            key: const Key('trip-view-delete-button'),
-            icon: const Icon(Icons.delete_outline),
-            tooltip: 'Move to Trash',
-            onPressed: () => _confirmAndDeleteTrip(trip),
+              const AppActionMenuItem(
+                key: Key('trip-view-food-showcase-button'),
+                value: _TripViewMenuAction.foodShowcase,
+                label: 'Food showcase',
+                icon: Icons.restaurant_outlined,
+              ),
+              const AppActionMenuItem(
+                key: Key('report-issue-button'),
+                value: _TripViewMenuAction.reportIssue,
+                label: 'Report an issue',
+                icon: Icons.report_problem_outlined,
+                startsSection: true,
+              ),
+              const AppActionMenuItem(
+                key: Key('trip-view-delete-button'),
+                value: _TripViewMenuAction.moveToTrash,
+                label: 'Move to Trash',
+                icon: Icons.delete_outline,
+                destructive: true,
+                startsSection: true,
+              ),
+            ],
           ),
         ],
       ),
@@ -599,6 +571,46 @@ class _TripViewScreenState extends ConsumerState<TripViewScreen>
         children: [
           Column(
             children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                child: AppContentToolbar(
+                  resultLabel:
+                      '${filteredTripEntries.length} ${filteredTripEntries.length == 1 ? 'entry' : 'entries'}',
+                  activeFilterLabel: activeFilterCount == 0
+                      ? null
+                      : '$activeFilterCount ${activeFilterCount == 1 ? 'filter' : 'filters'} active',
+                  children: [
+                    OutlinedButton.icon(
+                      key: const Key('trip-view-search-toggle'),
+                      icon: Icon(
+                        _searchVisible
+                            ? Icons.search_off_rounded
+                            : Icons.search_rounded,
+                      ),
+                      label: Text(_searchVisible ? 'Close search' : 'Search'),
+                      onPressed: () {
+                        setState(() => _searchVisible = !_searchVisible);
+                        if (!_searchVisible) {
+                          ref
+                              .read(journalControllerProvider.notifier)
+                              .setFilter(filter.copyWith(query: ''));
+                        }
+                      },
+                    ),
+                    OutlinedButton.icon(
+                      key: const Key('trip-view-filter-button'),
+                      onPressed: () => _openEntryFilters(filter),
+                      icon: Badge(
+                        key: Key('journal-filter-count-$activeFilterCount'),
+                        isLabelVisible: activeFilterCount > 0,
+                        label: Text('$activeFilterCount'),
+                        child: const Icon(Icons.filter_alt_outlined),
+                      ),
+                      label: const Text('Filters'),
+                    ),
+                  ],
+                ),
+              ),
               if (_searchVisible)
                 JournalSearchBar(
                   filter: filter,
@@ -1491,9 +1503,12 @@ class _NoMatchingEntriesState extends StatelessWidget {
 }
 
 enum _TripViewMenuAction {
+  edit,
   exportPdf,
   foodShowcase,
   publish,
   unpublish,
   shareLink,
+  reportIssue,
+  moveToTrash,
 }

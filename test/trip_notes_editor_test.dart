@@ -16,94 +16,130 @@ void main() {
     // Pump the trip view directly (Kyoto = trip-001) rather than the full
     // app: these tests are about the notes editor, not auth routing or
     // Home's trip list.
-    await tester.pumpWidget(const ProviderScope(child: MaterialApp(home: TripViewScreen(tripId: 'trip-001'))));
+    await tester.pumpWidget(
+      const ProviderScope(
+        child: MaterialApp(home: TripViewScreen(tripId: 'trip-001')),
+      ),
+    );
     await tester.pumpAndSettle();
   }
 
   group('notes inline editor (IMPLEMENTATION_PLAN_INLINE_PHOTO.md §1)', () {
-    testWidgets('tapping the notes card opens a notes-only editor, pre-filled', (tester) async {
-      await openKyotoTripView(tester);
+    testWidgets(
+      'tapping the notes card opens a notes-only editor, pre-filled',
+      (tester) async {
+        await openKyotoTripView(tester);
 
-      expect(find.text('Renew rail pass before boarding. Confirm ryokan check-in time.'), findsOneWidget);
-      await tester.tap(find.byKey(const Key('trip-notes-card')));
-      await tester.pumpAndSettle();
+        expect(
+          find.text(
+            'Renew rail pass before boarding. Confirm ryokan check-in time.',
+          ),
+          findsOneWidget,
+        );
+        await tester.tap(find.byKey(const Key('trip-notes-card')));
+        await tester.pumpAndSettle();
 
-      expect(find.text('Edit Notes'), findsOneWidget);
-      expect(
-        find.widgetWithText(TextField, 'Renew rail pass before boarding. Confirm ryokan check-in time.'),
-        findsOneWidget,
-      );
-      // Notes-only — no title/date/cover fields present.
-      expect(find.byKey(const Key('trip-title-field')), findsNothing);
-      expect(find.byKey(const Key('trip-start-date-field')), findsNothing);
-    });
+        expect(find.text('Edit Notes'), findsOneWidget);
+        expect(
+          find.widgetWithText(
+            TextField,
+            'Renew rail pass before boarding. Confirm ryokan check-in time.',
+          ),
+          findsOneWidget,
+        );
+        // Notes-only — no title/date/cover fields present.
+        expect(find.byKey(const Key('trip-title-field')), findsNothing);
+        expect(find.byKey(const Key('trip-start-date-field')), findsNothing);
+      },
+    );
 
-    testWidgets('editing and confirming Save persists the new notes and returns to trip view', (tester) async {
-      await openKyotoTripView(tester);
+    testWidgets(
+      'editing and confirming Save persists the new notes and returns to trip view',
+      (tester) async {
+        await openKyotoTripView(tester);
 
-      await tester.tap(find.byKey(const Key('trip-notes-card')));
-      await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('trip-notes-card')));
+        await tester.pumpAndSettle();
 
-      await tester.enterText(find.byKey(const Key('trip-notes-editor-field')), 'Updated packing list.');
-      await tester.tap(find.byKey(const Key('save-notes-button')));
-      await tester.pumpAndSettle();
+        await tester.enterText(
+          find.byKey(const Key('trip-notes-editor-field')),
+          'Updated packing list.',
+        );
+        await tester.tap(find.byKey(const Key('save-notes-button')));
+        await tester.pumpAndSettle();
 
-      expect(find.text('Save changes?'), findsOneWidget);
-      await tester.tap(find.byKey(const Key('notes-save-confirm-confirm')));
-      await tester.pumpAndSettle();
+        expect(find.text('Save changes?'), findsOneWidget);
+        await tester.tap(find.byKey(const Key('notes-save-confirm-confirm')));
+        await tester.pumpAndSettle();
 
-      // Back on Trip View, showing the updated notes.
-      expect(find.text('Edit Notes'), findsNothing);
-      expect(find.text('Updated packing list.'), findsOneWidget);
+        // Back on Trip View, showing the updated notes.
+        expect(find.text('Edit Notes'), findsNothing);
+        expect(find.text('Updated packing list.'), findsOneWidget);
 
-      final trip = await tripRepository.getTrip('trip-001');
-      expect(trip!.notes, 'Updated packing list.');
-    });
+        final trip = await tripRepository.getTrip('trip-001');
+        expect(trip!.notes, 'Updated packing list.');
+      },
+    );
 
-    testWidgets('saving through the notes editor changes ONLY notes — title, dates, and cover are untouched', (
+    testWidgets(
+      'saving through the notes editor changes ONLY notes — title, dates, and cover are untouched',
+      (tester) async {
+        final before = await tripRepository.getTrip('trip-001');
+        await openKyotoTripView(tester);
+
+        await tester.tap(find.byKey(const Key('trip-notes-card')));
+        await tester.pumpAndSettle();
+        await tester.enterText(
+          find.byKey(const Key('trip-notes-editor-field')),
+          'Only the notes should change.',
+        );
+        await tester.tap(find.byKey(const Key('save-notes-button')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('notes-save-confirm-confirm')));
+        await tester.pumpAndSettle();
+
+        final after = await tripRepository.getTrip('trip-001');
+        expect(after!.notes, 'Only the notes should change.');
+        expect(after.title, before!.title);
+        expect(after.coverPhotoPath, before.coverPhotoPath);
+        expect(after.startDate, before.startDate);
+        expect(after.endDate, before.endDate);
+        expect(after.id, before.id);
+      },
+    );
+
+    testWidgets(
+      'Cancel on the save dialog keeps you in the editor with input intact, unsaved',
+      (tester) async {
+        await openKyotoTripView(tester);
+
+        await tester.tap(find.byKey(const Key('trip-notes-card')));
+        await tester.pumpAndSettle();
+
+        await tester.enterText(
+          find.byKey(const Key('trip-notes-editor-field')),
+          'Not saved yet.',
+        );
+        await tester.tap(find.byKey(const Key('save-notes-button')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('notes-save-confirm-cancel')));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Save changes?'), findsNothing);
+        expect(find.text('Edit Notes'), findsOneWidget);
+        expect(
+          find.widgetWithText(TextField, 'Not saved yet.'),
+          findsOneWidget,
+        );
+
+        final trip = await tripRepository.getTrip('trip-001');
+        expect(trip!.notes, isNot('Not saved yet.'));
+      },
+    );
+
+    testWidgets('an untouched editor leaves on back with no discard prompt', (
       tester,
     ) async {
-      final before = await tripRepository.getTrip('trip-001');
-      await openKyotoTripView(tester);
-
-      await tester.tap(find.byKey(const Key('trip-notes-card')));
-      await tester.pumpAndSettle();
-      await tester.enterText(find.byKey(const Key('trip-notes-editor-field')), 'Only the notes should change.');
-      await tester.tap(find.byKey(const Key('save-notes-button')));
-      await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const Key('notes-save-confirm-confirm')));
-      await tester.pumpAndSettle();
-
-      final after = await tripRepository.getTrip('trip-001');
-      expect(after!.notes, 'Only the notes should change.');
-      expect(after.title, before!.title);
-      expect(after.coverPhotoPath, before.coverPhotoPath);
-      expect(after.startDate, before.startDate);
-      expect(after.endDate, before.endDate);
-      expect(after.id, before.id);
-    });
-
-    testWidgets('Cancel on the save dialog keeps you in the editor with input intact, unsaved', (tester) async {
-      await openKyotoTripView(tester);
-
-      await tester.tap(find.byKey(const Key('trip-notes-card')));
-      await tester.pumpAndSettle();
-
-      await tester.enterText(find.byKey(const Key('trip-notes-editor-field')), 'Not saved yet.');
-      await tester.tap(find.byKey(const Key('save-notes-button')));
-      await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const Key('notes-save-confirm-cancel')));
-      await tester.pumpAndSettle();
-
-      expect(find.text('Save changes?'), findsNothing);
-      expect(find.text('Edit Notes'), findsOneWidget);
-      expect(find.widgetWithText(TextField, 'Not saved yet.'), findsOneWidget);
-
-      final trip = await tripRepository.getTrip('trip-001');
-      expect(trip!.notes, isNot('Not saved yet.'));
-    });
-
-    testWidgets('an untouched editor leaves on back with no discard prompt', (tester) async {
       await openKyotoTripView(tester);
 
       await tester.tap(find.byKey(const Key('trip-notes-card')));
@@ -116,70 +152,96 @@ void main() {
       expect(find.text('Edit Notes'), findsNothing);
     });
 
-    testWidgets('editing then pressing back prompts "Discard changes?"; Discard leaves unsaved', (tester) async {
+    testWidgets(
+      'editing then pressing back prompts "Discard changes?"; Discard leaves unsaved',
+      (tester) async {
+        await openKyotoTripView(tester);
+
+        await tester.tap(find.byKey(const Key('trip-notes-card')));
+        await tester.pumpAndSettle();
+
+        await tester.enterText(
+          find.byKey(const Key('trip-notes-editor-field')),
+          'Draft, never saved.',
+        );
+        await tester.pump();
+
+        await tester.pageBack();
+        await tester.pumpAndSettle();
+        expect(find.text('Discard changes?'), findsOneWidget);
+
+        await tester.tap(find.byKey(const Key('notes-discard-confirm')));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Edit Notes'), findsNothing);
+        final trip = await tripRepository.getTrip('trip-001');
+        expect(trip!.notes, isNot('Draft, never saved.'));
+      },
+    );
+
+    testWidgets(
+      '"Keep editing" dismisses the discard prompt and preserves the draft',
+      (tester) async {
+        await openKyotoTripView(tester);
+
+        await tester.tap(find.byKey(const Key('trip-notes-card')));
+        await tester.pumpAndSettle();
+
+        await tester.enterText(
+          find.byKey(const Key('trip-notes-editor-field')),
+          'Keep this draft.',
+        );
+        await tester.pump();
+
+        await tester.pageBack();
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('notes-discard-keep-editing')));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Discard changes?'), findsNothing);
+        expect(find.text('Edit Notes'), findsOneWidget);
+        expect(
+          find.widgetWithText(TextField, 'Keep this draft.'),
+          findsOneWidget,
+        );
+      },
+    );
+
+    testWidgets(
+      'a trip with no notes shows an inviting placeholder, still tappable to add notes',
+      (tester) async {
+        tester.view.physicalSize = const Size(1200, 2600);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+
+        // Pump the trip view directly (Osaka = trip-002) rather than the full
+        // app: this test is about the notes placeholder, not auth routing or
+        // Home's trip list.
+        await tester.pumpWidget(
+          const ProviderScope(
+            child: MaterialApp(home: TripViewScreen(tripId: 'trip-002')),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.text('No notes yet — tap to add.'), findsOneWidget);
+
+        await tester.tap(find.byKey(const Key('trip-notes-card')));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Edit Notes'), findsOneWidget);
+        expect(find.widgetWithText(TextField, ''), findsOneWidget);
+      },
+    );
+
+    testWidgets('the Trip actions menu opens the full trip-edit form', (
+      tester,
+    ) async {
       await openKyotoTripView(tester);
 
-      await tester.tap(find.byKey(const Key('trip-notes-card')));
+      await tester.tap(find.byKey(const Key('trip-view-more-menu')));
       await tester.pumpAndSettle();
-
-      await tester.enterText(find.byKey(const Key('trip-notes-editor-field')), 'Draft, never saved.');
-      await tester.pump();
-
-      await tester.pageBack();
-      await tester.pumpAndSettle();
-      expect(find.text('Discard changes?'), findsOneWidget);
-
-      await tester.tap(find.byKey(const Key('notes-discard-confirm')));
-      await tester.pumpAndSettle();
-
-      expect(find.text('Edit Notes'), findsNothing);
-      final trip = await tripRepository.getTrip('trip-001');
-      expect(trip!.notes, isNot('Draft, never saved.'));
-    });
-
-    testWidgets('"Keep editing" dismisses the discard prompt and preserves the draft', (tester) async {
-      await openKyotoTripView(tester);
-
-      await tester.tap(find.byKey(const Key('trip-notes-card')));
-      await tester.pumpAndSettle();
-
-      await tester.enterText(find.byKey(const Key('trip-notes-editor-field')), 'Keep this draft.');
-      await tester.pump();
-
-      await tester.pageBack();
-      await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const Key('notes-discard-keep-editing')));
-      await tester.pumpAndSettle();
-
-      expect(find.text('Discard changes?'), findsNothing);
-      expect(find.text('Edit Notes'), findsOneWidget);
-      expect(find.widgetWithText(TextField, 'Keep this draft.'), findsOneWidget);
-    });
-
-    testWidgets('a trip with no notes shows an inviting placeholder, still tappable to add notes', (tester) async {
-      tester.view.physicalSize = const Size(1200, 2600);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.resetPhysicalSize);
-      addTearDown(tester.view.resetDevicePixelRatio);
-
-      // Pump the trip view directly (Osaka = trip-002) rather than the full
-      // app: this test is about the notes placeholder, not auth routing or
-      // Home's trip list.
-      await tester.pumpWidget(const ProviderScope(child: MaterialApp(home: TripViewScreen(tripId: 'trip-002'))));
-      await tester.pumpAndSettle();
-
-      expect(find.text('No notes yet — tap to add.'), findsOneWidget);
-
-      await tester.tap(find.byKey(const Key('trip-notes-card')));
-      await tester.pumpAndSettle();
-
-      expect(find.text('Edit Notes'), findsOneWidget);
-      expect(find.widgetWithText(TextField, ''), findsOneWidget);
-    });
-
-    testWidgets('the AppBar edit icon still opens the full trip-edit form, unaffected', (tester) async {
-      await openKyotoTripView(tester);
-
       await tester.tap(find.byKey(const Key('trip-view-edit-button')));
       await tester.pumpAndSettle();
 

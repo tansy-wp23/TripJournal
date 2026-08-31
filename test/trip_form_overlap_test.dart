@@ -30,17 +30,29 @@ void main() {
       await tester.tap(find.text('Create Trip'));
       await tester.pumpAndSettle();
 
-      await tester.enterText(find.byKey(const Key('trip-title-field')), 'Conflicting Trip');
-      await tester.enterText(find.byKey(const Key('trip-destination-field')), 'Test destination');
+      await tester.enterText(
+        find.byKey(const Key('trip-title-field')),
+        'Conflicting Trip',
+      );
+      await tester.enterText(
+        find.byKey(const Key('trip-destination-field')),
+        'Test destination',
+      );
       // Dates are left at their default (today) — already inside trip-001's
       // (Kyoto) active range, so this must be rejected without needing to
       // drive the native date picker.
       await tester.tap(find.byKey(const Key('save-trip-button')));
       await tester.pumpAndSettle();
 
-      expect(find.textContaining('You already have a trip during these dates'), findsOneWidget);
+      expect(
+        find.textContaining('You already have a trip during these dates'),
+        findsOneWidget,
+      );
       expect(find.textContaining('Kyoto Trip'), findsOneWidget);
-      expect(find.text('New trip'), findsOneWidget); // still on the form — nothing was saved
+      expect(
+        find.text('New trip'),
+        findsOneWidget,
+      ); // still on the form — nothing was saved
     },
   );
 
@@ -56,9 +68,15 @@ void main() {
       // Pump the trip view directly (Osaka = trip-002) rather than the full
       // app: this test is about overlap validation on save, not auth
       // routing or Home's trip list.
-      await tester.pumpWidget(const ProviderScope(child: MaterialApp(home: TripViewScreen(tripId: 'trip-002'))));
+      await tester.pumpWidget(
+        const ProviderScope(
+          child: MaterialApp(home: TripViewScreen(tripId: 'trip-002')),
+        ),
+      );
       await tester.pumpAndSettle();
 
+      await tester.tap(find.byKey(const Key('trip-view-more-menu')));
+      await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('trip-view-edit-button')));
       await tester.pumpAndSettle();
 
@@ -69,7 +87,10 @@ void main() {
       // Saved and popped back to Trip View — no overlap error anywhere.
       // "Osaka Trip" appears twice on this screen (AppBar title + header).
       expect(find.text('Edit trip'), findsNothing);
-      expect(find.textContaining('You already have a trip during these dates'), findsNothing);
+      expect(
+        find.textContaining('You already have a trip during these dates'),
+        findsNothing,
+      );
       expect(find.text('Osaka Trip'), findsNWidgets(2));
     },
   );

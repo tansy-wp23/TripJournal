@@ -9,6 +9,25 @@ import '../../../data/issue_report_repository.dart';
 import '../../../data/trip_repository_locator.dart';
 import '../../../validation/photo_validation.dart';
 
+Future<void> showReportIssueSheet(
+  BuildContext context, {
+  required String page,
+  CurrentUserIdProvider? userIdProvider,
+  IssueReportRepository? issueReportRepository,
+}) {
+  return showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    isDismissible: false,
+    enableDrag: false,
+    builder: (_) => _ReportIssueForm(
+      page: page,
+      userIdProvider: userIdProvider,
+      issueReportRepository: issueReportRepository,
+    ),
+  );
+}
+
 /// Opens a form for filing an [IssueReport] — PB-06 (Sprint 2, scope added
 /// per Open Decision 4). Placed on a small, representative set of
 /// non-admin screens (`HomeScreen`, `TripViewScreen`), per the plan's
@@ -43,22 +62,11 @@ class ReportIssueButton extends StatelessWidget {
       key: const Key('report-issue-button'),
       tooltip: 'Report an issue',
       icon: const Icon(Icons.report_problem_outlined),
-      onPressed: () => showModalBottomSheet<void>(
-        context: context,
-        isScrollControlled: true,
-        // Dismissal only through paths this form controls (Cancel, Submit,
-        // or the system back gesture, all funneled through the same
-        // discard-confirmation as CreateEditEntryScreen's guard) — the
-        // default scrim-tap-to-dismiss and drag-to-dismiss both call
-        // Navigator.pop directly, which would silently drop a filled-out
-        // report without ever consulting that guard.
-        isDismissible: false,
-        enableDrag: false,
-        builder: (_) => _ReportIssueForm(
-          page: page,
-          userIdProvider: userIdProvider,
-          issueReportRepository: issueReportRepository,
-        ),
+      onPressed: () => showReportIssueSheet(
+        context,
+        page: page,
+        userIdProvider: userIdProvider,
+        issueReportRepository: issueReportRepository,
       ),
     );
   }
@@ -230,12 +238,13 @@ class _ReportIssueFormState extends State<_ReportIssueForm> {
       // file's local device path is stored directly — there's no upload
       // step yet in mock mode (unlike `ProfileAvatarStorage`/
       // `TripCoverStorage`, which don't exist for issue-report photos).
-      await (widget.issueReportRepository ?? issueReportRepository).submitReport(
-        userId: userId,
-        page: widget.page,
-        description: description,
-        screenshotUrl: _pickedPhoto?.path,
-      );
+      await (widget.issueReportRepository ?? issueReportRepository)
+          .submitReport(
+            userId: userId,
+            page: widget.page,
+            description: description,
+            screenshotUrl: _pickedPhoto?.path,
+          );
       if (!mounted) return;
       Navigator.pop(context);
       ScaffoldMessenger.of(context).showSnackBar(
