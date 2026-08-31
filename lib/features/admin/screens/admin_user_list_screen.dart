@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../models/profile.dart';
+import '../../../widgets/app_content_toolbar.dart';
 import '../controller/admin_user_management_controller.dart';
 import 'admin_user_detail_screen.dart';
 
@@ -32,7 +33,8 @@ class AdminUserListScreen extends ConsumerStatefulWidget {
   final Widget Function(String userId)? userDetailScreenBuilder;
 
   @override
-  ConsumerState<AdminUserListScreen> createState() => _AdminUserListScreenState();
+  ConsumerState<AdminUserListScreen> createState() =>
+      _AdminUserListScreenState();
 }
 
 class _AdminUserListScreenState extends ConsumerState<AdminUserListScreen> {
@@ -49,7 +51,9 @@ class _AdminUserListScreenState extends ConsumerState<AdminUserListScreen> {
     if (_loadInProgress) return;
     _loadInProgress = true;
     try {
-      final controller = ref.read(adminUserManagementControllerProvider.notifier);
+      final controller = ref.read(
+        adminUserManagementControllerProvider.notifier,
+      );
       if (widget.initialStatusFilter != null ||
           widget.initialRoleFilter != null ||
           widget.initialNewThisWeek) {
@@ -83,47 +87,61 @@ class _AdminUserListScreenState extends ConsumerState<AdminUserListScreen> {
           children: [
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              child: TextField(
-                key: const Key('admin-user-search-field'),
-                controller: _textController,
-                decoration: InputDecoration(
-                  hintText: 'Search by name or email...',
-                  prefixIcon: const Icon(Icons.search),
-                  suffixIcon: _textController.text.isEmpty
-                      ? null
-                      : IconButton(
-                          icon: const Icon(Icons.clear),
-                          onPressed: () {
-                            _textController.clear();
-                            ref
-                                .read(adminUserManagementControllerProvider.notifier)
-                                .clearQuery();
-                            setState(() {}); // refresh the suffix icon
-                          },
-                        ),
-                  isDense: true,
-                  border: const OutlineInputBorder(),
-                ),
-                onChanged: (value) {
-                  ref.read(adminUserManagementControllerProvider.notifier).setQuery(value);
-                  setState(() {}); // refresh the suffix icon
-                },
+              child: AppContentToolbar(
+                resultLabel: '${management.results.length} users found',
+                activeFilterLabel: management.hasActiveFilter
+                    ? 'Directory filter active'
+                    : null,
+                children: [
+                  SizedBox(
+                    width: double.infinity,
+                    child: TextField(
+                      key: const Key('admin-user-search-field'),
+                      controller: _textController,
+                      decoration: InputDecoration(
+                        hintText: 'Search by name or email...',
+                        prefixIcon: const Icon(Icons.search),
+                        suffixIcon: _textController.text.isEmpty
+                            ? null
+                            : IconButton(
+                                tooltip: 'Clear search',
+                                icon: const Icon(Icons.clear),
+                                onPressed: () {
+                                  _textController.clear();
+                                  ref
+                                      .read(
+                                        adminUserManagementControllerProvider
+                                            .notifier,
+                                      )
+                                      .clearQuery();
+                                  setState(() {});
+                                },
+                              ),
+                        isDense: true,
+                        border: const OutlineInputBorder(),
+                      ),
+                      onChanged: (value) {
+                        ref
+                            .read(
+                              adminUserManagementControllerProvider.notifier,
+                            )
+                            .setQuery(value);
+                        setState(() {});
+                      },
+                    ),
+                  ),
+                  if (management.hasActiveFilter)
+                    Chip(
+                      key: const Key('admin-user-filter-chip'),
+                      label: Text('Filtered: ${widget.title}'),
+                      deleteIcon: const Icon(Icons.close),
+                      onDeleted: () => ref
+                          .read(adminUserManagementControllerProvider.notifier)
+                          .clearFilter(),
+                    ),
+                ],
               ),
             ),
-            if (management.hasActiveFilter)
-              Padding(
-                padding: const EdgeInsets.only(left: 16, right: 16, bottom: 8),
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: Chip(
-                    key: const Key('admin-user-filter-chip'),
-                    label: Text('Filtered: ${widget.title}'),
-                    deleteIcon: const Icon(Icons.close),
-                    onDeleted: () =>
-                        ref.read(adminUserManagementControllerProvider.notifier).clearFilter(),
-                  ),
-                ),
-              ),
             Expanded(child: _buildBody(context, management)),
           ],
         ),
@@ -131,8 +149,13 @@ class _AdminUserListScreenState extends ConsumerState<AdminUserListScreen> {
     );
   }
 
-  Widget _buildBody(BuildContext context, AdminUserManagementController management) {
-    if (management.loading && management.results.isEmpty && management.error == null) {
+  Widget _buildBody(
+    BuildContext context,
+    AdminUserManagementController management,
+  ) {
+    if (management.loading &&
+        management.results.isEmpty &&
+        management.error == null) {
       return const Center(child: CircularProgressIndicator());
     }
 
@@ -205,14 +228,22 @@ class _UserResultTile extends StatelessWidget {
   Widget build(BuildContext context) {
     return ListTile(
       leading: CircleAvatar(
-        backgroundImage: profile.avatarUrl != null ? NetworkImage(profile.avatarUrl!) : null,
+        backgroundImage: profile.avatarUrl != null
+            ? NetworkImage(profile.avatarUrl!)
+            : null,
         child: profile.avatarUrl == null
-            ? Text(profile.displayName.isNotEmpty ? profile.displayName[0].toUpperCase() : '?')
+            ? Text(
+                profile.displayName.isNotEmpty
+                    ? profile.displayName[0].toUpperCase()
+                    : '?',
+              )
             : null,
       ),
       title: Text(profile.displayName),
       subtitle: Text('${profile.email} · ${_statusLabel(profile.status)}'),
-      trailing: profile.role == UserRole.admin ? const Icon(Icons.admin_panel_settings) : null,
+      trailing: profile.role == UserRole.admin
+          ? const Icon(Icons.admin_panel_settings)
+          : null,
       onTap: () => Navigator.of(context).push(
         MaterialPageRoute(
           builder: (_) => userDetailScreenBuilder != null

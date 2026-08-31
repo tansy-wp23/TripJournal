@@ -23,6 +23,8 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byKey(const Key('admin-issue-list-results')), findsOneWidget);
+      expect(find.textContaining('reports found'), findsOneWidget);
+      expect(find.byType(Card), findsWidgets);
       expect(
         find.text('Cover photo fails to upload when offline.'),
         findsOneWidget,
@@ -33,7 +35,9 @@ void main() {
       );
     });
 
-    testWidgets('tapping a report opens IssueReportDetailScreen', (tester) async {
+    testWidgets('tapping a report opens IssueReportDetailScreen', (
+      tester,
+    ) async {
       final harness = AdminTestHarness();
       addTearDown(harness.dispose);
 
@@ -57,8 +61,9 @@ void main() {
       expect(find.byType(IssueReportDetailScreen), findsOneWidget);
     });
 
-    testWidgets('tapping the Resolved chip narrows to resolved reports only',
-        (tester) async {
+    testWidgets('tapping the Resolved chip narrows to resolved reports only', (
+      tester,
+    ) async {
       final harness = AdminTestHarness();
       addTearDown(harness.dispose);
 
@@ -79,8 +84,9 @@ void main() {
       );
     });
 
-    testWidgets('tapping All after a filter restores the full list',
-        (tester) async {
+    testWidgets('tapping All after a filter restores the full list', (
+      tester,
+    ) async {
       final harness = AdminTestHarness();
       addTearDown(harness.dispose);
 
@@ -103,8 +109,9 @@ void main() {
       );
     });
 
-    testWidgets('no reports at all shows the empty state, not a blank list',
-        (tester) async {
+    testWidgets('no reports at all shows the empty state, not a blank list', (
+      tester,
+    ) async {
       final controller = IssueReportManagementController(
         MockIssueReportRepository(
           auditLogRepository: MockAdminAuditLogRepository(),
@@ -115,7 +122,9 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
-            issueReportManagementControllerProvider.overrideWith((ref) => controller),
+            issueReportManagementControllerProvider.overrideWith(
+              (ref) => controller,
+            ),
           ],
           child: const MaterialApp(home: AdminIssueReportListScreen()),
         ),
@@ -123,7 +132,10 @@ void main() {
       await tester.pump();
       await tester.pumpAndSettle();
 
-      expect(find.byKey(const Key('admin-issue-list-empty-state')), findsOneWidget);
+      expect(
+        find.byKey(const Key('admin-issue-list-empty-state')),
+        findsOneWidget,
+      );
       expect(find.byKey(const Key('admin-issue-list-results')), findsNothing);
     });
 
@@ -149,7 +161,9 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
-            issueReportManagementControllerProvider.overrideWith((ref) => controller),
+            issueReportManagementControllerProvider.overrideWith(
+              (ref) => controller,
+            ),
           ],
           child: const MaterialApp(home: AdminIssueReportListScreen()),
         ),
@@ -163,14 +177,19 @@ void main() {
       expect(find.text('No resolved reports.'), findsOneWidget);
     });
 
-    testWidgets('a failing repository shows an error with a retry button',
-        (tester) async {
-      final controller = IssueReportManagementController(_FailingIssueReportRepository());
+    testWidgets('a failing repository shows an error with a retry button', (
+      tester,
+    ) async {
+      final controller = IssueReportManagementController(
+        _FailingIssueReportRepository(),
+      );
 
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
-            issueReportManagementControllerProvider.overrideWith((ref) => controller),
+            issueReportManagementControllerProvider.overrideWith(
+              (ref) => controller,
+            ),
           ],
           child: const MaterialApp(home: AdminIssueReportListScreen()),
         ),
@@ -193,7 +212,9 @@ class _FailingIssueReportRepository implements IssueReportRepository {
   }) async {}
 
   @override
-  Future<List<IssueReport>> getAllReports({IssueReportStatus? statusFilter}) async {
+  Future<List<IssueReport>> getAllReports({
+    IssueReportStatus? statusFilter,
+  }) async {
     throw Exception('mock backend unreachable');
   }
 

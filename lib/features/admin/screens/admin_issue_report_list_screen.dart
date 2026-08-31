@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../models/issue_report.dart';
+import '../../../widgets/app_content_toolbar.dart';
 import '../admin_format_utils.dart';
 import '../controller/issue_report_management_controller.dart';
 import 'issue_report_detail_screen.dart';
@@ -18,10 +19,12 @@ class AdminIssueReportListScreen extends ConsumerStatefulWidget {
   final Widget Function(String reportId)? detailScreenBuilder;
 
   @override
-  ConsumerState<AdminIssueReportListScreen> createState() => _AdminIssueReportListScreenState();
+  ConsumerState<AdminIssueReportListScreen> createState() =>
+      _AdminIssueReportListScreenState();
 }
 
-class _AdminIssueReportListScreenState extends ConsumerState<AdminIssueReportListScreen> {
+class _AdminIssueReportListScreenState
+    extends ConsumerState<AdminIssueReportListScreen> {
   bool _loadInProgress = false;
 
   @override
@@ -51,29 +54,44 @@ class _AdminIssueReportListScreenState extends ConsumerState<AdminIssueReportLis
           children: [
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: Wrap(
-                  key: const Key('admin-issue-status-filters'),
-                  spacing: 8,
-                  children: [
-                    _StatusFilterChip(
-                      label: 'All',
-                      selected: management.statusFilter == null,
-                      onSelected: () => ref
-                          .read(issueReportManagementControllerProvider.notifier)
-                          .setStatusFilter(null),
+              child: AppContentToolbar(
+                resultLabel: '${management.reports.length} reports found',
+                activeFilterLabel: management.statusFilter == null
+                    ? null
+                    : 'Status filter active',
+                children: [
+                  SizedBox(
+                    width: double.infinity,
+                    child: Wrap(
+                      key: const Key('admin-issue-status-filters'),
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        _StatusFilterChip(
+                          label: 'All',
+                          selected: management.statusFilter == null,
+                          onSelected: () => ref
+                              .read(
+                                issueReportManagementControllerProvider
+                                    .notifier,
+                              )
+                              .setStatusFilter(null),
+                        ),
+                        for (final status in IssueReportStatus.values)
+                          _StatusFilterChip(
+                            label: issueReportStatusLabel(status),
+                            selected: management.statusFilter == status,
+                            onSelected: () => ref
+                                .read(
+                                  issueReportManagementControllerProvider
+                                      .notifier,
+                                )
+                                .setStatusFilter(status),
+                          ),
+                      ],
                     ),
-                    for (final status in IssueReportStatus.values)
-                      _StatusFilterChip(
-                        label: issueReportStatusLabel(status),
-                        selected: management.statusFilter == status,
-                        onSelected: () => ref
-                            .read(issueReportManagementControllerProvider.notifier)
-                            .setStatusFilter(status),
-                      ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             ),
             Expanded(child: _buildBody(context, management)),
@@ -83,8 +101,13 @@ class _AdminIssueReportListScreenState extends ConsumerState<AdminIssueReportLis
     );
   }
 
-  Widget _buildBody(BuildContext context, IssueReportManagementController management) {
-    if (management.loading && management.reports.isEmpty && management.error == null) {
+  Widget _buildBody(
+    BuildContext context,
+    IssueReportManagementController management,
+  ) {
+    if (management.loading &&
+        management.reports.isEmpty &&
+        management.error == null) {
       return const Center(child: CircularProgressIndicator());
     }
 
@@ -169,13 +192,18 @@ class _ReportTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListTile(
-      leading: Icon(_statusIcon(report.status), color: _statusColor(context, report.status)),
+      leading: Icon(
+        _statusIcon(report.status),
+        color: _statusColor(context, report.status),
+      ),
       title: Text(
         report.description,
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
       ),
-      subtitle: Text('${report.page} · ${formatRelativeTime(report.createdAt)}'),
+      subtitle: Text(
+        '${report.page} · ${formatRelativeTime(report.createdAt)}',
+      ),
       trailing: Chip(
         label: Text(issueReportStatusLabel(report.status)),
         visualDensity: VisualDensity.compact,

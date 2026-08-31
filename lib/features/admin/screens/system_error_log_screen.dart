@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../models/system_error_log.dart';
+import '../../../widgets/app_content_toolbar.dart';
 import '../admin_format_utils.dart';
 import '../controller/system_error_log_controller.dart';
 
@@ -15,7 +16,8 @@ class SystemErrorLogScreen extends ConsumerStatefulWidget {
   const SystemErrorLogScreen({super.key});
 
   @override
-  ConsumerState<SystemErrorLogScreen> createState() => _SystemErrorLogScreenState();
+  ConsumerState<SystemErrorLogScreen> createState() =>
+      _SystemErrorLogScreenState();
 }
 
 class _SystemErrorLogScreenState extends ConsumerState<SystemErrorLogScreen> {
@@ -42,18 +44,7 @@ class _SystemErrorLogScreenState extends ConsumerState<SystemErrorLogScreen> {
     final controller = ref.watch(systemErrorLogControllerProvider);
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('System Error Log'),
-        actions: [
-          if (controller.hasActiveFilter)
-            IconButton(
-              key: const Key('admin-system-error-clear-filters'),
-              tooltip: 'Clear filters',
-              icon: const Icon(Icons.filter_alt_off),
-              onPressed: () => ref.read(systemErrorLogControllerProvider.notifier).clearFilters(),
-            ),
-        ],
-      ),
+      appBar: AppBar(title: const Text('System Error Log'), actions: const []),
       body: SafeArea(
         child: Column(
           children: [
@@ -66,7 +57,9 @@ class _SystemErrorLogScreenState extends ConsumerState<SystemErrorLogScreen> {
   }
 
   Widget _buildBody(BuildContext context, SystemErrorLogController controller) {
-    if (controller.loading && controller.entries.isEmpty && controller.error == null) {
+    if (controller.loading &&
+        controller.entries.isEmpty &&
+        controller.error == null) {
       return const Center(child: CircularProgressIndicator());
     }
 
@@ -114,7 +107,8 @@ class _SystemErrorLogScreenState extends ConsumerState<SystemErrorLogScreen> {
       key: const Key('admin-system-error-results'),
       padding: const EdgeInsets.symmetric(vertical: 8),
       itemCount: controller.entries.length,
-      itemBuilder: (context, index) => _SystemErrorLogTile(entry: controller.entries[index]),
+      itemBuilder: (context, index) =>
+          _SystemErrorLogTile(entry: controller.entries[index]),
     );
   }
 }
@@ -131,30 +125,34 @@ class _FilterBar extends ConsumerWidget {
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: AppContentToolbar(
+        resultLabel: '${controller.entries.length} errors',
+        activeFilterLabel: controller.hasActiveFilter ? 'Filters active' : null,
         children: [
-          Wrap(
-            key: const Key('admin-system-error-severity-filters'),
-            spacing: 8,
-            children: [
-              ChoiceChip(
-                label: const Text('All severities'),
-                selected: controller.severityFilter == null,
-                onSelected: (_) => notifier.setSeverityFilter(null),
-              ),
-              for (final severity in ErrorSeverity.values)
+          SizedBox(
+            width: double.infinity,
+            child: Wrap(
+              key: const Key('admin-system-error-severity-filters'),
+              spacing: 8,
+              runSpacing: 8,
+              children: [
                 ChoiceChip(
-                  key: Key('admin-system-error-severity-${severity.name}'),
-                  avatar: Icon(_severityIcon(severity), size: 18),
-                  label: Text(errorSeverityLabel(severity)),
-                  selected: controller.severityFilter == severity,
-                  onSelected: (_) => notifier.setSeverityFilter(severity),
+                  label: const Text('All severities'),
+                  selected: controller.severityFilter == null,
+                  onSelected: (_) => notifier.setSeverityFilter(null),
                 ),
-            ],
+                for (final severity in ErrorSeverity.values)
+                  ChoiceChip(
+                    key: Key('admin-system-error-severity-${severity.name}'),
+                    avatar: Icon(_severityIcon(severity), size: 18),
+                    label: Text(errorSeverityLabel(severity)),
+                    selected: controller.severityFilter == severity,
+                    onSelected: (_) => notifier.setSeverityFilter(severity),
+                  ),
+              ],
+            ),
           ),
           if (availableModules.isNotEmpty) ...[
-            const SizedBox(height: 8),
             SizedBox(
               width: 200,
               child: DropdownButtonFormField<String?>(
@@ -167,7 +165,10 @@ class _FilterBar extends ConsumerWidget {
                   border: OutlineInputBorder(),
                 ),
                 items: [
-                  const DropdownMenuItem(value: null, child: Text('All modules')),
+                  const DropdownMenuItem(
+                    value: null,
+                    child: Text('All modules'),
+                  ),
                   for (final module in availableModules)
                     DropdownMenuItem(value: module, child: Text(module)),
                 ],
@@ -175,6 +176,13 @@ class _FilterBar extends ConsumerWidget {
               ),
             ),
           ],
+          if (controller.hasActiveFilter)
+            OutlinedButton.icon(
+              key: const Key('admin-system-error-clear-filters'),
+              icon: const Icon(Icons.filter_alt_off_rounded),
+              label: const Text('Clear filters'),
+              onPressed: notifier.clearFilters,
+            ),
         ],
       ),
     );
@@ -192,7 +200,10 @@ class _SystemErrorLogTile extends StatelessWidget {
       builder: (context) => AlertDialog(
         title: Row(
           children: [
-            Icon(_severityIcon(entry.severity), color: _severityColor(context, entry.severity)),
+            Icon(
+              _severityIcon(entry.severity),
+              color: _severityColor(context, entry.severity),
+            ),
             const SizedBox(width: 8),
             Text(errorSeverityLabel(entry.severity)),
           ],
@@ -205,11 +216,16 @@ class _SystemErrorLogTile extends StatelessWidget {
               Text(entry.message),
               if (entry.stackTrace != null) ...[
                 const SizedBox(height: 12),
-                Text('Stack trace', style: Theme.of(context).textTheme.labelLarge),
+                Text(
+                  'Stack trace',
+                  style: Theme.of(context).textTheme.labelLarge,
+                ),
                 const SizedBox(height: 4),
                 SelectableText(
                   entry.stackTrace!,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(fontFamily: 'monospace'),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodySmall?.copyWith(fontFamily: 'monospace'),
                 ),
               ],
             ],
@@ -232,10 +248,21 @@ class _SystemErrorLogTile extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       child: ListTile(
         key: Key('admin-system-error-${entry.logId}'),
-        leading: Icon(_severityIcon(entry.severity), color: _severityColor(context, entry.severity)),
-        title: Text(entry.message, maxLines: 2, overflow: TextOverflow.ellipsis),
-        subtitle: Text('${entry.module} · ${formatRelativeTime(entry.createdAt)}'),
-        trailing: entry.stackTrace != null ? const Icon(Icons.chevron_right) : null,
+        leading: Icon(
+          _severityIcon(entry.severity),
+          color: _severityColor(context, entry.severity),
+        ),
+        title: Text(
+          entry.message,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+        ),
+        subtitle: Text(
+          '${entry.module} · ${formatRelativeTime(entry.createdAt)}',
+        ),
+        trailing: entry.stackTrace != null
+            ? const Icon(Icons.chevron_right)
+            : null,
         onTap: entry.stackTrace != null ? () => _showDetail(context) : null,
       ),
     );

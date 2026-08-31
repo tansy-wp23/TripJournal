@@ -27,11 +27,16 @@ void main() {
   // into AdminUserDetailScreen/IssueReportDetailScreen can hand those
   // pushed screens the exact same seeded data via
   // AuditLogScreen's builder-override params.
-  final userDirectoryRepository = MockAdminUserDirectoryRepository(MockAdminUserStore());
-  final issueReportRepository =
-      MockIssueReportRepository(auditLogRepository: MockAdminAuditLogRepository());
+  final userDirectoryRepository = MockAdminUserDirectoryRepository(
+    MockAdminUserStore(),
+  );
+  final issueReportRepository = MockIssueReportRepository(
+    auditLogRepository: MockAdminAuditLogRepository(),
+  );
 
-  AuditLogController buildController(AdminAuditLogRepository auditLogRepository) {
+  AuditLogController buildController(
+    AdminAuditLogRepository auditLogRepository,
+  ) {
     return AuditLogController(
       auditLogRepository,
       userDirectoryRepository,
@@ -40,31 +45,37 @@ void main() {
   }
 
   Future<void> seedThreeEntries() async {
-    await repository.recordAction(AdminAuditLog(
-      logId: repository.nextLogId(),
-      adminUserId: 'admin-001',
-      targetType: AdminAuditTargetType.user,
-      targetId: 'user-101',
-      action: AdminAction.suspend,
-      reason: 'Reported for spam',
-      createdAt: DateTime(2026, 1, 1),
-    ));
-    await repository.recordAction(AdminAuditLog(
-      logId: repository.nextLogId(),
-      adminUserId: 'admin-001',
-      targetType: AdminAuditTargetType.user,
-      targetId: 'user-101',
-      action: AdminAction.reactivate,
-      createdAt: DateTime(2026, 1, 2),
-    ));
-    await repository.recordAction(AdminAuditLog(
-      logId: repository.nextLogId(),
-      adminUserId: 'admin-002',
-      targetType: AdminAuditTargetType.issueReport,
-      targetId: 'issue-1',
-      action: AdminAction.issueMarkResolved,
-      createdAt: DateTime(2026, 1, 3),
-    ));
+    await repository.recordAction(
+      AdminAuditLog(
+        logId: repository.nextLogId(),
+        adminUserId: 'admin-001',
+        targetType: AdminAuditTargetType.user,
+        targetId: 'user-101',
+        action: AdminAction.suspend,
+        reason: 'Reported for spam',
+        createdAt: DateTime(2026, 1, 1),
+      ),
+    );
+    await repository.recordAction(
+      AdminAuditLog(
+        logId: repository.nextLogId(),
+        adminUserId: 'admin-001',
+        targetType: AdminAuditTargetType.user,
+        targetId: 'user-101',
+        action: AdminAction.reactivate,
+        createdAt: DateTime(2026, 1, 2),
+      ),
+    );
+    await repository.recordAction(
+      AdminAuditLog(
+        logId: repository.nextLogId(),
+        adminUserId: 'admin-002',
+        targetType: AdminAuditTargetType.issueReport,
+        targetId: 'issue-1',
+        action: AdminAction.issueMarkResolved,
+        createdAt: DateTime(2026, 1, 3),
+      ),
+    );
   }
 
   setUp(() {
@@ -84,7 +95,9 @@ void main() {
     final auditLogRepositoryForDetail = MockAdminAuditLogRepository();
     await tester.pumpWidget(
       ProviderScope(
-        overrides: [auditLogControllerProvider.overrideWith((ref) => controller)],
+        overrides: [
+          auditLogControllerProvider.overrideWith((ref) => controller),
+        ],
         child: MaterialApp(
           home: withNavigationTargets
               ? AuditLogScreen(
@@ -100,15 +113,16 @@ void main() {
                       auditLogRepository: auditLogRepositoryForDetail,
                     ),
                   ),
-                  issueDetailScreenBuilder: (reportId) => IssueReportDetailScreen(
-                    reportId: reportId,
-                    controller: IssueReportDetailController(
-                      issueReportRepository,
-                      userDirectoryRepository,
-                      auditLogRepositoryForDetail,
-                    ),
-                    issueReportRepositoryOverride: issueReportRepository,
-                  ),
+                  issueDetailScreenBuilder: (reportId) =>
+                      IssueReportDetailScreen(
+                        reportId: reportId,
+                        controller: IssueReportDetailController(
+                          issueReportRepository,
+                          userDirectoryRepository,
+                          auditLogRepositoryForDetail,
+                        ),
+                        issueReportRepositoryOverride: issueReportRepository,
+                      ),
                 )
               : const AuditLogScreen(),
         ),
@@ -119,8 +133,9 @@ void main() {
   }
 
   group('AuditLogScreen', () {
-    testWidgets('loads and shows every seeded entry from both target types',
-        (tester) async {
+    testWidgets('loads and shows every seeded entry from both target types', (
+      tester,
+    ) async {
       await seedThreeEntries();
       await pumpScreen(tester, buildController(repository));
 
@@ -139,15 +154,21 @@ void main() {
 
     testWidgets('tapping a user-target entry opens that user\'s detail '
         'screen', (tester) async {
-      await repository.recordAction(AdminAuditLog(
-        logId: repository.nextLogId(),
-        adminUserId: 'admin-001',
-        targetType: AdminAuditTargetType.user,
-        targetId: 'user-101', // seeded as Alice Tan in MockAdminUserStore
-        action: AdminAction.suspend,
-        createdAt: DateTime.now(),
-      ));
-      await pumpScreen(tester, buildController(repository), withNavigationTargets: true);
+      await repository.recordAction(
+        AdminAuditLog(
+          logId: repository.nextLogId(),
+          adminUserId: 'admin-001',
+          targetType: AdminAuditTargetType.user,
+          targetId: 'user-101', // seeded as Alice Tan in MockAdminUserStore
+          action: AdminAction.suspend,
+          createdAt: DateTime.now(),
+        ),
+      );
+      await pumpScreen(
+        tester,
+        buildController(repository),
+        withNavigationTargets: true,
+      );
 
       await tester.tap(find.text('Suspended'));
       await tester.pumpAndSettle();
@@ -158,15 +179,21 @@ void main() {
 
     testWidgets('tapping an issue-report-target entry opens that report\'s '
         'detail screen', (tester) async {
-      await repository.recordAction(AdminAuditLog(
-        logId: repository.nextLogId(),
-        adminUserId: 'admin-001',
-        targetType: AdminAuditTargetType.issueReport,
-        targetId: 'issue-001', // seeded report in MockIssueReportRepository
-        action: AdminAction.issueMarkResolved,
-        createdAt: DateTime.now(),
-      ));
-      await pumpScreen(tester, buildController(repository), withNavigationTargets: true);
+      await repository.recordAction(
+        AdminAuditLog(
+          logId: repository.nextLogId(),
+          adminUserId: 'admin-001',
+          targetType: AdminAuditTargetType.issueReport,
+          targetId: 'issue-001', // seeded report in MockIssueReportRepository
+          action: AdminAction.issueMarkResolved,
+          createdAt: DateTime.now(),
+        ),
+      );
+      await pumpScreen(
+        tester,
+        buildController(repository),
+        withNavigationTargets: true,
+      );
 
       await tester.tap(find.text('Marked Resolved'));
       await tester.pumpAndSettle();
@@ -176,15 +203,21 @@ void main() {
 
     testWidgets('tapping an entry whose target no longer resolves shows '
         'that screen\'s own error state, not a crash', (tester) async {
-      await repository.recordAction(AdminAuditLog(
-        logId: repository.nextLogId(),
-        adminUserId: 'admin-001',
-        targetType: AdminAuditTargetType.issueReport,
-        targetId: 'issue-since-deleted',
-        action: AdminAction.issueMarkResolved,
-        createdAt: DateTime.now(),
-      ));
-      await pumpScreen(tester, buildController(repository), withNavigationTargets: true);
+      await repository.recordAction(
+        AdminAuditLog(
+          logId: repository.nextLogId(),
+          adminUserId: 'admin-001',
+          targetType: AdminAuditTargetType.issueReport,
+          targetId: 'issue-since-deleted',
+          action: AdminAction.issueMarkResolved,
+          createdAt: DateTime.now(),
+        ),
+      );
+      await pumpScreen(
+        tester,
+        buildController(repository),
+        withNavigationTargets: true,
+      );
 
       await tester.tap(find.text('Marked Resolved'));
       await tester.pumpAndSettle();
@@ -193,8 +226,9 @@ void main() {
       expect(find.byKey(const Key('admin-issue-detail-retry')), findsOneWidget);
     });
 
-    testWidgets('tapping the User target-type chip narrows to user entries',
-        (tester) async {
+    testWidgets('tapping the User target-type chip narrows to user entries', (
+      tester,
+    ) async {
       await seedThreeEntries();
       await pumpScreen(tester, buildController(repository));
 
@@ -206,8 +240,9 @@ void main() {
       expect(find.text('Marked Resolved'), findsNothing);
     });
 
-    testWidgets('tapping All targets after a filter restores the full list',
-        (tester) async {
+    testWidgets('tapping All targets after a filter restores the full list', (
+      tester,
+    ) async {
       await seedThreeEntries();
       await pumpScreen(tester, buildController(repository));
 
@@ -225,48 +260,77 @@ void main() {
       await seedThreeEntries();
       await pumpScreen(tester, buildController(repository));
 
-      expect(find.byKey(const Key('admin-audit-log-clear-filters')), findsNothing);
+      expect(
+        find.byKey(const Key('admin-audit-log-clear-filters')),
+        findsNothing,
+      );
 
       await tester.tap(find.byKey(const Key('admin-audit-target-type-user')));
       await tester.pumpAndSettle();
-      expect(find.byKey(const Key('admin-audit-log-clear-filters')), findsOneWidget);
+      expect(
+        find.byKey(const Key('admin-audit-log-clear-filters')),
+        findsOneWidget,
+      );
+      expect(
+        find.widgetWithText(OutlinedButton, 'Clear filters'),
+        findsOneWidget,
+      );
+      expect(tester.widget<AppBar>(find.byType(AppBar)).actions, isEmpty);
 
       await tester.tap(find.byKey(const Key('admin-audit-log-clear-filters')));
       await tester.pumpAndSettle();
 
-      expect(find.byKey(const Key('admin-audit-log-clear-filters')), findsNothing);
+      expect(
+        find.byKey(const Key('admin-audit-log-clear-filters')),
+        findsNothing,
+      );
       expect(find.text('Marked Resolved'), findsOneWidget);
     });
 
-    testWidgets('no entries at all shows the empty state, not a blank list',
-        (tester) async {
+    testWidgets('no entries at all shows the empty state, not a blank list', (
+      tester,
+    ) async {
       await pumpScreen(tester, buildController(repository));
 
-      expect(find.byKey(const Key('admin-audit-log-empty-state')), findsOneWidget);
-      expect(find.text('No audit entries have been recorded yet.'), findsOneWidget);
+      expect(
+        find.byKey(const Key('admin-audit-log-empty-state')),
+        findsOneWidget,
+      );
+      expect(
+        find.text('No audit entries have been recorded yet.'),
+        findsOneWidget,
+      );
       expect(find.byKey(const Key('admin-audit-log-results')), findsNothing);
     });
 
     testWidgets('a filter matching nobody shows a filter-specific empty '
         'state', (tester) async {
-      await repository.recordAction(AdminAuditLog(
-        logId: repository.nextLogId(),
-        adminUserId: 'admin-001',
-        targetType: AdminAuditTargetType.user,
-        targetId: 'user-101',
-        action: AdminAction.suspend,
-        createdAt: DateTime.now(),
-      ));
+      await repository.recordAction(
+        AdminAuditLog(
+          logId: repository.nextLogId(),
+          adminUserId: 'admin-001',
+          targetType: AdminAuditTargetType.user,
+          targetId: 'user-101',
+          action: AdminAction.suspend,
+          createdAt: DateTime.now(),
+        ),
+      );
       await pumpScreen(tester, buildController(repository));
 
-      await tester.tap(find.byKey(const Key('admin-audit-target-type-issueReport')));
+      await tester.tap(
+        find.byKey(const Key('admin-audit-target-type-issueReport')),
+      );
       await tester.pumpAndSettle();
 
-      expect(find.text('No audit entries match these filters.'), findsOneWidget);
+      expect(
+        find.text('No audit entries match these filters.'),
+        findsOneWidget,
+      );
     });
 
-    testWidgets('a failing repository shows an error with a retry button',
-        (tester) async {
+    testWidgets('a failing repository shows an error with a retry button', (
+      tester,
+    ) async {
       await pumpScreen(tester, buildController(_FailingAuditLogRepository()));
 
       expect(find.byKey(const Key('admin-audit-log-retry')), findsOneWidget);
@@ -282,8 +346,7 @@ class _FailingAuditLogRepository implements AdminAuditLogRepository {
   Future<List<AdminAuditLog>> getHistoryForTarget({
     required AdminAuditTargetType targetType,
     required String targetId,
-  }) async =>
-      [];
+  }) async => [];
 
   @override
   Future<List<AdminAuditLog>> getAllEntries({

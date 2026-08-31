@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../models/ai_request_log.dart';
+import '../../../widgets/app_content_toolbar.dart';
 import '../admin_format_utils.dart';
 import '../controller/ai_request_monitoring_controller.dart';
 import 'failed_ai_requests_screen.dart';
@@ -18,10 +19,12 @@ class AiRequestMonitoringScreen extends ConsumerStatefulWidget {
   const AiRequestMonitoringScreen({super.key});
 
   @override
-  ConsumerState<AiRequestMonitoringScreen> createState() => _AiRequestMonitoringScreenState();
+  ConsumerState<AiRequestMonitoringScreen> createState() =>
+      _AiRequestMonitoringScreenState();
 }
 
-class _AiRequestMonitoringScreenState extends ConsumerState<AiRequestMonitoringScreen> {
+class _AiRequestMonitoringScreenState
+    extends ConsumerState<AiRequestMonitoringScreen> {
   bool _loadInProgress = false;
 
   @override
@@ -47,23 +50,7 @@ class _AiRequestMonitoringScreenState extends ConsumerState<AiRequestMonitoringS
     return Scaffold(
       appBar: AppBar(
         title: const Text('AI Request Monitoring'),
-        actions: [
-          IconButton(
-            key: const Key('admin-ai-requests-failed'),
-            tooltip: 'Failed requests',
-            icon: const Icon(Icons.error_outline),
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const FailedAiRequestsScreen()),
-            ),
-          ),
-          if (controller.hasActiveFilter)
-            IconButton(
-              key: const Key('admin-ai-requests-clear-filters'),
-              tooltip: 'Clear filters',
-              icon: const Icon(Icons.filter_alt_off),
-              onPressed: () => ref.read(aiRequestMonitoringControllerProvider.notifier).clearFilters(),
-            ),
-        ],
+        actions: const [],
       ),
       body: SafeArea(
         child: Column(
@@ -76,8 +63,13 @@ class _AiRequestMonitoringScreenState extends ConsumerState<AiRequestMonitoringS
     );
   }
 
-  Widget _buildBody(BuildContext context, AiRequestMonitoringController controller) {
-    if (controller.loading && controller.entries.isEmpty && controller.error == null) {
+  Widget _buildBody(
+    BuildContext context,
+    AiRequestMonitoringController controller,
+  ) {
+    if (controller.loading &&
+        controller.entries.isEmpty &&
+        controller.error == null) {
       return const Center(child: CircularProgressIndicator());
     }
 
@@ -125,7 +117,8 @@ class _AiRequestMonitoringScreenState extends ConsumerState<AiRequestMonitoringS
       key: const Key('admin-ai-requests-results'),
       padding: const EdgeInsets.symmetric(vertical: 8),
       itemCount: controller.entries.length,
-      itemBuilder: (context, index) => _AiRequestTile(entry: controller.entries[index]),
+      itemBuilder: (context, index) =>
+          _AiRequestTile(entry: controller.entries[index]),
     );
   }
 }
@@ -140,10 +133,19 @@ class _StatusFilterBar extends ConsumerWidget {
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: Wrap(
+      child: AppContentToolbar(
         key: const Key('admin-ai-requests-status-filters'),
-        spacing: 8,
+        resultLabel: '${controller.entries.length} requests',
+        activeFilterLabel: controller.hasActiveFilter ? 'Filter active' : null,
         children: [
+          OutlinedButton.icon(
+            key: const Key('admin-ai-requests-failed'),
+            icon: const Icon(Icons.error_outline_rounded),
+            label: const Text('View failed requests'),
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const FailedAiRequestsScreen()),
+            ),
+          ),
           ChoiceChip(
             label: const Text('All statuses'),
             selected: controller.statusFilter == null,
@@ -156,6 +158,13 @@ class _StatusFilterBar extends ConsumerWidget {
               label: Text(aiRequestStatusLabel(status)),
               selected: controller.statusFilter == status,
               onSelected: (_) => notifier.setStatusFilter(status),
+            ),
+          if (controller.hasActiveFilter)
+            OutlinedButton.icon(
+              key: const Key('admin-ai-requests-clear-filters'),
+              icon: const Icon(Icons.filter_alt_off_rounded),
+              label: const Text('Clear filters'),
+              onPressed: notifier.clearFilters,
             ),
         ],
       ),

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../models/admin_audit_log.dart';
+import '../../../widgets/app_content_toolbar.dart';
 import '../../journal/widgets/format_utils.dart';
 import '../admin_format_utils.dart';
 import '../controller/audit_log_controller.dart';
@@ -50,7 +51,10 @@ class _AuditLogScreenState extends ConsumerState<AuditLogScreen> {
     }
   }
 
-  Future<void> _pickDateRange(BuildContext context, AuditLogController controller) async {
+  Future<void> _pickDateRange(
+    BuildContext context,
+    AuditLogController controller,
+  ) async {
     final now = DateTime.now();
     final startDate = controller.startDate;
     final endDate = controller.endDate;
@@ -58,15 +62,23 @@ class _AuditLogScreenState extends ConsumerState<AuditLogScreen> {
       context: context,
       firstDate: DateTime(now.year - 5),
       lastDate: now,
-      initialDateRange:
-          startDate != null && endDate != null ? DateTimeRange(start: startDate, end: endDate) : null,
+      initialDateRange: startDate != null && endDate != null
+          ? DateTimeRange(start: startDate, end: endDate)
+          : null,
     );
     if (picked == null) return;
 
     // The picker returns midnight-to-midnight — extend the end to the last
     // moment of that day so entries recorded later on the end date aren't
     // excluded by `getAllEntries`'s `isAfter(endDate)` check.
-    final inclusiveEnd = DateTime(picked.end.year, picked.end.month, picked.end.day, 23, 59, 59);
+    final inclusiveEnd = DateTime(
+      picked.end.year,
+      picked.end.month,
+      picked.end.day,
+      23,
+      59,
+      59,
+    );
     await controller.setDateRange(start: picked.start, end: inclusiveEnd);
   }
 
@@ -75,22 +87,13 @@ class _AuditLogScreenState extends ConsumerState<AuditLogScreen> {
     final controller = ref.watch(auditLogControllerProvider);
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Audit Log'),
-        actions: [
-          if (controller.hasActiveFilter)
-            IconButton(
-              key: const Key('admin-audit-log-clear-filters'),
-              tooltip: 'Clear filters',
-              icon: const Icon(Icons.filter_alt_off),
-              onPressed: () => ref.read(auditLogControllerProvider.notifier).clearFilters(),
-            ),
-        ],
-      ),
+      appBar: AppBar(title: const Text('Audit Log'), actions: const []),
       body: SafeArea(
         child: Column(
           children: [
-            _FilterBar(onPickDateRange: () => _pickDateRange(context, controller)),
+            _FilterBar(
+              onPickDateRange: () => _pickDateRange(context, controller),
+            ),
             Expanded(child: _buildBody(context, controller)),
           ],
         ),
@@ -99,7 +102,9 @@ class _AuditLogScreenState extends ConsumerState<AuditLogScreen> {
   }
 
   Widget _buildBody(BuildContext context, AuditLogController controller) {
-    if (controller.loading && controller.entries.isEmpty && controller.error == null) {
+    if (controller.loading &&
+        controller.entries.isEmpty &&
+        controller.error == null) {
       return const Center(child: CircularProgressIndicator());
     }
 
@@ -146,13 +151,12 @@ class _AuditLogScreenState extends ConsumerState<AuditLogScreen> {
     return ListView.builder(
       key: const Key('admin-audit-log-results'),
       itemCount: controller.entries.length,
-      itemBuilder: (context, index) =>
-          _AuditLogEntryTile(
-            entry: controller.entries[index],
-            controller: controller,
-            userDetailScreenBuilder: widget.userDetailScreenBuilder,
-            issueDetailScreenBuilder: widget.issueDetailScreenBuilder,
-          ),
+      itemBuilder: (context, index) => _AuditLogEntryTile(
+        entry: controller.entries[index],
+        controller: controller,
+        userDetailScreenBuilder: widget.userDetailScreenBuilder,
+        issueDetailScreenBuilder: widget.issueDetailScreenBuilder,
+      ),
     );
   }
 }
@@ -170,66 +174,74 @@ class _FilterBar extends ConsumerWidget {
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: AppContentToolbar(
+        resultLabel: '${controller.entries.length} audit entries',
+        activeFilterLabel: controller.hasActiveFilter ? 'Filters active' : null,
         children: [
-          Wrap(
-            key: const Key('admin-audit-target-type-filters'),
-            spacing: 8,
-            children: [
-              ChoiceChip(
-                label: const Text('All targets'),
-                selected: controller.targetTypeFilter == null,
-                onSelected: (_) => notifier.setTargetTypeFilter(null),
-              ),
-              for (final targetType in AdminAuditTargetType.values)
+          SizedBox(
+            width: double.infinity,
+            child: Wrap(
+              key: const Key('admin-audit-target-type-filters'),
+              spacing: 8,
+              runSpacing: 8,
+              children: [
                 ChoiceChip(
-                  key: Key('admin-audit-target-type-${targetType.name}'),
-                  label: Text(adminAuditTargetTypeLabel(targetType)),
-                  selected: controller.targetTypeFilter == targetType,
-                  onSelected: (_) => notifier.setTargetTypeFilter(targetType),
+                  label: const Text('All targets'),
+                  selected: controller.targetTypeFilter == null,
+                  onSelected: (_) => notifier.setTargetTypeFilter(null),
                 ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              SizedBox(
-                width: 200,
-                child: DropdownButtonFormField<AdminAction?>(
-                  key: const Key('admin-audit-action-filter'),
-                  initialValue: controller.actionFilter,
-                  isDense: true,
-                  isExpanded: true,
-                  decoration: const InputDecoration(
-                    labelText: 'Action',
-                    border: OutlineInputBorder(),
+                for (final targetType in AdminAuditTargetType.values)
+                  ChoiceChip(
+                    key: Key('admin-audit-target-type-${targetType.name}'),
+                    label: Text(adminAuditTargetTypeLabel(targetType)),
+                    selected: controller.targetTypeFilter == targetType,
+                    onSelected: (_) => notifier.setTargetTypeFilter(targetType),
                   ),
-                  items: [
-                    const DropdownMenuItem(value: null, child: Text('All actions')),
-                    for (final action in actionChoices)
-                      DropdownMenuItem(value: action, child: Text(adminActionLabel(action))),
-                  ],
-                  onChanged: notifier.setActionFilter,
-                ),
-              ),
-              OutlinedButton.icon(
-                key: const Key('admin-audit-date-range-button'),
-                onPressed: onPickDateRange,
-                icon: const Icon(Icons.date_range),
-                label: Text(_dateRangeLabel(controller)),
-              ),
-              if (controller.startDate != null || controller.endDate != null)
-                IconButton(
-                  key: const Key('admin-audit-date-range-clear'),
-                  tooltip: 'Clear date range',
-                  icon: const Icon(Icons.close),
-                  onPressed: () => notifier.setDateRange(start: null, end: null),
-                ),
-            ],
+              ],
+            ),
           ),
+          SizedBox(
+            width: 200,
+            child: DropdownButtonFormField<AdminAction?>(
+              key: const Key('admin-audit-action-filter'),
+              initialValue: controller.actionFilter,
+              isDense: true,
+              isExpanded: true,
+              decoration: const InputDecoration(
+                labelText: 'Action',
+                border: OutlineInputBorder(),
+              ),
+              items: [
+                const DropdownMenuItem(value: null, child: Text('All actions')),
+                for (final action in actionChoices)
+                  DropdownMenuItem(
+                    value: action,
+                    child: Text(adminActionLabel(action)),
+                  ),
+              ],
+              onChanged: notifier.setActionFilter,
+            ),
+          ),
+          OutlinedButton.icon(
+            key: const Key('admin-audit-date-range-button'),
+            onPressed: onPickDateRange,
+            icon: const Icon(Icons.date_range),
+            label: Text(_dateRangeLabel(controller)),
+          ),
+          if (controller.startDate != null || controller.endDate != null)
+            TextButton.icon(
+              key: const Key('admin-audit-date-range-clear'),
+              icon: const Icon(Icons.close_rounded),
+              label: const Text('Clear date'),
+              onPressed: () => notifier.setDateRange(start: null, end: null),
+            ),
+          if (controller.hasActiveFilter)
+            OutlinedButton.icon(
+              key: const Key('admin-audit-log-clear-filters'),
+              icon: const Icon(Icons.filter_alt_off_rounded),
+              label: const Text('Clear filters'),
+              onPressed: notifier.clearFilters,
+            ),
         ],
       ),
     );

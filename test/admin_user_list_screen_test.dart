@@ -17,9 +17,14 @@ void main() {
       await tester.pump(); // triggers the post-frame loadAll callback
       await tester.pumpAndSettle();
 
-      expect(find.byKey(const Key('admin-user-search-results')), findsOneWidget);
+      expect(
+        find.byKey(const Key('admin-user-search-results')),
+        findsOneWidget,
+      );
       expect(find.text('Alice Tan'), findsOneWidget);
       expect(find.text('Admin Account'), findsOneWidget);
+      expect(find.textContaining('users found'), findsOneWidget);
+      expect(find.byType(Card), findsWidgets);
     });
 
     testWidgets('typing a query narrows results to matching users after '
@@ -31,7 +36,10 @@ void main() {
       await tester.pump();
       await tester.pumpAndSettle();
 
-      await tester.enterText(find.byKey(const Key('admin-user-search-field')), 'alice');
+      await tester.enterText(
+        find.byKey(const Key('admin-user-search-field')),
+        'alice',
+      );
       await tester.pump(const Duration(milliseconds: 350)); // past the debounce
       await tester.pumpAndSettle();
 
@@ -55,12 +63,16 @@ void main() {
       await tester.pump(const Duration(milliseconds: 350));
       await tester.pumpAndSettle();
 
-      expect(find.byKey(const Key('admin-user-search-empty-state')), findsOneWidget);
+      expect(
+        find.byKey(const Key('admin-user-search-empty-state')),
+        findsOneWidget,
+      );
       expect(find.byKey(const Key('admin-user-search-results')), findsNothing);
     });
 
-    testWidgets('tapping a user navigates to AdminUserDetailScreen',
-        (tester) async {
+    testWidgets('tapping a user navigates to AdminUserDetailScreen', (
+      tester,
+    ) async {
       final harness = AdminTestHarness();
       addTearDown(harness.dispose);
 
@@ -106,8 +118,9 @@ void main() {
       expect(find.text('Alice Tan'), findsNothing);
     });
 
-    testWidgets('an initial role filter narrows to admins only',
-        (tester) async {
+    testWidgets('an initial role filter narrows to admins only', (
+      tester,
+    ) async {
       final harness = AdminTestHarness();
       addTearDown(harness.dispose);
 
@@ -126,8 +139,9 @@ void main() {
       expect(find.text('Alice Tan'), findsNothing);
     });
 
-    testWidgets('with no initial filter, no filter chip is shown',
-        (tester) async {
+    testWidgets('with no initial filter, no filter chip is shown', (
+      tester,
+    ) async {
       final harness = AdminTestHarness();
       addTearDown(harness.dispose);
 
@@ -155,10 +169,12 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('Alice Tan'), findsNothing);
 
-      await tester.tap(find.descendant(
-        of: find.byKey(const Key('admin-user-filter-chip')),
-        matching: find.byIcon(Icons.close),
-      ));
+      await tester.tap(
+        find.descendant(
+          of: find.byKey(const Key('admin-user-filter-chip')),
+          matching: find.byIcon(Icons.close),
+        ),
+      );
       await tester.pumpAndSettle();
 
       expect(find.byKey(const Key('admin-user-filter-chip')), findsNothing);
