@@ -45,9 +45,9 @@ void main() {
               body: Center(
                 child: ElevatedButton(
                   key: const Key('push-admin-gate'),
-                  onPressed: () => Navigator.of(context).push(
-                    MaterialPageRoute(builder: (_) => const AdminGate()),
-                  ),
+                  onPressed: () => Navigator.of(
+                    context,
+                  ).push(MaterialPageRoute(builder: (_) => const AdminGate())),
                   child: const Text('open admin'),
                 ),
               ),
@@ -88,10 +88,7 @@ void main() {
         expect(find.text('open admin'), findsNothing);
         // The blocked attempt surfaces a hint rather than silently doing
         // nothing.
-        expect(
-          find.text('Log out to leave the admin portal.'),
-          findsOneWidget,
-        );
+        expect(find.text('Log out to leave the admin portal.'), findsOneWidget);
       },
     );
 
@@ -104,6 +101,8 @@ void main() {
       await tester.pumpAndSettle();
 
       await tester.tap(find.byKey(const Key('admin-sign-in-with-google')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Admin account actions'));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('admin-logout')));
       await tester.pumpAndSettle();
@@ -140,82 +139,78 @@ void main() {
       },
     );
 
-    testWidgets(
-      'a rejected (non-admin) sign-in attempt auto-pops back to the '
-      'traveler side and relays the rejection as a SnackBar there',
-      (tester) async {
-        // AdminGate only ever reads adminAuthControllerProvider — no need
-        // for AdminTestHarness's other eight controllers here. Uses the
-        // seeded non-admin 'user-101' / alice.tan@example.com row from
-        // MockAdminUserStore.defaultSeed() (mirrors
-        // admin_auth_controller_test.dart's equivalent case).
-        final authRepository = MockAuthRepository(
-          mockUserId: 'user-101',
-          mockEmail: 'alice.tan@example.com',
-        );
-        final authController = AdminAuthController(
-          authRepository,
-          MockAdminUserDirectoryRepository(MockAdminUserStore()),
-          MockAdminAccessAttemptLogRepository(),
-        );
-        addTearDown(authController.dispose);
-        addTearDown(authRepository.dispose);
+    testWidgets('a rejected (non-admin) sign-in attempt auto-pops back to the '
+        'traveler side and relays the rejection as a SnackBar there', (
+      tester,
+    ) async {
+      // AdminGate only ever reads adminAuthControllerProvider — no need
+      // for AdminTestHarness's other eight controllers here. Uses the
+      // seeded non-admin 'user-101' / alice.tan@example.com row from
+      // MockAdminUserStore.defaultSeed() (mirrors
+      // admin_auth_controller_test.dart's equivalent case).
+      final authRepository = MockAuthRepository(
+        mockUserId: 'user-101',
+        mockEmail: 'alice.tan@example.com',
+      );
+      final authController = AdminAuthController(
+        authRepository,
+        MockAdminUserDirectoryRepository(MockAdminUserStore()),
+        MockAdminAccessAttemptLogRepository(),
+      );
+      addTearDown(authController.dispose);
+      addTearDown(authRepository.dispose);
 
-        await tester.pumpWidget(
-          ProviderScope(
-            overrides: [
-              adminAuthControllerProvider.overrideWith(
-                (ref) => authController,
-                disposeNotifier: false,
-              ),
-            ],
-            child: MaterialApp(
-              home: Builder(
-                builder: (context) => Scaffold(
-                  body: Center(
-                    child: ElevatedButton(
-                      key: const Key('push-admin-gate'),
-                      onPressed: () => Navigator.of(context).push(
-                        MaterialPageRoute(builder: (_) => const AdminGate()),
-                      ),
-                      child: const Text('open admin'),
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            adminAuthControllerProvider.overrideWith(
+              (ref) => authController,
+              disposeNotifier: false,
+            ),
+          ],
+          child: MaterialApp(
+            home: Builder(
+              builder: (context) => Scaffold(
+                body: Center(
+                  child: ElevatedButton(
+                    key: const Key('push-admin-gate'),
+                    onPressed: () => Navigator.of(context).push(
+                      MaterialPageRoute(builder: (_) => const AdminGate()),
                     ),
+                    child: const Text('open admin'),
                   ),
                 ),
               ),
             ),
           ),
-        );
-        await tester.tap(find.byKey(const Key('push-admin-gate')));
-        await tester.pumpAndSettle();
+        ),
+      );
+      await tester.tap(find.byKey(const Key('push-admin-gate')));
+      await tester.pumpAndSettle();
 
-        await tester.tap(find.byKey(const Key('admin-sign-in-with-google')));
-        await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('admin-sign-in-with-google')));
+      await tester.pumpAndSettle();
 
-        // AdminGate has already popped itself (found and fixed 2026-08-26,
-        // AdminAuthController._rejectAndSignOut) — no manual back-press
-        // needed, and no AdminLoginScreen left showing the error, since
-        // that screen has no way to satisfy "Log out" anyway.
-        expect(find.byType(AdminLoginScreen), findsNothing);
-        expect(find.text('open admin'), findsOneWidget);
-        // The rejection message is relayed as a SnackBar on the screen
-        // underneath instead.
-        expect(
-          find.text('This Google account is not registered as an administrator.'),
-          findsOneWidget,
-        );
-        expect(
-          find.text('Log out to leave the admin portal.'),
-          findsNothing,
-        );
+      // AdminGate has already popped itself (found and fixed 2026-08-26,
+      // AdminAuthController._rejectAndSignOut) — no manual back-press
+      // needed, and no AdminLoginScreen left showing the error, since
+      // that screen has no way to satisfy "Log out" anyway.
+      expect(find.byType(AdminLoginScreen), findsNothing);
+      expect(find.text('open admin'), findsOneWidget);
+      // The rejection message is relayed as a SnackBar on the screen
+      // underneath instead.
+      expect(
+        find.text('This Google account is not registered as an administrator.'),
+        findsOneWidget,
+      );
+      expect(find.text('Log out to leave the admin portal.'), findsNothing);
 
-        // And the rejected account is fully signed out — session and Google's
-        // own cached account selection both cleared — so a follow-up
-        // attempt starts clean rather than silently reusing the same
-        // wrong account.
-        expect(authController.session, isNull);
-        expect(authController.hasPendingRejection, isFalse);
-      },
-    );
+      // And the rejected account is fully signed out — session and Google's
+      // own cached account selection both cleared — so a follow-up
+      // attempt starts clean rather than silently reusing the same
+      // wrong account.
+      expect(authController.session, isNull);
+      expect(authController.hasPendingRejection, isFalse);
+    });
   });
 }
