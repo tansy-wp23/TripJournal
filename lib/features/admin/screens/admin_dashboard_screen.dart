@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../widgets/app_action_menu.dart';
+import '../../../widgets/app_navigation_tile.dart';
 import '../../../models/admin_access_attempt_log.dart';
 import '../../../models/profile.dart';
 import '../../journal/widgets/format_utils.dart';
@@ -12,6 +14,8 @@ import 'admin_user_detail_screen.dart';
 import 'admin_user_list_screen.dart';
 import 'audit_log_screen.dart';
 import 'system_monitoring_screen.dart';
+
+enum _AdminDashboardAction { signOut }
 
 /// PB-02: View Admin Dashboard. Loads `AdminDashboardStats` on first build
 /// and renders it as a grid of tappable cards, organized into "Overview"
@@ -35,7 +39,8 @@ class AdminDashboardScreen extends ConsumerStatefulWidget {
   final Widget Function(String userId)? userDetailScreenBuilder;
 
   @override
-  ConsumerState<AdminDashboardScreen> createState() => _AdminDashboardScreenState();
+  ConsumerState<AdminDashboardScreen> createState() =>
+      _AdminDashboardScreenState();
 }
 
 class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
@@ -86,41 +91,19 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
       appBar: AppBar(
         title: const Text('Admin Dashboard'),
         actions: [
-          IconButton(
-            key: const Key('admin-manage-users'),
-            tooltip: 'Manage users',
-            icon: const Icon(Icons.manage_accounts),
-            onPressed: () => _openUserList(context, title: 'Manage Users'),
-          ),
-          IconButton(
-            key: const Key('admin-issue-reports'),
-            tooltip: 'Issue reports',
-            icon: const Icon(Icons.report_problem_outlined),
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const AdminIssueReportListScreen()),
-            ),
-          ),
-          IconButton(
-            key: const Key('admin-audit-log'),
-            tooltip: 'Audit log',
-            icon: const Icon(Icons.history),
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const AuditLogScreen()),
-            ),
-          ),
-          IconButton(
-            key: const Key('admin-monitoring'),
-            tooltip: 'Monitoring',
-            icon: const Icon(Icons.monitor_heart_outlined),
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const SystemMonitoringScreen()),
-            ),
-          ),
-          IconButton(
-            key: const Key('admin-logout'),
-            tooltip: 'Sign out',
-            icon: const Icon(Icons.logout),
-            onPressed: () => ref.read(adminAuthControllerProvider.notifier).signOut(),
+          AppActionMenu<_AdminDashboardAction>(
+            tooltip: 'Admin account actions',
+            items: const [
+              AppActionMenuItem(
+                key: Key('admin-logout'),
+                value: _AdminDashboardAction.signOut,
+                label: 'Sign out',
+                icon: Icons.logout_rounded,
+                destructive: true,
+              ),
+            ],
+            onSelected: (_) =>
+                ref.read(adminAuthControllerProvider.notifier).signOut(),
           ),
         ],
       ),
@@ -188,6 +171,78 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
 
     return ListView(
       children: [
+        Text('Admin tools', style: Theme.of(context).textTheme.titleMedium),
+        const SizedBox(height: 4),
+        Text(
+          'Manage people, reports, audit history, and system health.',
+          style: Theme.of(context).textTheme.bodySmall,
+        ),
+        const SizedBox(height: 12),
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final columns = constraints.maxWidth >= 680 ? 2 : 1;
+            final spacing = columns == 1 ? 0.0 : 12.0;
+            final tileWidth =
+                (constraints.maxWidth - spacing * (columns - 1)) / columns;
+            return Wrap(
+              spacing: spacing,
+              runSpacing: 12,
+              children: [
+                SizedBox(
+                  width: tileWidth,
+                  child: AppNavigationTile(
+                    key: const Key('admin-manage-users'),
+                    icon: Icons.manage_accounts_outlined,
+                    title: 'Manage users',
+                    subtitle: 'Review accounts, roles, and access status',
+                    onTap: () => _openUserList(context, title: 'Manage Users'),
+                  ),
+                ),
+                SizedBox(
+                  width: tileWidth,
+                  child: AppNavigationTile(
+                    key: const Key('admin-issue-reports'),
+                    icon: Icons.report_problem_outlined,
+                    title: 'Issue reports',
+                    subtitle: 'Triage feedback and support requests',
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => const AdminIssueReportListScreen(),
+                      ),
+                    ),
+                  ),
+                ),
+                SizedBox(
+                  width: tileWidth,
+                  child: AppNavigationTile(
+                    key: const Key('admin-audit-log'),
+                    icon: Icons.history_rounded,
+                    title: 'Audit log',
+                    subtitle: 'Review administrator activity',
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute(builder: (_) => const AuditLogScreen()),
+                    ),
+                  ),
+                ),
+                SizedBox(
+                  width: tileWidth,
+                  child: AppNavigationTile(
+                    key: const Key('admin-monitoring'),
+                    icon: Icons.monitor_heart_outlined,
+                    title: 'Monitoring',
+                    subtitle: 'Check errors, AI requests, and system health',
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => const SystemMonitoringScreen(),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
+        const SizedBox(height: 24),
         Text('Overview', style: Theme.of(context).textTheme.titleMedium),
         const SizedBox(height: 4),
         Text(
@@ -209,7 +264,9 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
             maxCrossAxisExtent: 260,
             // Scaled with the user's text size so a large accessibility font
             // doesn't reintroduce the same clipping.
-            mainAxisExtent: MediaQuery.textScalerOf(context).scale(76).clamp(76.0, 160.0),
+            mainAxisExtent: MediaQuery.textScalerOf(
+              context,
+            ).scale(76).clamp(76.0, 160.0),
             crossAxisSpacing: 12,
             mainAxisSpacing: 12,
           ),
@@ -279,10 +336,7 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
           ],
         ),
         const SizedBox(height: 28),
-        Text(
-          'Recent Activity',
-          style: Theme.of(context).textTheme.titleMedium,
-        ),
+        Text('Recent Activity', style: Theme.of(context).textTheme.titleMedium),
         const SizedBox(height: 4),
         Text(
           'Non-admin accounts that tried to sign in through the admin '
@@ -373,7 +427,10 @@ class _DashboardStatCard extends StatelessWidget {
 }
 
 class _AccessAttemptTile extends StatelessWidget {
-  const _AccessAttemptTile({required this.attempt, this.userDetailScreenBuilder});
+  const _AccessAttemptTile({
+    required this.attempt,
+    this.userDetailScreenBuilder,
+  });
 
   final Widget Function(String userId)? userDetailScreenBuilder;
 
@@ -406,12 +463,12 @@ class _AccessAttemptTile extends StatelessWidget {
       trailing: canReview ? const Icon(Icons.chevron_right) : null,
       onTap: canReview
           ? () => Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) => userDetailScreenBuilder != null
-                      ? userDetailScreenBuilder!(attempt.attemptedUserId)
-                      : AdminUserDetailScreen(userId: attempt.attemptedUserId),
-                ),
-              )
+              MaterialPageRoute(
+                builder: (_) => userDetailScreenBuilder != null
+                    ? userDetailScreenBuilder!(attempt.attemptedUserId)
+                    : AdminUserDetailScreen(userId: attempt.attemptedUserId),
+              ),
+            )
           : null,
     );
   }

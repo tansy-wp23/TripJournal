@@ -15,8 +15,9 @@ import 'support/admin_test_harness.dart';
 
 void main() {
   group('AdminDashboardScreen', () {
-    testWidgets('renders the stat grid with the default seed counts',
-        (tester) async {
+    testWidgets('renders the stat grid with the default seed counts', (
+      tester,
+    ) async {
       final harness = AdminTestHarness();
       addTearDown(harness.dispose);
 
@@ -24,37 +25,53 @@ void main() {
       await tester.pump(); // triggers the post-frame loadStats callback
       await tester.pumpAndSettle();
 
-      expect(find.byKey(const Key('admin-dashboard-stats-grid')), findsOneWidget);
+      expect(
+        find.byKey(const Key('admin-dashboard-stats-grid')),
+        findsOneWidget,
+      );
       expect(find.textContaining('Total users'), findsOneWidget);
       expect(find.textContaining('Admins'), findsOneWidget);
+      expect(find.text('Manage users'), findsOneWidget);
+      expect(find.text('Issue reports'), findsOneWidget);
+      expect(find.text('Audit log'), findsOneWidget);
+      expect(find.text('Monitoring'), findsOneWidget);
+
+      final appBar = tester.widget<AppBar>(find.byType(AppBar));
+      expect(appBar.actions, hasLength(1));
     });
 
     testWidgets(
-        'full flow: sign in on AdminLoginScreen reaches the dashboard grid',
-        (tester) async {
-      final harness = AdminTestHarness();
-      addTearDown(harness.dispose);
+      'full flow: sign in on AdminLoginScreen reaches the dashboard grid',
+      (tester) async {
+        final harness = AdminTestHarness();
+        addTearDown(harness.dispose);
 
-      await tester.pumpWidget(harness.wrap(const AdminGate()));
-      await tester.pumpAndSettle();
+        await tester.pumpWidget(harness.wrap(const AdminGate()));
+        await tester.pumpAndSettle();
 
-      expect(find.byType(AdminLoginScreen), findsOneWidget);
+        expect(find.byType(AdminLoginScreen), findsOneWidget);
 
-      await tester.tap(find.byKey(const Key('admin-sign-in-with-google')));
-      await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('admin-sign-in-with-google')));
+        await tester.pumpAndSettle();
 
-      expect(find.byType(AdminDashboardScreen), findsOneWidget);
-      expect(find.byKey(const Key('admin-dashboard-stats-grid')), findsOneWidget);
+        expect(find.byType(AdminDashboardScreen), findsOneWidget);
+        expect(
+          find.byKey(const Key('admin-dashboard-stats-grid')),
+          findsOneWidget,
+        );
 
-      // Logout returns to AdminLoginScreen.
-      await tester.tap(find.byKey(const Key('admin-logout')));
-      await tester.pumpAndSettle();
+        // Logout returns to AdminLoginScreen.
+        await tester.tap(find.byTooltip('Admin account actions'));
+        await tester.pumpAndSettle();
+        expect(find.text('Sign out'), findsOneWidget);
+        await tester.tap(find.byKey(const Key('admin-logout')));
+        await tester.pumpAndSettle();
 
-      expect(find.byType(AdminLoginScreen), findsOneWidget);
-    });
+        expect(find.byType(AdminLoginScreen), findsOneWidget);
+      },
+    );
 
-    testWidgets('shows a recorded unauthorized access attempt',
-        (tester) async {
+    testWidgets('shows a recorded unauthorized access attempt', (tester) async {
       final harness = AdminTestHarness();
       addTearDown(harness.dispose);
 
@@ -172,8 +189,9 @@ void main() {
       expect(find.byType(AdminIssueReportListScreen), findsOneWidget);
     });
 
-    testWidgets('tapping the Audit log action opens the audit log screen',
-        (tester) async {
+    testWidgets('tapping the Audit log action opens the audit log screen', (
+      tester,
+    ) async {
       final harness = AdminTestHarness();
       addTearDown(harness.dispose);
 
@@ -187,8 +205,9 @@ void main() {
       expect(find.byType(AuditLogScreen), findsOneWidget);
     });
 
-    testWidgets('tapping the Monitoring action opens the monitoring hub',
-        (tester) async {
+    testWidgets('tapping the Monitoring action opens the monitoring hub', (
+      tester,
+    ) async {
       final harness = AdminTestHarness();
       addTearDown(harness.dispose);
 
@@ -212,13 +231,15 @@ void main() {
       addTearDown(tester.view.resetPhysicalSize);
       addTearDown(tester.view.resetDevicePixelRatio);
 
-      await harness.accessAttemptLogRepository.recordAttempt(AdminAccessAttemptLog(
-        logId: 'access-attempt-test-reviewable',
-        attemptedUserId: 'user-101', // seeded as Alice Tan
-        attemptedEmail: 'alice.tan@example.com',
-        reason: AdminAccessAttemptReason.notAnAdmin,
-        createdAt: DateTime.now(),
-      ));
+      await harness.accessAttemptLogRepository.recordAttempt(
+        AdminAccessAttemptLog(
+          logId: 'access-attempt-test-reviewable',
+          attemptedUserId: 'user-101', // seeded as Alice Tan
+          attemptedEmail: 'alice.tan@example.com',
+          reason: AdminAccessAttemptReason.notAnAdmin,
+          createdAt: DateTime.now(),
+        ),
+      );
 
       await tester.pumpWidget(
         harness.wrap(
@@ -234,7 +255,11 @@ void main() {
       await tester.pump();
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byKey(const Key('admin-access-attempt-access-attempt-test-reviewable')));
+      await tester.tap(
+        find.byKey(
+          const Key('admin-access-attempt-access-attempt-test-reviewable'),
+        ),
+      );
       await tester.pumpAndSettle();
 
       expect(find.byType(AdminUserDetailScreen), findsOneWidget);
@@ -251,20 +276,24 @@ void main() {
       addTearDown(tester.view.resetPhysicalSize);
       addTearDown(tester.view.resetDevicePixelRatio);
 
-      await harness.accessAttemptLogRepository.recordAttempt(AdminAccessAttemptLog(
-        logId: 'access-attempt-test-unreviewable',
-        attemptedUserId: 'no-such-user-id',
-        attemptedEmail: 'ghost@example.com',
-        reason: AdminAccessAttemptReason.noProfileFound,
-        createdAt: DateTime.now(),
-      ));
+      await harness.accessAttemptLogRepository.recordAttempt(
+        AdminAccessAttemptLog(
+          logId: 'access-attempt-test-unreviewable',
+          attemptedUserId: 'no-such-user-id',
+          attemptedEmail: 'ghost@example.com',
+          reason: AdminAccessAttemptReason.noProfileFound,
+          createdAt: DateTime.now(),
+        ),
+      );
 
       await tester.pumpWidget(harness.wrap(const AdminDashboardScreen()));
       await tester.pump();
       await tester.pumpAndSettle();
 
       final tile = tester.widget<ListTile>(
-        find.byKey(const Key('admin-access-attempt-access-attempt-test-unreviewable')),
+        find.byKey(
+          const Key('admin-access-attempt-access-attempt-test-unreviewable'),
+        ),
       );
       expect(tile.onTap, isNull);
       expect(tile.trailing, isNull);

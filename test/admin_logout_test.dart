@@ -17,8 +17,7 @@ import 'support/admin_test_harness.dart';
 /// isolation.
 void main() {
   group('PB-10: Logout Administrator', () {
-    testWidgets(
-        'logout returns to AdminLoginScreen, driven by AdminGate state '
+    testWidgets('logout returns to AdminLoginScreen, driven by AdminGate state '
         'rather than a manual redirect', (tester) async {
       final harness = AdminTestHarness();
       addTearDown(harness.dispose);
@@ -31,7 +30,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byType(AdminDashboardScreen), findsOneWidget);
 
-      await tester.tap(find.byKey(const Key('admin-logout')));
+      await _signOut(tester);
       await tester.pumpAndSettle();
 
       // AdminGate swapped the screen on its own by reacting to
@@ -41,8 +40,9 @@ void main() {
       expect(find.byType(AdminDashboardScreen), findsNothing);
     });
 
-    testWidgets('logout clears profile and session — no stale admin state',
-        (tester) async {
+    testWidgets('logout clears profile and session — no stale admin state', (
+      tester,
+    ) async {
       final harness = AdminTestHarness();
       addTearDown(harness.dispose);
 
@@ -57,7 +57,7 @@ void main() {
       expect(signedIn.session, isNotNull);
       expect(signedIn.status, AdminAuthStatus.authenticated);
 
-      await tester.tap(find.byKey(const Key('admin-logout')));
+      await _signOut(tester);
       await tester.pumpAndSettle();
 
       expect(harness.authController.profile, isNull);
@@ -66,8 +66,7 @@ void main() {
       expect(harness.authController.status, AdminAuthStatus.signedOut);
     });
 
-    testWidgets(
-        'signing back in after logout reaches the dashboard again (no '
+    testWidgets('signing back in after logout reaches the dashboard again (no '
         'stale signedOut state blocking a fresh sign-in)', (tester) async {
       final harness = AdminTestHarness();
       addTearDown(harness.dispose);
@@ -77,7 +76,7 @@ void main() {
 
       await tester.tap(find.byKey(const Key('admin-sign-in-with-google')));
       await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const Key('admin-logout')));
+      await _signOut(tester);
       await tester.pumpAndSettle();
 
       await tester.tap(find.byKey(const Key('admin-sign-in-with-google')));
@@ -87,4 +86,11 @@ void main() {
       expect(harness.authController.status, AdminAuthStatus.authenticated);
     });
   });
+}
+
+Future<void> _signOut(WidgetTester tester) async {
+  await tester.tap(find.byTooltip('Admin account actions'));
+  await tester.pumpAndSettle();
+  await tester.tap(find.byKey(const Key('admin-logout')));
+  await tester.pumpAndSettle();
 }
