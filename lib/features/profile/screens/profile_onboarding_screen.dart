@@ -133,53 +133,62 @@ class _ProfileOnboardingScreenState
 
     setState(() => _saving = true);
     final controller = ref.read(profileControllerProvider.notifier);
+    // try/finally guarantees the spinner can never get stuck if an
+    // unexpected error escapes the controller (as the disposed-controller
+    // double-throw once did — see profileControllerProvider's doc comment):
+    // _saving is always reset, keeping Continue and Skip usable.
+    try {
+      final pendingAvatar = _pickedAvatar;
+      if (pendingAvatar != null) {
+        final avatarError = await controller.updateAvatar(pendingAvatar);
+        if (!mounted) return;
+        if (avatarError != null) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text(avatarError)));
+          return;
+        }
+      }
 
-    final pendingAvatar = _pickedAvatar;
-    if (pendingAvatar != null) {
-      final avatarError = await controller.updateAvatar(pendingAvatar);
+      final error = await controller.completeOnboarding(
+        displayName: _displayNameController.text,
+        dateOfBirth: _dateOfBirth,
+        country: _country,
+        travelInterests: _selectedInterests,
+      );
       if (!mounted) return;
-      if (avatarError != null) {
-        setState(() => _saving = false);
+
+      if (error != null) {
+        // Entered data is never lost on failure — the form fields still hold
+        // everything the user typed/picked, and AuthGate keeps this screen on
+        // screen until profileCompleted actually flips.
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(SnackBar(content: Text(avatarError)));
-        return;
+        ).showSnackBar(SnackBar(content: Text(error)));
       }
+      // On success, refreshProfile() (called inside completeOnboarding) flips
+      // AuthController.status to authenticated, and AuthGate swaps this screen
+      // out on its own — no explicit navigation needed here.
+    } finally {
+      if (mounted) setState(() => _saving = false);
     }
-
-    final error = await controller.completeOnboarding(
-      displayName: _displayNameController.text,
-      dateOfBirth: _dateOfBirth,
-      country: _country,
-      travelInterests: _selectedInterests,
-    );
-    if (!mounted) return;
-    setState(() => _saving = false);
-
-    if (error != null) {
-      // Entered data is never lost on failure — the form fields still hold
-      // everything the user typed/picked, and AuthGate keeps this screen on
-      // screen until profileCompleted actually flips.
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(error)));
-    }
-    // On success, refreshProfile() (called inside completeOnboarding) flips
-    // AuthController.status to authenticated, and AuthGate swaps this screen
-    // out on its own — no explicit navigation needed here.
   }
 
   Future<void> _skip() async {
     setState(() => _saving = true);
-    final error = await ref
-        .read(profileControllerProvider.notifier)
-        .skipOnboarding();
-    if (!mounted) return;
-    setState(() => _saving = false);
-    if (error != null) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(error)));
+    // Same try/finally guarantee as _continue.
+    try {
+      final error = await ref
+          .read(profileControllerProvider.notifier)
+          .skipOnboarding();
+      if (!mounted) return;
+      if (error != null) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(error)));
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
     }
   }
 
