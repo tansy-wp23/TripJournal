@@ -286,10 +286,23 @@ class ProfileController extends ChangeNotifier {
 
 /// The single place the app resolves its [ProfileController] from — mirrors
 /// `authControllerProvider` / `tripControllerProvider`.
+///
+/// Watches `authControllerProvider.notifier` (the controller *instance*),
+/// NOT the provider itself: in Riverpod 3, watching a `ChangeNotifierProvider`
+/// directly re-executes this build — recreating and disposing the
+/// [ProfileController] — every time the [AuthController] fires
+/// `notifyListeners()`. That used to dispose the controller mid-flight
+/// (e.g. `updateAvatar`'s trailing `refreshProfile()` disposed it before the
+/// onboarding screen's follow-up `completeOnboarding` call), surfacing as
+/// "A ProfileController was used after being disposed" in the system error
+/// log with the UI stuck on a spinner. The [AuthController] instance is
+/// created once per scope and never replaced, so `.notifier` is a stable
+/// dependency; profile data freshness is handled by `refreshProfile()`
+/// calls, not by provider rebuilds.
 final profileControllerProvider = ChangeNotifierProvider<ProfileController>(
   (ref) => ProfileController(
     profileRepository,
-    ref.watch(authControllerProvider),
+    ref.watch(authControllerProvider.notifier),
     profileAvatarStorage,
   ),
 );

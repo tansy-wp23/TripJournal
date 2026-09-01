@@ -1001,6 +1001,27 @@ Modified:
     Covered by `mock_verification_code_repository_test`,
     `supabase_verification_code_repository_test`,
     `mock_account_lifecycle_repository_test`, and `code_entry_screen_test`.
+  - **Follow-up (2026-08-30): fixed "Continue" hanging forever on onboarding
+    with a profile photo** (reported live: `system_error_logs` entry
+    "A ProfileController was used after being disposed" at
+    `completeOnboarding`'s catch-block `notifyListeners()`). Root cause:
+    `profileControllerProvider` was built with `ref.watch(authControllerProvider)`,
+    so in Riverpod 3 every `AuthController.notifyListeners()` — e.g. the one
+    from `updateAvatar`'s trailing `refreshProfile()` — re-executed the build,
+    **recreating and disposing the `ProfileController` mid-operation**. The
+    follow-up `completeOnboarding` then ran on a disposed controller: its DB
+    write succeeded, its `notifyListeners()` threw (caught), and the catch's
+    own `notifyListeners()` threw again — uncaught — so `_continue` died before
+    resetting `_saving` and the user was trapped on a spinner (Skip disabled).
+    Fix: the provider now watches `authControllerProvider.notifier` (instance,
+    stable, never rebuilds on notifications) — the only
+    provider-watching-a-ChangeNotifierProvider in the app. Hardening: the
+    onboarding screen's `_continue`/`_skip` and the edit screen's `_save` now
+    reset `_saving` in a `finally`, so no future uncaught error can trap a
+    user on a disabled spinner. Note: no automated regression test — screen
+    tests override the provider with a pre-built controller (never rebuilds),
+    and the real provider's build touches the Supabase locators; verified by
+    the full profile/auth suites plus manual onboarding/edit matrices.
 - **FuncReq audit (task 4)** — blocked: `USER_MANAGEMENT_IMPLEMENTATION_PLAN.md`
   references a `FuncReq.md` with checklist 1.1.1–1.3.4, but **no such file exists in the
   repo**. Flagged as a known gap in `lib/features/auth/README.md` -> "Open issues".

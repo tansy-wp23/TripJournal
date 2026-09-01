@@ -120,50 +120,54 @@ class _ProfileEditScreenState extends ConsumerState<ProfileEditScreen> {
 
     setState(() => _saving = true);
     final controller = ref.read(profileControllerProvider.notifier);
+    // try/finally guarantees the Save spinner can never get stuck if an
+    // unexpected error escapes the controller — same guarantee as the
+    // onboarding screen's _continue (see profileControllerProvider's doc
+    // comment for the disposed-controller incident this guards against).
+    try {
+      final nameError = await controller.updateDisplayName(
+        _displayNameController.text,
+      );
+      if (!mounted) return;
+      if (nameError != null) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(nameError)));
+        return;
+      }
 
-    final nameError = await controller.updateDisplayName(
-      _displayNameController.text,
-    );
-    if (!mounted) return;
-    if (nameError != null) {
-      setState(() => _saving = false);
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(nameError)));
-      return;
-    }
+      String? avatarError;
+      final pending = _pickedAvatar;
+      if (pending != null) {
+        avatarError = await controller.updateAvatar(pending);
+      } else if (_avatarRemoved) {
+        avatarError = await controller.removeAvatar();
+      }
+      if (!mounted) return;
+      if (avatarError != null) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(avatarError)));
+        return;
+      }
 
-    String? avatarError;
-    final pending = _pickedAvatar;
-    if (pending != null) {
-      avatarError = await controller.updateAvatar(pending);
-    } else if (_avatarRemoved) {
-      avatarError = await controller.removeAvatar();
-    }
-    if (!mounted) return;
-    if (avatarError != null) {
-      setState(() => _saving = false);
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(avatarError)));
-      return;
-    }
+      final detailsError = await controller.updateTravelDetails(
+        dateOfBirth: _dateOfBirth,
+        country: _country,
+        travelInterests: _selectedInterests,
+      );
+      if (!mounted) return;
+      if (detailsError != null) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(detailsError)));
+        return;
+      }
 
-    final detailsError = await controller.updateTravelDetails(
-      dateOfBirth: _dateOfBirth,
-      country: _country,
-      travelInterests: _selectedInterests,
-    );
-    if (!mounted) return;
-    setState(() => _saving = false);
-    if (detailsError != null) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(detailsError)));
-      return;
+      Navigator.pop(context);
+    } finally {
+      if (mounted) setState(() => _saving = false);
     }
-
-    Navigator.pop(context);
   }
 
   @override
