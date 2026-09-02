@@ -451,6 +451,70 @@ class _TripViewScreenState extends ConsumerState<TripViewScreen>
         (filter.mood == null ? 0 : 1) +
         (filter.startDate == null && filter.endDate == null ? 0 : 1);
 
+    // Built once and placed as the entries list's own first item(s) below,
+    // rather than pinned above it in a Column+Expanded — that older
+    // structure kept this fixed on screen while only the list beneath it
+    // scrolled. As a list item it scrolls away with everything else.
+    final toolbarSection = Column(
+      // Stretch, not the Column default (center) — center gives the Padding
+      // below loose width constraints, so the Card inside AppContentToolbar
+      // shrink-wraps to its buttons' width instead of spanning the same
+      // width as the header/stats cards beneath it.
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+          child: AppContentToolbar(
+            resultLabel:
+                '${filteredTripEntries.length} ${filteredTripEntries.length == 1 ? 'entry' : 'entries'}',
+            activeFilterLabel: activeFilterCount == 0
+                ? null
+                : '$activeFilterCount ${activeFilterCount == 1 ? 'filter' : 'filters'} active',
+            children: [
+              OutlinedButton.icon(
+                key: const Key('trip-view-search-toggle'),
+                icon: Icon(
+                  _searchVisible
+                      ? Icons.search_off_rounded
+                      : Icons.search_rounded,
+                ),
+                label: Text(_searchVisible ? 'Close search' : 'Search'),
+                onPressed: () {
+                  setState(() => _searchVisible = !_searchVisible);
+                  if (!_searchVisible) {
+                    ref
+                        .read(journalControllerProvider.notifier)
+                        .setFilter(filter.copyWith(query: ''));
+                  }
+                },
+              ),
+              OutlinedButton.icon(
+                key: const Key('trip-view-filter-button'),
+                onPressed: () => _openEntryFilters(filter),
+                icon: Badge(
+                  key: Key('journal-filter-count-$activeFilterCount'),
+                  isLabelVisible: activeFilterCount > 0,
+                  label: Text('$activeFilterCount'),
+                  child: const Icon(Icons.filter_alt_outlined),
+                ),
+                label: const Text('Filters'),
+              ),
+            ],
+          ),
+        ),
+        if (_searchVisible)
+          JournalSearchBar(
+            filter: filter,
+            onChanged: (f) =>
+                ref.read(journalControllerProvider.notifier).setFilter(f),
+          ),
+        // The toolbar's own Padding only insets left/right/top (see above) —
+        // without this the cover photo carousel right below it in the list
+        // butts straight up against it with no gap.
+        const SizedBox(height: 12),
+      ],
+    );
+
     return Scaffold(
       appBar: AppBar(
         title: Text(trip.title),
@@ -569,100 +633,40 @@ class _TripViewScreenState extends ConsumerState<TripViewScreen>
       body: IndexedStack(
         index: _selectedTabIndex,
         children: [
-          Column(
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-                child: AppContentToolbar(
-                  resultLabel:
-                      '${filteredTripEntries.length} ${filteredTripEntries.length == 1 ? 'entry' : 'entries'}',
-                  activeFilterLabel: activeFilterCount == 0
-                      ? null
-                      : '$activeFilterCount ${activeFilterCount == 1 ? 'filter' : 'filters'} active',
+          filter.isActive && displayDayGroups.isEmpty
+              ? ListView(
+                  key: const PageStorageKey<String>('trip-view-entries-list'),
                   children: [
-                    OutlinedButton.icon(
-                      key: const Key('trip-view-search-toggle'),
-                      icon: Icon(
-                        _searchVisible
-                            ? Icons.search_off_rounded
-                            : Icons.search_rounded,
-                      ),
-                      label: Text(_searchVisible ? 'Close search' : 'Search'),
-                      onPressed: () {
-                        setState(() => _searchVisible = !_searchVisible);
-                        if (!_searchVisible) {
-                          ref
-                              .read(journalControllerProvider.notifier)
-                              .setFilter(filter.copyWith(query: ''));
-                        }
-                      },
-                    ),
-                    OutlinedButton.icon(
-                      key: const Key('trip-view-filter-button'),
-                      onPressed: () => _openEntryFilters(filter),
-                      icon: Badge(
-                        key: Key('journal-filter-count-$activeFilterCount'),
-                        isLabelVisible: activeFilterCount > 0,
-                        label: Text('$activeFilterCount'),
-                        child: const Icon(Icons.filter_alt_outlined),
-                      ),
-                      label: const Text('Filters'),
+                    toolbarSection,
+                    _buildHeader(context, trip, stats, tripEntries, tripPhotos),
+                    _NoMatchingEntriesState(
+                      onClearFilters: () => ref
+                          .read(journalControllerProvider.notifier)
+                          .clearFilter(),
                     ),
                   ],
+                )
+              : ListView.builder(
+                  key: const PageStorageKey<String>('trip-view-entries-list'),
+                  itemCount: displayDayGroups.length + 2,
+                  itemBuilder: (context, index) {
+                    if (index == 0) return toolbarSection;
+                    if (index == 1) {
+                      return _buildHeader(
+                        context,
+                        trip,
+                        stats,
+                        tripEntries,
+                        tripPhotos,
+                      );
+                    }
+                    return _DayGroupTile(
+                      trip: trip,
+                      group: displayDayGroups[index - 2],
+                      tripPhotos: tripPhotos,
+                    );
+                  },
                 ),
-              ),
-              if (_searchVisible)
-                JournalSearchBar(
-                  filter: filter,
-                  onChanged: (f) =>
-                      ref.read(journalControllerProvider.notifier).setFilter(f),
-                ),
-              Expanded(
-                child: filter.isActive && displayDayGroups.isEmpty
-                    ? ListView(
-                        key: const PageStorageKey<String>(
-                          'trip-view-entries-list',
-                        ),
-                        children: [
-                          _buildHeader(
-                            context,
-                            trip,
-                            stats,
-                            tripEntries,
-                            tripPhotos,
-                          ),
-                          _NoMatchingEntriesState(
-                            onClearFilters: () => ref
-                                .read(journalControllerProvider.notifier)
-                                .clearFilter(),
-                          ),
-                        ],
-                      )
-                    : ListView.builder(
-                        key: const PageStorageKey<String>(
-                          'trip-view-entries-list',
-                        ),
-                        itemCount: displayDayGroups.length + 1,
-                        itemBuilder: (context, index) {
-                          if (index == 0) {
-                            return _buildHeader(
-                              context,
-                              trip,
-                              stats,
-                              tripEntries,
-                              tripPhotos,
-                            );
-                          }
-                          return _DayGroupTile(
-                            trip: trip,
-                            group: displayDayGroups[index - 1],
-                            tripPhotos: tripPhotos,
-                          );
-                        },
-                      ),
-              ),
-            ],
-          ),
           TripMapView(
             entries: tripEntries,
             tripStartDate: trip.startDate,

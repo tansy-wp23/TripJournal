@@ -121,11 +121,18 @@ class _CommunityScreenState extends ConsumerState<CommunityScreen> {
             ),
         ],
       ),
-      body: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-            child: AppContentToolbar(
+      // The toolbar used to live outside this scrollable, pinned above it in
+      // a Column+Expanded — it never moved when the list below it scrolled.
+      // It's a list item now, same as everything else, so it scrolls away
+      // like the rest of the content instead of staying fixed on screen.
+      body: RefreshIndicator(
+        onRefresh: () =>
+            ref.read(communityControllerProvider.notifier).loadPublicTrips(),
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 32),
+          children: [
+            AppContentToolbar(
               resultLabel: controller.loading
                   ? 'Loading journeys'
                   : '${controller.trips.length} ${controller.trips.length == 1 ? 'journey' : 'journeys'}',
@@ -158,16 +165,20 @@ class _CommunityScreenState extends ConsumerState<CommunityScreen> {
                 ),
               ],
             ),
-          ),
-          Expanded(child: _buildBody(context, controller)),
-        ],
+            const SizedBox(height: 16),
+            _buildBody(context, controller),
+          ],
+        ),
       ),
     );
   }
 
   Widget _buildBody(BuildContext context, CommunityController controller) {
     if (controller.loading) {
-      return const Center(child: CircularProgressIndicator());
+      return const Padding(
+        padding: EdgeInsets.only(top: 48),
+        child: Center(child: CircularProgressIndicator()),
+      );
     }
     if (controller.error != null) {
       return _CommunityMessageState(
@@ -205,63 +216,52 @@ class _CommunityScreenState extends ConsumerState<CommunityScreen> {
       _destinationQuery,
     );
 
-    return RefreshIndicator(
-      onRefresh: () =>
-          ref.read(communityControllerProvider.notifier).loadPublicTrips(),
-      child: ListView(
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(12, 12, 12, 32),
-        children: [
-          Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 760),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  const _DiscoveryHeader(),
-                  if (_destinationSearchVisible) ...[
-                    const SizedBox(height: 16),
-                    TextField(
-                      key: const Key('community-destination-search-field'),
-                      autofocus: true,
-                      decoration: const InputDecoration(
-                        labelText: 'Destination',
-                        hintText: 'Search city, region, or country',
-                        prefixIcon: Icon(Icons.search),
-                      ),
-                      onChanged: (value) =>
-                          setState(() => _destinationQuery = value),
-                    ),
-                  ],
-                  const SizedBox(height: 16),
-                  if (filteredTrips.isEmpty)
-                    TripListNoMatchesState(
-                      onClearFilter: () =>
-                          setState(() => _destinationQuery = ''),
-                    )
-                  else
-                    for (final trip in filteredTrips)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 12),
-                        child: PublicTripCard(
-                          trip: trip,
-                          onTap: () => _openPublicTrip(trip),
-                        ),
-                      ),
-                  if (widget.onSignIn != null) ...[
-                    const SizedBox(height: 12),
-                    FilledButton.icon(
-                      key: const Key('guest-create-first-trip-button'),
-                      onPressed: widget.onSignIn,
-                      icon: const Icon(Icons.add),
-                      label: const Text('Create your first trip'),
-                    ),
-                  ],
-                ],
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 760),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const _DiscoveryHeader(),
+            if (_destinationSearchVisible) ...[
+              const SizedBox(height: 16),
+              TextField(
+                key: const Key('community-destination-search-field'),
+                autofocus: true,
+                decoration: const InputDecoration(
+                  labelText: 'Destination',
+                  hintText: 'Search city, region, or country',
+                  prefixIcon: Icon(Icons.search),
+                ),
+                onChanged: (value) =>
+                    setState(() => _destinationQuery = value),
               ),
-            ),
-          ),
-        ],
+            ],
+            const SizedBox(height: 16),
+            if (filteredTrips.isEmpty)
+              TripListNoMatchesState(
+                onClearFilter: () => setState(() => _destinationQuery = ''),
+              )
+            else
+              for (final trip in filteredTrips)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: PublicTripCard(
+                    trip: trip,
+                    onTap: () => _openPublicTrip(trip),
+                  ),
+                ),
+            if (widget.onSignIn != null) ...[
+              const SizedBox(height: 12),
+              FilledButton.icon(
+                key: const Key('guest-create-first-trip-button'),
+                onPressed: widget.onSignIn,
+                icon: const Icon(Icons.add),
+                label: const Text('Create your first trip'),
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }

@@ -101,6 +101,51 @@ void main() {
     expect(detected, isNull);
   });
 
+  test(
+    'fetches the image over HTTP when imagePath is a Supabase Storage URL '
+    '(BACKEND_MODE=supabase), not a local file path',
+    () async {
+      const remoteUrl =
+          'https://example.supabase.co/storage/v1/object/public/'
+          'journal-photos/user-1/trip-1/entry-abc.jpg';
+      final requestedUrls = <Uri>[];
+      final client = MockClient((request) async {
+        requestedUrls.add(request.url);
+        if (request.url.toString() == remoteUrl) {
+          return http.Response.bytes([9, 9, 9, 9], 200);
+        }
+        return _geminiResponseWithText(
+          '{"name": "Nasi Lemak", "estimatedCalories": 600}',
+        );
+      });
+      final service = GeminiFoodDetectionService(
+        apiKey: 'test-key',
+        client: client,
+      );
+
+      final detected = await service.detectFromImage(remoteUrl);
+
+      expect(detected, isNotNull);
+      expect(detected!.name, 'Nasi Lemak');
+      // Confirms the bytes actually came from the HTTP fetch, not a failed
+      // local File() read silently sending nothing.
+      expect(requestedUrls, contains(Uri.parse(remoteUrl)));
+    },
+  );
+
+  test(
+    'returns null when the remote image URL itself fails to fetch',
+    () async {
+      const remoteUrl = 'https://example.supabase.co/storage/v1/object/public/journal-photos/missing.jpg';
+      final client = MockClient((request) async => http.Response('Not found', 404));
+      final service = GeminiFoodDetectionService(apiKey: 'test-key', client: client);
+
+      final detected = await service.detectFromImage(remoteUrl);
+
+      expect(detected, isNull);
+    },
+  );
+
   test('sends the image as base64 inline data with the API key in the URL', () async {
     Uri? capturedUri;
     Map<String, dynamic>? capturedBody;

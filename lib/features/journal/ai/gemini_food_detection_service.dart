@@ -40,13 +40,9 @@ class GeminiFoodDetectionService implements FoodDetectionService {
   @override
   Future<DetectedFood?> detectFromImage(String imagePath) async {
     try {
-      final file = File(imagePath);
-      if (!await file.exists()) {
-        _debugFailure('file does not exist at $imagePath');
-        return null;
-      }
+      final bytes = await _readImageBytes(imagePath);
+      if (bytes == null) return null;
 
-      final bytes = await file.readAsBytes();
       final response = await postGeminiWithRetry(
         _client,
         Uri.parse('$_endpoint?key=$apiKey'),
@@ -80,6 +76,35 @@ class GeminiFoodDetectionService implements FoodDetectionService {
       _debugFailure('$error');
       return null;
     }
+  }
+
+  /// [imagePath] is whatever [PhotoStorage.savePhoto] returned when the meal
+  /// photo was saved — a **local file path** in mock mode
+  /// (`MockPhotoStorage`), but a **Supabase Storage public URL**
+  /// (`https://...`) in `BACKEND_MODE=supabase` (`SupabasePhotoStorage`).
+  /// `File(imagePath).exists()` is always false for a URL, which silently
+  /// failed detection in Supabase mode until this branch existed — the
+  /// photo itself still saved and displayed fine (that path is a valid
+  /// asset URL to `Image.network`), only this Gemini upload needs the raw
+  /// bytes fetched over HTTP instead of read from disk.
+  Future<Uint8List?> _readImageBytes(String imagePath) async {
+    if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) {
+      final response = await _client.get(Uri.parse(imagePath));
+      if (response.statusCode != 200) {
+        _debugFailure(
+          'HTTP ${response.statusCode} fetching remote image $imagePath',
+        );
+        return null;
+      }
+      return response.bodyBytes;
+    }
+
+    final file = File(imagePath);
+    if (!await file.exists()) {
+      _debugFailure('file does not exist at $imagePath');
+      return null;
+    }
+    return file.readAsBytes();
   }
 
   static String _truncate(String body) =>
