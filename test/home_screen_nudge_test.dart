@@ -32,6 +32,12 @@ void main() {
         .dy;
     final settingsY = tester.getTopLeft(find.text('Settings')).dy;
     expect(recentlyDeletedY, lessThan(settingsY));
+
+    // The Profile entry was removed once profile became a bottom-nav tab
+    // (authenticated_app_shell.dart) — the menu must not bring it back, and
+    // Log out stays available here.
+    expect(find.text('Profile'), findsNothing);
+    expect(find.text('Log out'), findsOneWidget);
   });
 
   testWidgets('shows "write today\'s entry" when no entry exists for today', (
