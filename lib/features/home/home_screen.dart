@@ -8,7 +8,6 @@ import '../../data/trip_repository_locator.dart';
 import '../admin/widgets/report_issue_button.dart';
 import '../auth/controller/auth_controller.dart';
 import '../community/community_screen.dart';
-import '../profile/screens/profile_view_screen.dart';
 import '../profile/widgets/profile_avatar.dart';
 import '../settings/settings_providers.dart';
 import '../settings/settings_screen.dart';
@@ -174,13 +173,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       if (restored == true) await _loadDashboardData();
       return;
     }
-    if (value == 'profile') {
-      await Navigator.push(
-        context,
-        MaterialPageRoute(builder: (_) => const ProfileViewScreen()),
-      );
-      return;
-    }
     if (value == 'logout') {
       await ref.read(authControllerProvider.notifier).signOut();
       // AuthGate watches authControllerProvider and swaps to LoginScreen
@@ -243,7 +235,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 value: 'recently-deleted',
                 child: Text('Recently Deleted'),
               ),
-              PopupMenuItem(value: 'profile', child: Text('Profile')),
               PopupMenuItem(value: 'settings', child: Text('Settings')),
               PopupMenuItem(value: 'logout', child: Text('Log out')),
             ],

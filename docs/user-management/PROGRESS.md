@@ -1413,3 +1413,32 @@ than a parallel mechanism.
   `tester.scrollUntilVisible`, matching the existing pattern in
   `place_picker_screen_test.dart` - not a bug in the shipped screens
   themselves, real devices scroll normally.
+
+## Profile UX follow-ups (2026-09-02)
+
+Once profile became a bottom-navigation tab
+(`authenticated_app_shell.dart`: Trips / Community / Profile), the home
+app-bar menu's "Profile" entry was redundant. Two UX clean-ups, verified
+manually on all paths:
+
+- **Removed "Profile" from the home app-bar menu** (`home_screen.dart`) and
+  its now-dead `_onProfileMenuSelected` branch. The menu is now:
+  Report an issue / divider / Recently Deleted / Settings / Log out. Guarded
+  by a menu-content assertion in `home_screen_nudge_test.dart` (Profile
+  absent, Log out still present).
+- **Added "Log out" to the profile screen's Account safety card** as the
+  first action (`profile_view_screen.dart`, key `profile-logout-button`) —
+  neutral styling (unlike the error-red Deactivate/Delete) with a caption,
+  spinner + disabled while in flight via a `_signingOut` guard, and a
+  `try/finally` reset matching the onboarding screen's hardening. Sign-out
+  resolves `AuthStatus.guest`, so `AuthGate` swaps to the guest home screen
+  with no explicit navigation (mirrors the home menu's Log out). Covered
+  end to end by the new `profile_logout_test.dart` (bottom-nav Profile tab →
+  Log out → GuestHomeScreen).
+- **Removed the "Role" and "Status" rows from the profile hero card** — both
+  are constants for 100% of viewers (only `traveler`s reach this screen —
+  admins route to `AdminAccountScreen`; `AuthGate` routes deactivated users
+  to `ReactivationScreen` and suspended users to `SuspendedScreen`), rendered
+  via raw enum `toString()` leaks. Role remains visible where it is
+  meaningful: the admin user-detail screen. "Member since" and "Last login"
+  stay — they are real, varying data.

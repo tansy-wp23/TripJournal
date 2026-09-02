@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../models/profile.dart';
 import '../../../models/verification_code.dart';
+import '../../auth/controller/auth_controller.dart';
 import '../../auth/screens/code_entry_screen.dart';
 import '../../auth/screens/delete_account_screen.dart';
 import '../../settings/settings_screen.dart';
@@ -21,6 +22,10 @@ class ProfileViewScreen extends ConsumerStatefulWidget {
 }
 
 class _ProfileViewScreenState extends ConsumerState<ProfileViewScreen> {
+  /// Guards the Log out button against double-taps while sign-out is in
+  /// flight (the button shows a spinner and is disabled meanwhile).
+  bool _signingOut = false;
+
   @override
   void initState() {
     super.initState();
@@ -139,6 +144,27 @@ class _ProfileViewScreenState extends ConsumerState<ProfileViewScreen> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               OutlinedButton.icon(
+                key: const Key('profile-logout-button'),
+                onPressed: _signingOut ? null : _signOut,
+                icon: _signingOut
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.logout_outlined),
+                label: const Text('Log out'),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'Sign out of TripJournal on this device.',
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: 18),
+              OutlinedButton.icon(
                 key: const Key('deactivate-account-button'),
                 onPressed: () => _openDeactivation(context),
                 icon: const Icon(Icons.person_off_outlined),
@@ -178,6 +204,20 @@ class _ProfileViewScreenState extends ConsumerState<ProfileViewScreen> {
         ),
       ],
     );
+  }
+
+  /// Signs the user out. AuthGate watches authControllerProvider and swaps
+  /// itself to the guest home screen once status flips to guest — no
+  /// navigation needed here (mirrors the home app-bar menu's Log out).
+  Future<void> _signOut() async {
+    setState(() => _signingOut = true);
+    // try/finally keeps the button usable if an unexpected error escapes —
+    // same guarantee as the onboarding screen's _continue/_skip.
+    try {
+      await ref.read(authControllerProvider.notifier).signOut();
+    } finally {
+      if (mounted) setState(() => _signingOut = false);
+    }
   }
 
   Future<void> _openSettings(BuildContext context) async {
@@ -262,16 +302,6 @@ class _ProfileHero extends StatelessWidget {
               ),
               child: Column(
                 children: [
-                  _InfoRow(
-                    label: 'Role',
-                    value: profile.role.toString().split('.').last,
-                  ),
-                  const Divider(),
-                  _InfoRow(
-                    label: 'Status',
-                    value: profile.status.toString().split('.').last,
-                  ),
-                  const Divider(),
                   _InfoRow(
                     label: 'Member since',
                     value: _formatProfileDate(profile.createdAt),
