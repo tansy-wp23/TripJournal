@@ -65,11 +65,11 @@ void main() {
     await tester.pumpAndSettle();
 
     // Stays on the entry screen after save (IMPLEMENTATION_PLAN_UX_AI.md §3)
-    // — now titled "Edit entry" since it's persisted, button reads "Saved",
-    // and the AI suggestion is generated and shown in place.
+    // — now titled "Edit entry" since it's persisted, button reads "Saved".
+    // AI advice is a separate, button-triggered feature on Entry Detail now
+    // (see entry_detail_ai_advice_test.dart) — this save never touches it.
     expect(find.text('Edit entry'), findsOneWidget);
     expect(find.text('Saved'), findsOneWidget);
-    expect(find.byKey(const Key('ai-advice-text')), findsOneWidget);
 
     // Leave manually — back to Trip View.
     await tester.pageBack();

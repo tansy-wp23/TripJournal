@@ -5,14 +5,14 @@ import 'package:flutter/material.dart';
 import '../../models/geo_tag.dart';
 import 'current_location_locator.dart' as current_location_locator;
 import 'current_location_service.dart';
-import 'google_place_picker_map.dart';
+import 'osm_place_picker_map.dart';
 import 'place_search_service.dart';
 
 class PlacePickerScreen extends StatefulWidget {
   const PlacePickerScreen({
     super.key,
     required this.service,
-    this.mapBuilder = buildConfiguredGooglePlacePickerMap,
+    this.mapBuilder = buildConfiguredPlacePickerMap,
     this.initialLocation,
     this.currentLocationService,
   });
@@ -105,9 +105,9 @@ class _PlacePickerScreenState extends State<PlacePickerScreen> {
     }
   }
 
-  void _onPinDragged(GeoTag dragged) {
-    final latitude = dragged.latitude;
-    final longitude = dragged.longitude;
+  void _onPinMoved(GeoTag moved) {
+    final latitude = moved.latitude;
+    final longitude = moved.longitude;
     final coordinate = GeoTag(
       latitude: latitude,
       longitude: longitude,
@@ -343,7 +343,7 @@ class _PlacePickerScreenState extends State<PlacePickerScreen> {
               height: 260,
               child: widget.mapBuilder(
                 selectedLocation: selected,
-                onPinDragged: _onPinDragged,
+                onPinMoved: _onPinMoved,
               ),
             ),
             const SizedBox(height: 12),
@@ -394,7 +394,7 @@ class _SelectionCard extends StatelessWidget {
     if (location == null) {
       return const Text(
         'Search for a place, then confirm it here. You can also tap the map '
-        'or drag its pin.',
+        'to move its pin.',
       );
     }
 

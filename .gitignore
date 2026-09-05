@@ -46,8 +46,6 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 .env
-maps.local.json
-/web/google_maps_config.json
 
 # Supabase CLI local metadata (created by supabase link; contains no secrets)
 supabase/.temp/

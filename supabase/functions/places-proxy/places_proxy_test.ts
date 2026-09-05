@@ -6,7 +6,7 @@ type FetchImplementation = (
 ) => Promise<Response>;
 
 const endpoint = "https://edge.example.test/places-proxy";
-const providerKey = "server-key-that-must-stay-private";
+const nominatimBase = "https://nominatim.openstreetmap.org";
 
 const expectedMessages = {
   unauthorized: "Authentication is required.",
@@ -98,10 +98,12 @@ function handlerFor(
       authorization: string,
     ) => Promise<{ allowed: boolean; remaining: number; retryAfterSeconds: number }>;
     providerTimeoutMs?: number;
+    minRequestSpacingMs?: number;
+    now?: () => number;
+    sleep?: (ms: number) => Promise<void>;
   } = {},
 ) {
   const env: Record<string, string | undefined> = {
-    GOOGLE_PLACES_SERVER_KEY: providerKey,
     SUPABASE_URL: "https://tripjournal.supabase.co",
     SUPABASE_ANON_KEY: "public-anon-key",
     ...options.env,
@@ -109,7 +111,7 @@ function handlerFor(
 
   return createPlacesProxyHandler({
     fetch: options.fetch ??
-      (() => Promise.resolve(jsonResponse({ places: [] }))),
+      (() => Promise.resolve(jsonResponse([]))),
     authenticate: options.authenticate ?? ((authorization: string | null) => {
       if (!authorization?.startsWith("Bearer ")) return Promise.resolve(null);
       return Promise.resolve({ id: authorization.slice("Bearer ".length) });
@@ -120,6 +122,11 @@ function handlerFor(
     consumeRateLimit: options.consumeRateLimit ?? (() =>
       Promise.resolve({ allowed: true, remaining: 19, retryAfterSeconds: 0 })),
     providerTimeoutMs: options.providerTimeoutMs,
+    // Real spacing would slow every test by ~1s; tests that specifically
+    // exercise throttling override this back to a controlled value.
+    minRequestSpacingMs: options.minRequestSpacingMs ?? 0,
+    now: options.now,
+    sleep: options.sleep,
   });
 }
 
@@ -139,7 +146,7 @@ Deno.test("an unauthenticated request returns a generic 401 with CORS", async ()
   const response = await handlerFor({
     authenticate: () => Promise.resolve(null),
     fetch: () => {
-      throw new Error("unauthenticated requests must not call Google");
+      throw new Error("unauthenticated requests must not call Nominatim");
     },
   })(post({ action: "search", query: "Kuala Lumpur" }));
 
@@ -177,21 +184,21 @@ Deno.test("the production authenticator verifies bearer tokens through Supabase 
         retry_after_seconds: 0,
       }));
     }
-    if (url === "https://places.googleapis.com/v1/places:searchText") {
-      return Promise.resolve(jsonResponse({ places: [] }));
+    if (url.startsWith(`${nominatimBase}/search`)) {
+      return Promise.resolve(jsonResponse([]));
     }
     return Promise.resolve(
       jsonResponse({ message: "unexpected endpoint" }, 404),
     );
   };
   const env: Record<string, string> = {
-    GOOGLE_PLACES_SERVER_KEY: providerKey,
     SUPABASE_URL: "https://tripjournal.supabase.co",
     SUPABASE_ANON_KEY: "public-anon-key",
   };
   const handler = createPlacesProxyHandler({
     fetch: fetchImpl,
     readEnv: (name: string) => env[name],
+    minRequestSpacingMs: 0,
   });
 
   const response = await handler(
@@ -225,25 +232,19 @@ Deno.test("non-POST, malformed JSON, and unsupported actions return invalid_requ
 });
 
 Deno.test("search trims the query and accepts inclusive lengths 2 through 120", async () => {
-  const trimmedFetch: FetchImplementation = (input, init) => {
-    if (
-      String(input) !== "https://places.googleapis.com/v1/places:searchText"
-    ) {
+  const trimmedFetch: FetchImplementation = (input) => {
+    const url = new URL(String(input));
+    if (url.pathname !== "/search") {
       return Promise.resolve(
         jsonResponse({ message: "unexpected endpoint" }, 404),
       );
     }
-    const body = JSON.parse(String(init?.body));
-    const headers = new Headers(init?.headers);
     return Promise.resolve(
-      body.textQuery === "KL" &&
-        body.pageSize === 5 &&
-        body.maxResultCount === undefined &&
-        headers.get("x-goog-api-key") === providerKey &&
-        headers.get("x-goog-fieldmask") ===
-          "places.id,places.displayName,places.formattedAddress"
-        ? jsonResponse({ places: [] })
-        : jsonResponse({ message: "invalid Text Search request" }, 400),
+      url.searchParams.get("q") === "KL" &&
+        url.searchParams.get("format") === "jsonv2" &&
+        url.searchParams.get("limit") === "5"
+        ? jsonResponse([])
+        : jsonResponse({ message: "invalid search request" }, 400),
     );
   };
   const trimmedResponse = await handlerFor({ fetch: trimmedFetch })(
@@ -266,7 +267,7 @@ Deno.test("search trims the query and accepts inclusive lengths 2 through 120", 
 Deno.test("search rejects non-string queries and trimmed lengths outside 2 through 120", async () => {
   const handler = handlerFor({
     fetch: () => {
-      throw new Error("invalid search must not call Google");
+      throw new Error("invalid search must not call Nominatim");
     },
   });
   const responses = [
@@ -280,33 +281,34 @@ Deno.test("search rejects non-string queries and trimmed lengths outside 2 throu
   }
 });
 
-Deno.test("resolve validates and trims placeId before returning the location contract", async () => {
-  const fetchImpl: FetchImplementation = (input, init) => {
-    const headers = new Headers(init?.headers);
+Deno.test("resolve requires an OSM-shaped placeId (letter + digits) and sends it as osm_ids", async () => {
+  const fetchImpl: FetchImplementation = (input) => {
+    const url = new URL(String(input));
     if (
-      String(input) !== "https://places.googleapis.com/v1/places/place-123" ||
-      init?.method !== "GET" ||
-      headers.get("x-goog-api-key") !== providerKey ||
-      headers.get("x-goog-fieldmask") !==
-        "id,displayName,formattedAddress,location"
+      url.pathname !== "/lookup" ||
+      url.searchParams.get("osm_ids") !== "N123456" ||
+      url.searchParams.get("format") !== "jsonv2"
     ) {
       return Promise.resolve(
         jsonResponse({ message: "placeId was not trimmed" }, 404),
       );
     }
-    return Promise.resolve(jsonResponse({
-      id: "place-123",
-      displayName: { text: "Central Market" },
-      formattedAddress: "Jalan Hang Kasturi, Kuala Lumpur",
-      location: { latitude: 3.1457, longitude: 101.6955 },
-    }));
+    return Promise.resolve(jsonResponse([{
+      osm_type: "node",
+      osm_id: 123456,
+      lat: "3.1457",
+      lon: "101.6955",
+      name: "Central Market",
+      display_name: "Central Market, Jalan Hang Kasturi, Kuala Lumpur",
+      address: { road: "Jalan Hang Kasturi" },
+    }]));
   };
   const valid = await handlerFor({ fetch: fetchImpl })(
-    post({ action: "resolve", placeId: "  place-123  " }),
+    post({ action: "resolve", placeId: "  N123456  " }),
   );
   const invalidHandler = handlerFor({
     fetch: () => {
-      throw new Error("invalid place IDs must not call Google");
+      throw new Error("invalid place IDs must not call Nominatim");
     },
   });
   const blank = await invalidHandler(
@@ -315,8 +317,12 @@ Deno.test("resolve validates and trims placeId before returning the location con
   const nonString = await invalidHandler(
     post({ action: "resolve", placeId: 123 }),
   );
-  const tooLong = await invalidHandler(
-    post({ action: "resolve", placeId: "p".repeat(301) }),
+  // The old Google-shaped id - a real regression case now that the format is enforced.
+  const wrongFormat = await invalidHandler(
+    post({ action: "resolve", placeId: "ChIJN1t_tDeuEmsRUsoyG83frY4" }),
+  );
+  const tooManyDigits = await invalidHandler(
+    post({ action: "resolve", placeId: `N${"1".repeat(20)}` }),
   );
 
   assertEquals(valid.status, 200);
@@ -326,19 +332,20 @@ Deno.test("resolve validates and trims placeId before returning the location con
       latitude: 3.1457,
       longitude: 101.6955,
       placeName: "Central Market",
-      formattedAddress: "Jalan Hang Kasturi, Kuala Lumpur",
-      placeId: "place-123",
+      formattedAddress: "Central Market, Jalan Hang Kasturi, Kuala Lumpur",
+      placeId: "N123456",
     },
   });
   await assertError(blank, 400, "invalid_request");
   await assertError(nonString, 400, "invalid_request");
-  await assertError(tooLong, 400, "invalid_request");
+  await assertError(wrongFormat, 400, "invalid_request");
+  await assertError(tooManyDigits, 400, "invalid_request");
 });
 
 Deno.test("reverse rejects non-finite or out-of-range coordinates and accepts range boundaries", async () => {
   const invalidHandler = handlerFor({
     fetch: () => {
-      throw new Error("invalid coordinates must not call Google");
+      throw new Error("invalid coordinates must not call Nominatim");
     },
   });
   const invalidRequests = [
@@ -357,29 +364,24 @@ Deno.test("reverse rejects non-finite or out-of-range coordinates and accepts ra
   }
 
   const valid = await handlerFor({
-    fetch: (input, init) => {
+    fetch: (input) => {
       const url = new URL(String(input));
       if (
-        url.origin !== "https://maps.googleapis.com" ||
-        url.pathname !== "/maps/api/geocode/json" ||
-        url.searchParams.get("latlng") !== "-90,180" ||
-        url.searchParams.get("key") !== providerKey ||
-        init?.method !== "GET"
+        url.origin !== nominatimBase ||
+        url.pathname !== "/reverse" ||
+        url.searchParams.get("lat") !== "-90" ||
+        url.searchParams.get("lon") !== "180"
       ) {
-        return Promise.resolve(
-          jsonResponse({ status: "INVALID_REQUEST" }, 400),
-        );
+        return Promise.resolve(jsonResponse({ error: "Unable to geocode" }, 200));
       }
+      // Nominatim returns lat/lon as strings - the response must still parse.
       return Promise.resolve(jsonResponse({
-        status: "OK",
-        results: [{
-          place_id: "south-pole-dateline",
-          formatted_address: "South Pole",
-          address_components: [
-            { long_name: "90", types: ["street_number"] },
-            { long_name: "South Pole", types: ["locality", "political"] },
-          ],
-        }],
+        osm_type: "way",
+        osm_id: 987654321,
+        lat: "-90",
+        lon: "180",
+        display_name: "South Pole",
+        address: { country: "Antarctica" },
       }));
     },
   })(post({ action: "reverse", latitude: -90, longitude: 180 }));
@@ -392,58 +394,68 @@ Deno.test("reverse rejects non-finite or out-of-range coordinates and accepts ra
       longitude: 180,
       placeName: "South Pole",
       formattedAddress: "South Pole",
-      placeId: "south-pole-dateline",
+      placeId: "W987654321",
     },
   });
+});
+
+Deno.test("reverse treats a Nominatim {error} body as no result, not a thrown error", async () => {
+  const response = await handlerFor({
+    fetch: () => Promise.resolve(jsonResponse({ error: "Unable to geocode" })),
+  })(post({ action: "reverse", latitude: 0, longitude: 0 }));
+
+  await assertError(response, 502, "provider_error");
 });
 
 Deno.test("search returns at most five normalized suggestions", async () => {
   const response = await handlerFor({
     fetch: () =>
-      Promise.resolve(jsonResponse({
-        places: [
-          { id: "p1", displayName: { text: "One" }, formattedAddress: "A1" },
-          { id: "p2", displayName: { text: "Two" }, formattedAddress: "A2" },
-          { id: "p3", displayName: { text: "Three" }, formattedAddress: "A3" },
-          { id: "p4", displayName: { text: "Four" }, formattedAddress: "A4" },
-          { id: "p5", displayName: { text: "Five" }, formattedAddress: "A5" },
-          { id: "p6", displayName: { text: "Six" }, formattedAddress: "A6" },
-          { id: "p7", displayName: { text: "Seven" }, formattedAddress: "A7" },
-        ],
-      })),
+      Promise.resolve(jsonResponse([
+        { osm_type: "node", osm_id: 1, name: "One", display_name: "A1" },
+        { osm_type: "node", osm_id: 2, name: "Two", display_name: "A2" },
+        { osm_type: "node", osm_id: 3, name: "Three", display_name: "A3" },
+        { osm_type: "node", osm_id: 4, name: "Four", display_name: "A4" },
+        { osm_type: "node", osm_id: 5, name: "Five", display_name: "A5" },
+        { osm_type: "node", osm_id: 6, name: "Six", display_name: "A6" },
+        { osm_type: "node", osm_id: 7, name: "Seven", display_name: "A7" },
+      ])),
   })(post({ action: "search", query: "places" }));
 
   assertEquals(response.status, 200);
   assertCors(response);
   assertEquals(await response.json(), {
     suggestions: [
-      { placeId: "p1", primaryText: "One", secondaryText: "A1" },
-      { placeId: "p2", primaryText: "Two", secondaryText: "A2" },
-      { placeId: "p3", primaryText: "Three", secondaryText: "A3" },
-      { placeId: "p4", primaryText: "Four", secondaryText: "A4" },
-      { placeId: "p5", primaryText: "Five", secondaryText: "A5" },
+      { placeId: "N1", primaryText: "One", secondaryText: "A1" },
+      { placeId: "N2", primaryText: "Two", secondaryText: "A2" },
+      { placeId: "N3", primaryText: "Three", secondaryText: "A3" },
+      { placeId: "N4", primaryText: "Four", secondaryText: "A4" },
+      { placeId: "N5", primaryText: "Five", secondaryText: "A5" },
     ],
   });
 });
 
-Deno.test("search treats an omitted places field as no matches and rejects malformed places", async () => {
+Deno.test("search treats an empty result array as no matches and rejects malformed results", async () => {
   const noMatches = await handlerFor({
-    fetch: () => Promise.resolve(jsonResponse({})),
+    fetch: () => Promise.resolve(jsonResponse([])),
   })(post({ action: "search", query: "no matches" }));
   const malformed = await handlerFor({
     fetch: () =>
-      Promise.resolve(jsonResponse({
-        places: [{ id: "missing-display-name" }],
-      })),
+      Promise.resolve(jsonResponse([
+        { osm_type: "node", osm_id: 1 }, // missing display_name
+      ])),
   })(post({ action: "search", query: "malformed result" }));
+  const nonArray = await handlerFor({
+    fetch: () => Promise.resolve(jsonResponse({ not: "an array" })),
+  })(post({ action: "search", query: "wrong shape" }));
 
   assertEquals(noMatches.status, 200);
   assertCors(noMatches);
   assertEquals(await noMatches.json(), { suggestions: [] });
   await assertError(malformed, 502, "provider_error");
+  await assertError(nonArray, 502, "provider_error");
 });
 
-Deno.test("the durable limiter decision is enforced before calling Google", async () => {
+Deno.test("the durable limiter decision is enforced before calling Nominatim", async () => {
   let calls = 0;
   const handler = handlerFor({
     consumeRateLimit: () => {
@@ -460,10 +472,10 @@ Deno.test("the durable limiter decision is enforced before calling Google", asyn
     post({ action: "search", query: "KL" }, { token: "user-one" }),
   );
   const second = await handler(
-    post({ action: "search", query: "KL" }, { token: "user-one" }),
+    post({ action: "search", query: "KL2" }, { token: "user-one" }),
   );
   const limited = await handler(
-    post({ action: "search", query: "KL" }, { token: "user-one" }),
+    post({ action: "search", query: "KL3" }, { token: "user-one" }),
   );
   for (const response of [first, second]) {
     assertEquals(response.status, 200);
@@ -473,13 +485,13 @@ Deno.test("the durable limiter decision is enforced before calling Google", asyn
   assertEquals(calls, 3);
 });
 
-Deno.test("a limiter database failure fails closed without calling Google", async () => {
+Deno.test("a limiter database failure fails closed without calling Nominatim", async () => {
   let providerCalls = 0;
   const response = await handlerFor({
     consumeRateLimit: () => Promise.reject(new Error("database offline")),
     fetch: () => {
       providerCalls += 1;
-      return Promise.resolve(jsonResponse({ places: [] }));
+      return Promise.resolve(jsonResponse([]));
     },
   })(post({ action: "search", query: "private query" }));
 
@@ -487,12 +499,48 @@ Deno.test("a limiter database failure fails closed without calling Google", asyn
   assertEquals(providerCalls, 0);
 });
 
-Deno.test("provider failures are sanitized and never expose upstream details or the server key", async () => {
+Deno.test("a cache hit does not call Nominatim a second time", async () => {
+  let providerCalls = 0;
+  const handler = handlerFor({
+    fetch: () => {
+      providerCalls += 1;
+      return Promise.resolve(jsonResponse([]));
+    },
+  });
+
+  const first = await handler(post({ action: "search", query: "repeat query" }));
+  const second = await handler(post({ action: "search", query: "repeat query" }));
+
+  assertEquals(first.status, 200);
+  assertEquals(second.status, 200);
+  assertEquals(providerCalls, 1);
+});
+
+Deno.test("consecutive upstream calls are spaced by the configured minimum", async () => {
+  const sleepCalls: number[] = [];
+  const currentTime = 1_000; // a fixed clock: nothing "elapses" between calls
+  const handler = handlerFor({
+    now: () => currentTime,
+    sleep: (ms) => {
+      sleepCalls.push(ms);
+      return Promise.resolve();
+    },
+    minRequestSpacingMs: 500,
+    fetch: () => Promise.resolve(jsonResponse([])),
+  });
+
+  await handler(post({ action: "search", query: "first query" }));
+  await handler(post({ action: "search", query: "second query" }));
+
+  assertEquals(sleepCalls, [500]);
+});
+
+Deno.test("provider failures are sanitized and never expose upstream details", async () => {
   const response = await handlerFor({
     fetch: () =>
       Promise.resolve(
         new Response(
-          `Google diagnostic containing query, coordinates, and ${providerKey}`,
+          "Nominatim diagnostic containing the search query",
           { status: 503 },
         ),
       ),
@@ -500,8 +548,7 @@ Deno.test("provider failures are sanitized and never expose upstream details or 
 
   const text = await assertError(response, 502, "provider_error");
   assert(!text.includes("private hotel query"));
-  assert(!text.includes(providerKey));
-  assert(!text.includes("Google diagnostic"));
+  assert(!text.includes("Nominatim diagnostic"));
 });
 
 Deno.test("AbortController timeouts return a sanitized timeout response with CORS", async () => {
@@ -532,18 +579,21 @@ Deno.test("AbortController timeouts return a sanitized timeout response with COR
   const text = await assertError(response, 504, "timeout");
   assert(!text.includes("private query"));
   assert(!text.includes("provider detail"));
-  assert(!text.includes(providerKey));
 });
 
-Deno.test("missing server configuration fails closed with a generic internal error and CORS", async () => {
-  const response = await handlerFor({
-    env: { GOOGLE_PLACES_SERVER_KEY: undefined },
+Deno.test("missing Supabase configuration fails closed with a generic internal error and CORS", async () => {
+  // Exercises the module's own default authenticator (not the test stub),
+  // which reads SUPABASE_URL/SUPABASE_ANON_KEY via requireEnvironment.
+  const handler = createPlacesProxyHandler({
+    readEnv: () => undefined,
     fetch: () => {
-      throw new Error("missing configuration must not call Google");
+      throw new Error("missing configuration must not call Supabase or Nominatim");
     },
-  })(post({ action: "search", query: "private query" }));
+  });
+
+  const response = await handler(post({ action: "search", query: "private query" }));
 
   const text = await assertError(response, 500, "internal_error");
-  assert(!text.includes("GOOGLE_PLACES_SERVER_KEY"));
+  assert(!text.includes("SUPABASE_URL"));
   assert(!text.includes("private query"));
 });

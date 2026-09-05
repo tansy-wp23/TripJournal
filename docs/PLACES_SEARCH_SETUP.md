@@ -2,60 +2,50 @@
 
 The entry location picker has two independent halves:
 
-- **Dropping a pin** works with no setup beyond the map rendering key. Tapping the map records the
-  coordinate immediately (`lib/features/location/place_picker_screen.dart:100-106`).
+- **Dropping a pin** works with no setup at all — tapping the map records the coordinate
+  immediately (`lib/features/location/osm_place_picker_map.dart`). Map rendering needs no key
+  either; see [`MAP_LOCATION_SETUP.md`](MAP_LOCATION_SETUP.md).
 - **Typing a search**, and **naming a dropped pin**, both go through the `places-proxy` Supabase
-  Edge Function. Until it is deployed, search shows *"Place search is temporarily unavailable"* and
-  pins silently save as bare coordinates with no place name.
+  Edge Function, which calls OpenStreetMap's **Nominatim** geocoder. Until the function is deployed,
+  search shows *"Place search is temporarily unavailable"* and pins silently save as bare
+  coordinates with no place name.
 
-This document covers deploying that function. For the map **tiles**, see
-[`MAP_LOCATION_SETUP.md`](MAP_LOCATION_SETUP.md) — a separate concern with separate keys.
+This document covers deploying that function.
 
-## Why a server proxy at all
+## Why a server proxy at all, when Nominatim needs no key
 
-The Places key is a *server* credential. Routing through an Edge Function keeps it off every user's
-device, lets the function require a signed-in Supabase user, and applies a per-user rate limit that a
-client-side key could not. The function never logs request bodies and never echoes provider text back
-to the client, so queries and coordinates stay out of error paths.
+Nominatim itself needs no API key — so the proxy isn't hiding a credential the way it did for
+Google. It still earns its place for reasons that matter more with a free, shared, best-effort
+service than with a paid API:
 
-## 1. Enable two Google APIs
+- **A single, correctly identified caller.** Nominatim's [usage policy](https://operations.osmfoundation.org/policies/nominatim/)
+  requires a stable User-Agent with a real contact route, and caps the *whole application* at
+  1 request/second — not per user. That's only enforceable from one place; every device calling
+  Nominatim directly would each need its own throttle and there'd be no way to keep the aggregate
+  under the ceiling.
+- **A response cache.** The policy asks that results be cached, not re-fetched on every identical
+  query. The proxy keeps an in-memory cache (24h TTL) per instance for exactly this.
+- **The existing per-user rate limit and auth requirement** carry over unchanged from before — they
+  protect the proxy itself from abuse, independent of what's behind it.
 
-`supabase/functions/places-proxy/index.ts` calls two different Google products on two different hosts:
+If Nominatim's public instance is ever rate-limiting the app in practice, the fix is
+`NOMINATIM_BASE_URL` (below), not removing the proxy.
 
-| Action | Endpoint | Product to enable |
+## 1. Nothing to enable, nothing to enable billing for
+
+There is no Google Cloud project, no API to enable, no billing account. Skip straight to deploying.
+
+## 2. No server key needed by default
+
+Nominatim's public instance (`https://nominatim.openstreetmap.org`) needs no credential. Two
+secrets are optional and only needed if the defaults don't fit:
+
+| Secret | Default | When to set it |
 |---|---|---|
-| `search` | `places.googleapis.com/v1/places:searchText` | **Places API (New)** |
-| `resolve` | `places.googleapis.com/v1/places/{id}` | **Places API (New)** |
-| `reverse` | `maps.googleapis.com/maps/api/geocode/json` | **Geocoding API** |
+| `NOMINATIM_BASE_URL` | `https://nominatim.openstreetmap.org` | Point at a self-hosted or paid Nominatim instance once usage outgrows the public instance's policy limits. |
+| `NOMINATIM_USER_AGENT` | `TripJournal/1.0 (+https://github.com/tripjournal/tripjournal)` | Change if the contact URL in the default goes stale — the policy requires this to stay accurate. |
 
-Enable **both**. Note that "Places API (New)" is a distinct product from the legacy "Places API" —
-enabling the legacy one will not serve these endpoints.
-
-Enabling only Places leaves search working while every dropped pin stays unnamed, because naming a
-pin is the Geocoding call. That asymmetry is the fastest way to diagnose a half-finished setup.
-
-Enabling an API and permitting a key to call it are **two separate switches**, and both are needed.
-Google distinguishes them in the error: `SERVICE_DISABLED` means the API is not enabled on the
-project, while `API_KEY_SERVICE_BLOCKED` means the key's API restriction list excludes it. The proxy
-strips those details before replying, so read them by calling Google directly with the key.
-
-Billing must be enabled on the Cloud project, as with the rendering keys.
-
-## 2. Create a server key
-
-This key lives on Supabase's servers and is never shipped to a device, so its restrictions differ
-from the Android rendering key:
-
-1. **APIs & Services → Credentials → + Create Credentials → API key.**
-2. **Application restrictions: None.** An Android/package restriction would break it — the caller is
-   a Supabase server, not the app. IP restriction is impractical because Edge Function egress
-   addresses are not stable.
-3. **API restrictions: Restrict key**, selecting exactly *Places API (New)* and *Geocoding API*.
-
-With no application restriction available, the API restriction is the entire security boundary. Do
-not leave this key unrestricted, and do not reuse the Android rendering key here.
-
-## 3. Set the secret and deploy
+## 3. Deploy
 
 Requires owner/admin access to the Supabase project and a `SUPABASE_ACCESS_TOKEN` personal access
 token. Run from the **repository root** so `supabase/config.toml` is honoured:
@@ -63,28 +53,29 @@ token. Run from the **repository root** so `supabase/config.toml` is honoured:
 ```powershell
 npx supabase link --project-ref <project-ref>
 npx supabase db push
-npx supabase secrets set GOOGLE_PLACES_SERVER_KEY=<the-server-key>
 npx supabase functions deploy places-proxy
 ```
 
-Apply the database migrations **before** deploying the function. The proxy fails closed when its
-durable rate-limit RPC is unavailable, so deploying first would temporarily make every lookup return
-a service-unavailable response. Set the secret **before** deploying, so the function is never briefly
-live without its key.
+Apply the database migrations **before** deploying the function — the proxy fails closed when its
+durable rate-limit RPC is unavailable, so deploying first would temporarily make every lookup
+return a service-unavailable response. If overriding the defaults from Step 2:
 
-Two things that differ from the other functions in this repo:
+```powershell
+npx supabase secrets set NOMINATIM_BASE_URL=<your-instance-url>
+npx supabase secrets set NOMINATIM_USER_AGENT="TripJournal/1.0 (+https://your-contact-url)"
+```
+
+One thing that differs from most other functions in this repo:
 
 - **Do not pass `--no-verify-jwt`.** `supabase/config.toml` sets `verify_jwt = true` for
-  `places-proxy`; it is the only function here that requires a signed-in caller. Every other function
-  was deployed with that flag, so the muscle memory is wrong for this one.
-- **The secret name must match exactly.** A misspelling surfaces as an opaque HTTP 500 with the
-  variable name deliberately withheld from the response body, making it indistinguishable from any
-  other internal error without reading the function logs.
+  `places-proxy`; it is one of the few functions here that requires a signed-in caller. Muscle
+  memory from other functions in this repo is wrong for this one.
 
 ## 4. Verify
 
-Confirm the function is reachable. Before deployment this returns **404**; after, it returns **401**,
-which is the correct response to an unauthenticated call and therefore the success signal:
+Confirm the function is reachable. Before deployment this returns **404**; after, it returns
+**401**, which is the correct response to an unauthenticated call and therefore the success
+signal:
 
 ```bash
 curl -s -o /dev/null -w "%{http_code}\n" -X POST \
@@ -96,7 +87,7 @@ Then, in the running app while signed in:
 
 1. Open an entry, add a location, and type at least two characters. Suggestions appear, up to five.
 2. Drop a pin somewhere recognisable. The selection should resolve from bare coordinates to a named
-   place — this exercises the Geocoding half.
+   place.
 3. Save the entry, reopen it, and confirm the place name persisted.
 
 The function's own test suite needs Deno:
@@ -109,12 +100,13 @@ deno test supabase/functions/places-proxy/places_proxy_test.ts --allow-env
 
 | Symptom | Cause |
 |---|---|
-| *"Place search is temporarily unavailable"* | Function not deployed, or a non-2xx from Google. Probe for 404 first. |
+| *"Place search is temporarily unavailable"* | Function not deployed, or a non-2xx from Nominatim. Probe for 404 first. |
 | *"Please sign in to search for places"* | Deployed and reachable, but the caller had no valid Supabase session. |
-| *"The place service is temporarily unavailable"* | HTTP 500 from the function — most often a missing or misspelled `GOOGLE_PLACES_SERVER_KEY`. |
-| Search works, pins stay unnamed | Geocoding API not enabled. |
-| Search fails while Geocoding works | The legacy *Places API* was enabled instead of *Places API (New)*. They are adjacent entries in the console and easy to confuse. |
-| *"Too many place requests"* | Durable per-user rate limit: 20 requests per 60 seconds. The database window survives Edge Function cold starts and multiple instances. |
-| *"Location search is temporarily unavailable"* | The durable rate-limit RPC or its database is unavailable. Requests fail closed and do not call Google. |
+| *"The place service is temporarily unavailable"* | HTTP 500 from the function — check the function logs; there's no server key to misspell anymore, so this is more likely a Supabase config problem (`SUPABASE_URL`/`SUPABASE_ANON_KEY`). |
+| *"Too many place requests"* | The proxy's own durable per-user rate limit: 20 requests per 60 seconds. |
+| *"Location search is temporarily unavailable"* | The durable rate-limit RPC or its database is unavailable. Requests fail closed and do not call Nominatim. |
+| Results are slow or occasionally time out | The public Nominatim instance has no SLA (see its usage policy) — expected occasionally, not a bug to chase. If it's frequent, move to a paid/self-hosted instance via `NOMINATIM_BASE_URL`. |
 
-Query length is validated at 2–120 characters; shorter input is rejected before any Google call.
+Query length is validated at 2–120 characters; shorter input is rejected before any Nominatim call.
+A `resolve` `placeId` must match `[NWR]<digits>` (e.g. `N123456`) — the encoded OSM type + id pair
+Nominatim's `/lookup` endpoint expects.

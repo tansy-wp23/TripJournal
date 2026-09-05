@@ -18,6 +18,11 @@ type ConsumeRateLimit = (
   authorization: string,
 ) => Promise<RateLimitDecision>;
 
+interface CacheEntry {
+  expiresAt: number;
+  value: unknown;
+}
+
 interface PlacesProxyDependencies {
   fetch?: FetchImplementation;
   authenticate?: Authenticate;
@@ -26,6 +31,12 @@ interface PlacesProxyDependencies {
   scheduleTimeout?: (callback: () => void, delayMs: number) => unknown;
   cancelTimeout?: (handle: unknown) => void;
   providerTimeoutMs?: number;
+  cache?: Map<string, CacheEntry>;
+  now?: () => number;
+  cacheTtlMs?: number;
+  cacheMaxEntries?: number;
+  minRequestSpacingMs?: number;
+  sleep?: (ms: number) => Promise<void>;
 }
 
 const corsHeaders = {
@@ -36,9 +47,16 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-const googlePlacesBaseUrl = "https://places.googleapis.com/v1";
-const googleGeocodingUrl = "https://maps.googleapis.com/maps/api/geocode/json";
+const defaultNominatimBaseUrl = "https://nominatim.openstreetmap.org";
+// Nominatim's usage policy requires a stable User-Agent identifying the app with a
+// contact route - a generic HTTP-client default gets silently blocked.
+const defaultNominatimUserAgent =
+  "TripJournal/1.0 (+https://github.com/tripjournal/tripjournal)";
 const defaultProviderTimeoutMs = 8_000;
+const defaultCacheTtlMs = 24 * 60 * 60 * 1000;
+const defaultCacheMaxEntries = 500;
+// Nominatim's usage policy caps the whole application at 1 request/second.
+const defaultMinRequestSpacingMs = 1_000;
 
 const publicErrors = {
   unauthorized: {
@@ -235,102 +253,105 @@ async function fetchProviderJson(
   }
 }
 
+// Nominatim place ids aren't stable integers the way Google's are - the stable
+// identifier is the (osm_type, osm_id) pair. Encode it as a single string
+// ("N123456") so it round-trips through the existing string-typed `placeId`
+// contract, and is directly usable as `/lookup`'s `osm_ids` parameter value.
+function osmPlaceId(value: Record<string, unknown>): string | null {
+  const type = typeof value.osm_type === "string"
+    ? value.osm_type[0]?.toUpperCase()
+    : null;
+  const id = typeof value.osm_id === "number" ? String(value.osm_id) : null;
+  return type != null && "NWR".includes(type) && id != null
+    ? `${type}${id}`
+    : null;
+}
+
+const validOsmPlaceId = /^[NWR]\d{1,19}$/;
+
+const placeNamePreference = [
+  "tourism",
+  "attraction",
+  "building",
+  "amenity",
+  "shop",
+  "road",
+  "neighbourhood",
+  "suburb",
+  "city_district",
+  "village",
+  "town",
+  "city",
+  "county",
+  "state",
+  "country",
+];
+
+function placeNameFromNominatim(value: Record<string, unknown>): string | null {
+  const name = nonEmptyString(value.name);
+  if (name != null) return name;
+  if (isRecord(value.address)) {
+    for (const key of placeNamePreference) {
+      const candidate = nonEmptyString(value.address[key]);
+      if (candidate != null) return candidate;
+    }
+  }
+  return nonEmptyString(value.display_name);
+}
+
 function parseSuggestion(value: unknown) {
   if (!isRecord(value)) return null;
-  const displayName = isRecord(value.displayName)
-    ? nonEmptyString(value.displayName.text)
-    : null;
-  const placeId = nonEmptyString(value.id);
-  if (placeId == null || displayName == null) return null;
+  const placeId = osmPlaceId(value);
+  const formattedAddress = nonEmptyString(value.display_name);
+  if (placeId == null || formattedAddress == null) return null;
 
   return {
     placeId,
-    primaryText: displayName,
-    secondaryText: typeof value.formattedAddress === "string"
-      ? value.formattedAddress.trim()
-      : "",
+    primaryText: placeNameFromNominatim(value) ?? formattedAddress,
+    secondaryText: formattedAddress,
   };
 }
 
+// `/lookup` returns an array (it accepts multiple comma-separated osm_ids); we
+// always request exactly one, so the first element is the result.
 function parseResolvedLocation(value: unknown) {
-  if (!isRecord(value) || !isRecord(value.location)) return null;
-  const latitude = value.location.latitude;
-  const longitude = value.location.longitude;
-  const placeName = isRecord(value.displayName)
-    ? nonEmptyString(value.displayName.text)
-    : null;
-  const formattedAddress = nonEmptyString(value.formattedAddress);
-  const placeId = nonEmptyString(value.id);
+  if (!Array.isArray(value) || value.length === 0) return null;
+  const first = value[0];
+  if (!isRecord(first)) return null;
+
+  // Nominatim returns lat/lon as strings, not numbers.
+  const latitude = Number(first.lat);
+  const longitude = Number(first.lon);
+  const placeId = osmPlaceId(first);
+  const formattedAddress = nonEmptyString(first.display_name);
+  const placeName = placeNameFromNominatim(first);
   if (
-    !validProviderCoordinate(latitude, longitude) || placeName == null ||
-    formattedAddress == null || placeId == null
+    !validProviderCoordinate(latitude, longitude) || placeId == null ||
+    formattedAddress == null || placeName == null
   ) {
     return null;
   }
 
-  return {
-    latitude: latitude as number,
-    longitude: longitude as number,
-    placeName,
-    formattedAddress,
-    placeId,
-  };
+  return { latitude, longitude, placeName, formattedAddress, placeId };
 }
 
+// `/reverse` returns a single object, with an `error` string field on failure
+// (never a non-2xx status for "no result at these coordinates").
 function parseReverseLocation(
   value: unknown,
   latitude: number,
   longitude: number,
 ) {
-  if (
-    !isRecord(value) || value.status !== "OK" || !Array.isArray(value.results)
-  ) {
-    return null;
-  }
-  const first = value.results[0];
-  if (!isRecord(first)) return null;
+  if (!isRecord(value) || typeof value.error === "string") return null;
 
-  const formattedAddress = nonEmptyString(first.formatted_address);
-  const placeId = nonEmptyString(first.place_id);
-  const components = Array.isArray(first.address_components)
-    ? first.address_components
-    : [];
-  const preferredTypes = [
-    "point_of_interest",
-    "establishment",
-    "premise",
-    "route",
-    "neighborhood",
-    "sublocality",
-    "locality",
-    "postal_town",
-    "administrative_area_level_2",
-    "administrative_area_level_1",
-    "country",
-  ];
-  let placeName: string | null = null;
-  for (const type of preferredTypes) {
-    const component = components.find((candidate) =>
-      isRecord(candidate) && Array.isArray(candidate.types) &&
-      candidate.types.includes(type)
-    );
-    if (isRecord(component)) {
-      placeName = nonEmptyString(component.long_name);
-      if (placeName != null) break;
-    }
-  }
-  placeName ??= formattedAddress;
-  if (formattedAddress == null || placeId == null || placeName == null) {
+  const placeId = osmPlaceId(value);
+  const formattedAddress = nonEmptyString(value.display_name);
+  const placeName = placeNameFromNominatim(value);
+  if (placeId == null || formattedAddress == null || placeName == null) {
     return null;
   }
 
-  return {
-    latitude,
-    longitude,
-    placeName,
-    formattedAddress,
-    placeId,
-  };
+  return { latitude, longitude, placeName, formattedAddress, placeId };
 }
 
 export function createPlacesProxyHandler(
@@ -349,18 +370,60 @@ export function createPlacesProxyHandler(
   const providerTimeoutMs = dependencies.providerTimeoutMs ??
     defaultProviderTimeoutMs;
 
-  async function googleJson(
-    input: RequestInfo | URL,
-    init: RequestInit,
-  ) {
-    return await fetchProviderJson(
+  // Configurable so self-hosting Nominatim (required past low volume, per its
+  // usage policy) is a secret change, not a code change.
+  const nominatimBaseUrl =
+    (readEnv("NOMINATIM_BASE_URL")?.trim() || defaultNominatimBaseUrl)
+      .replace(/\/+$/, "");
+  const nominatimUserAgent = readEnv("NOMINATIM_USER_AGENT")?.trim() ||
+    defaultNominatimUserAgent;
+
+  // ponytail: per-instance in-memory cache and throttle, no cross-instance
+  // coordination. Deno Deploy can run many instances, so both are best-effort
+  // against the *policy* ceilings, not a hard guarantee. Move to a shared
+  // Postgres-backed cache/limiter (the pattern consume_places_rate_limit
+  // already uses per-user), or self-host Nominatim via NOMINATIM_BASE_URL,
+  // before this sees real production traffic.
+  const cache = dependencies.cache ?? new Map<string, CacheEntry>();
+  const now = dependencies.now ?? (() => Date.now());
+  const cacheTtlMs = dependencies.cacheTtlMs ?? defaultCacheTtlMs;
+  const cacheMaxEntries = dependencies.cacheMaxEntries ?? defaultCacheMaxEntries;
+  const minRequestSpacingMs = dependencies.minRequestSpacingMs ??
+    defaultMinRequestSpacingMs;
+  const sleep = dependencies.sleep ??
+    ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+  let nextAvailableAt = 0;
+
+  async function throttle() {
+    const currentTime = now();
+    const wait = Math.max(0, nextAvailableAt - currentTime);
+    nextAvailableAt = Math.max(currentTime, nextAvailableAt) +
+      minRequestSpacingMs;
+    if (wait > 0) await sleep(wait);
+  }
+
+  async function nominatimJson(url: URL): Promise<unknown> {
+    const key = url.toString();
+    const cached = cache.get(key);
+    const currentTime = now();
+    if (cached != null && cached.expiresAt > currentTime) return cached.value;
+
+    await throttle();
+    const value = await fetchProviderJson(
       fetchImplementation,
-      input,
-      init,
+      url,
+      { method: "GET", headers: { "User-Agent": nominatimUserAgent } },
       providerTimeoutMs,
       scheduleTimeout,
       cancelTimeout,
     );
+
+    cache.set(key, { expiresAt: currentTime + cacheTtlMs, value });
+    if (cache.size > cacheMaxEntries) {
+      const oldestKey = cache.keys().next().value;
+      if (oldestKey !== undefined) cache.delete(oldestKey);
+    }
+    return value;
   }
 
   return async (request: Request): Promise<Response> => {
@@ -415,7 +478,7 @@ export function createPlacesProxyHandler(
         validated = { action, query };
       } else if (action === "resolve") {
         const placeId = nonEmptyString(body.placeId);
-        if (placeId == null || placeId.length > 300) {
+        if (placeId == null || !validOsmPlaceId.test(placeId)) {
           return errorResponse("invalid_request");
         }
         validated = { action, placeId };
@@ -442,37 +505,16 @@ export function createPlacesProxyHandler(
       }
       if (!limitDecision.allowed) return errorResponse("rate_limited");
 
-      const serverKey = requireEnvironment(
-        readEnv,
-        "GOOGLE_PLACES_SERVER_KEY",
-      );
-
       if (validated.action === "search") {
-        const result = await googleJson(
-          `${googlePlacesBaseUrl}/places:searchText`,
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "X-Goog-Api-Key": serverKey,
-              "X-Goog-FieldMask":
-                "places.id,places.displayName,places.formattedAddress",
-            },
-            body: JSON.stringify({
-              textQuery: validated.query,
-              pageSize: 5,
-            }),
-          },
-        );
-        if (!isRecord(result)) {
-          throw new ProxyError("provider_error");
-        }
-        const places = result.places;
-        if (places !== undefined && !Array.isArray(places)) {
-          throw new ProxyError("provider_error");
-        }
+        const url = new URL(`${nominatimBaseUrl}/search`);
+        url.searchParams.set("q", validated.query);
+        url.searchParams.set("format", "jsonv2");
+        url.searchParams.set("limit", "5");
+        url.searchParams.set("addressdetails", "1");
+        const result = await nominatimJson(url);
+        if (!Array.isArray(result)) throw new ProxyError("provider_error");
         const suggestions = [];
-        for (const place of places ?? []) {
+        for (const place of result) {
           const suggestion = parseSuggestion(place);
           if (suggestion == null) throw new ProxyError("provider_error");
           suggestions.push(suggestion);
@@ -482,30 +524,22 @@ export function createPlacesProxyHandler(
       }
 
       if (validated.action === "resolve") {
-        const result = await googleJson(
-          `${googlePlacesBaseUrl}/places/${
-            encodeURIComponent(validated.placeId)
-          }`,
-          {
-            method: "GET",
-            headers: {
-              "X-Goog-Api-Key": serverKey,
-              "X-Goog-FieldMask": "id,displayName,formattedAddress,location",
-            },
-          },
-        );
+        const url = new URL(`${nominatimBaseUrl}/lookup`);
+        url.searchParams.set("osm_ids", validated.placeId);
+        url.searchParams.set("format", "jsonv2");
+        url.searchParams.set("addressdetails", "1");
+        const result = await nominatimJson(url);
         const location = parseResolvedLocation(result);
         if (location == null) throw new ProxyError("provider_error");
         return json({ location });
       }
 
-      const url = new URL(googleGeocodingUrl);
-      url.searchParams.set(
-        "latlng",
-        `${validated.latitude},${validated.longitude}`,
-      );
-      url.searchParams.set("key", serverKey);
-      const result = await googleJson(url, { method: "GET" });
+      const url = new URL(`${nominatimBaseUrl}/reverse`);
+      url.searchParams.set("format", "jsonv2");
+      url.searchParams.set("lat", String(validated.latitude));
+      url.searchParams.set("lon", String(validated.longitude));
+      url.searchParams.set("addressdetails", "1");
+      const result = await nominatimJson(url);
       const location = parseReverseLocation(
         result,
         validated.latitude,

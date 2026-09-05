@@ -8,7 +8,8 @@ import 'package:tripjournal/features/trip/trip_view_screen.dart';
 
 void main() {
   testWidgets(
-    'saving a new entry stays on the same screen, shows "Saved" and the AI suggestion in place',
+    'saving a new entry stays on the same screen, shows "Saved", and never '
+    'auto-generates AI advice',
     (tester) async {
       tester.view.physicalSize = const Size(1200, 2600);
       tester.view.devicePixelRatio = 1.0;
@@ -25,7 +26,9 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('New entry'), findsOneWidget);
-      expect(find.byKey(const Key('ai-advice-text')), findsNothing); // nothing yet — never saved
+      // The edit screen doesn't show AI advice at all anymore - that moved to
+      // EntryDetailScreen and is only ever generated on demand there.
+      expect(find.byKey(const Key('ai-advice-text')), findsNothing);
 
       await tester.enterText(find.byKey(const Key('entry-title-field')), 'Save flow test');
       await tester.enterText(find.byKey(const Key('entry-body-field')), 'Checking the new save flow.');
@@ -37,15 +40,12 @@ void main() {
       // Did not navigate away.
       expect(find.text('Edit entry'), findsOneWidget);
       expect(find.text('Saved'), findsOneWidget);
-      expect(find.byKey(const Key('ai-advice-text')), findsOneWidget);
-      final adviceWidget = tester.widget<Text>(find.byKey(const Key('ai-advice-text')));
-      expect(adviceWidget.data, isNotNull);
-      expect(adviceWidget.data, isNotEmpty);
+      expect(find.byKey(const Key('ai-advice-text')), findsNothing);
 
-      // Persisted for real, not just shown locally.
+      // Persisted for real, and advice was never touched by the save.
       final entries = await journalRepository.getEntries('trip-001');
       final saved = entries.firstWhere((e) => e.title == 'Save flow test');
-      expect(saved.healthLog?.aiAdvice, adviceWidget.data);
+      expect(saved.healthLog?.aiAdvice, isNull);
     },
   );
 
@@ -79,7 +79,7 @@ void main() {
     expect(find.widgetWithText(FilledButton, 'Save'), findsOneWidget);
   });
 
-  testWidgets('opening an existing entry with prior advice shows it immediately, before any new save', (
+  testWidgets('opening an existing entry with prior advice never shows or touches it on this screen', (
     tester,
   ) async {
     tester.view.physicalSize = const Size(1200, 2600);
@@ -88,40 +88,48 @@ void main() {
     addTearDown(tester.view.resetDevicePixelRatio);
 
     final existing = await journalRepository.getEntry('entry-1');
+    expect(existing!.healthLog!.aiAdvice, isNotNull); // seeded with advice
 
     await tester.pumpWidget(ProviderScope(
       child: MaterialApp(home: CreateEditEntryScreen(existingEntry: existing)),
     ));
     await tester.pumpAndSettle();
 
-    expect(find.byKey(const Key('ai-advice-text')), findsOneWidget);
-    final adviceWidget = tester.widget<Text>(find.byKey(const Key('ai-advice-text')));
-    expect(adviceWidget.data, existing!.healthLog!.aiAdvice);
+    // AI advice is EntryDetailScreen's feature now - the edit form never
+    // displays or generates it.
+    expect(find.byKey(const Key('ai-advice-text')), findsNothing);
+    expect(find.byKey(const Key('generate-advice-button')), findsNothing);
   });
 
-  testWidgets('re-saving after changing mood regenerates the advice for the new mood', (tester) async {
-    tester.view.physicalSize = const Size(1200, 2600);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
+  testWidgets(
+    're-saving after changing mood does NOT touch existing AI advice - only '
+    'the explicit Regenerate button on EntryDetailScreen may change it',
+    (tester) async {
+      tester.view.physicalSize = const Size(1200, 2600);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
 
-    final existing = await journalRepository.getEntry('entry-3'); // mood: neutral in the seed
+      final existing = await journalRepository.getEntry('entry-3'); // mood: neutral in the seed
+      final originalAdvice = existing!.healthLog!.aiAdvice;
+      expect(originalAdvice, isNotNull);
 
-    await tester.pumpWidget(ProviderScope(
-      child: MaterialApp(home: CreateEditEntryScreen(existingEntry: existing)),
-    ));
-    await tester.pumpAndSettle();
+      await tester.pumpWidget(ProviderScope(
+        child: MaterialApp(home: CreateEditEntryScreen(existingEntry: existing)),
+      ));
+      await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Stressed'));
-    await tester.tap(find.byKey(const Key('save-entry-button')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('save-confirm-confirm')));
-    await tester.pumpAndSettle();
+      await tester.tap(find.text('Stressed'));
+      await tester.tap(find.byKey(const Key('save-entry-button')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('save-confirm-confirm')));
+      await tester.pumpAndSettle();
 
-    expect(find.byKey(const Key('ai-advice-text')), findsOneWidget);
-    final adviceWidget = tester.widget<Text>(find.byKey(const Key('ai-advice-text')));
-    expect(adviceWidget.data, contains('stressed'));
-  });
+      final saved = await journalRepository.getEntry('entry-3');
+      expect(saved!.mood.name, 'stressed');
+      expect(saved.healthLog?.aiAdvice, originalAdvice);
+    },
+  );
 
   group('save confirmation dialog (IMPLEMENTATION_PLAN_UX_POLISH.md §5)', () {
     testWidgets('Save shows a confirmation dialog before persisting anything', (tester) async {

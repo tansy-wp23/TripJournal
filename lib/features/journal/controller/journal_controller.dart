@@ -185,6 +185,14 @@ class JournalController extends ChangeNotifier {
   /// time this runs, [entry] was already successfully saved once; this call
   /// only attaches generated content, it doesn't change anything the user
   /// typed.
+  ///
+  /// [entry] is whatever the caller's own local copy still is - for the
+  /// create/edit screen, that's captured *before* [create]/[edit]'s internal
+  /// [_autoTagLocation] enrichment ever ran, since neither returns the
+  /// enriched entry back to the caller. Re-enriching here (cheap: a no-op
+  /// once `locationTag` is already set) stops this write from clobbering the
+  /// correctly-tagged location that [create]/[edit] already persisted a
+  /// moment earlier back to its pre-enrichment state.
   Future<String?> generateAndAttachAdvice(JournalEntry entry) async {
     final healthLog = entry.healthLog;
     if (healthLog == null) return null;
@@ -197,8 +205,9 @@ class JournalController extends ChangeNotifier {
         caloriesEaten: healthLog.caloriesEaten,
         caloriesBurned: healthLog.caloriesBurned,
       );
+      final taggedEntry = await _autoTagLocation(entry);
       await _repository.updateEntry(
-        entry.copyWith(healthLog: healthLog.copyWith(aiAdvice: advice)),
+        taggedEntry.copyWith(healthLog: healthLog.copyWith(aiAdvice: advice)),
       );
       await _refresh();
       return advice;

@@ -4,6 +4,7 @@ import 'package:tripjournal/data/journal_repository.dart';
 import 'package:tripjournal/data/mock_journal_repository.dart';
 import 'package:tripjournal/features/journal/ai/daily_advice_service.dart';
 import 'package:tripjournal/features/journal/controller/journal_controller.dart';
+import 'package:tripjournal/models/geo_tag.dart';
 import 'package:tripjournal/models/health_log.dart';
 import 'package:tripjournal/models/journal_entry.dart';
 import 'package:tripjournal/models/mood.dart';
@@ -70,6 +71,50 @@ void main() {
     final persisted = controller.entries.firstWhere((e) => e.id == 'entry-new-advice');
     expect(persisted.healthLog?.aiAdvice, advice);
   });
+
+  test(
+    'generateAndAttachAdvice does not clobber the location tag with a stale, '
+    'pre-enrichment snapshot of the entry (the create/edit screen only ever '
+    'holds the un-enriched copy it built locally, never what create()/edit() '
+    'actually persisted)',
+    () async {
+      final controller = JournalController(
+        MockJournalRepository(),
+        MockDailyAdviceService(),
+      );
+      await controller.loadEntries('trip-001');
+
+      final log = const HealthLog(
+        id: 'h',
+        entryId: 'entry-1',
+        steps: 6000,
+        caloriesEaten: 1600,
+        meals: [],
+      );
+      final staleEntry = _entry(healthLog: log).copyWith(
+        id: 'entry-location-tag',
+        location: const GeoTag(
+          latitude: 35.0,
+          longitude: 135.7,
+          placeName: 'Kyoto',
+        ),
+      );
+      await controller.create(staleEntry);
+      final justCreated = controller.entries.firstWhere(
+        (e) => e.id == 'entry-location-tag',
+      );
+      expect(justCreated.location?.locationTag, '#Kyoto');
+
+      // The screen hands this the same pre-enrichment `staleEntry` it built
+      // locally, not the enriched copy create() actually persisted.
+      await controller.generateAndAttachAdvice(staleEntry);
+
+      final afterAdvice = controller.entries.firstWhere(
+        (e) => e.id == 'entry-location-tag',
+      );
+      expect(afterAdvice.location?.locationTag, '#Kyoto');
+    },
+  );
 
   test('generateAndAttachAdvice returns null when the entry has no health log', () async {
     final controller = JournalController(MockJournalRepository(), MockDailyAdviceService());

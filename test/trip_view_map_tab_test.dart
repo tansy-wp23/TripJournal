@@ -146,7 +146,7 @@ void main() {
     await tester.tap(find.byKey(const Key('trip-view-map-tab')));
     await tester.pumpAndSettle();
     await tester.tap(
-      find.byKey(const Key('trip-map-fallback-coord:35.011600,135.768100')),
+      find.byKey(const Key('trip-map-marker-coord:35.011600,135.768100')),
     );
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('trip-map-preview-entry-1')));

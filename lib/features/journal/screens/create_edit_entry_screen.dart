@@ -18,7 +18,7 @@ import '../../../validation/photo_validation.dart';
 import '../../../widgets/app_form_section.dart';
 import '../../health/health_data_source.dart';
 import '../../health/health_data_source_locator.dart' as locator;
-import '../../location/google_place_picker_map.dart';
+import '../../location/osm_place_picker_map.dart';
 import '../../location/place_picker_screen.dart';
 import '../../location/place_search_locator.dart' as place_locator;
 import '../../location/place_search_service.dart';
@@ -41,7 +41,7 @@ class CreateEditEntryScreen extends ConsumerStatefulWidget {
     this.healthDataSource,
     this.photoStorage,
     this.placeSearchService,
-    this.placePickerMapBuilder = buildConfiguredGooglePlacePickerMap,
+    this.placePickerMapBuilder = buildConfiguredPlacePickerMap,
   });
 
   final JournalEntry? existingEntry;
@@ -115,9 +115,6 @@ class _CreateEditEntryScreenState extends ConsumerState<CreateEditEntryScreen> {
 
   bool _justSaved = false;
   bool _saving = false;
-  bool _generatingAdvice = false;
-  bool _adviceFailed = false;
-  String? _aiAdviceText;
 
   // True once the user has changed anything since the last successful save
   // (or since opening a pristine entry). Gates the discard-changes prompt on
@@ -152,7 +149,6 @@ class _CreateEditEntryScreenState extends ConsumerState<CreateEditEntryScreen> {
     _steps = entry?.healthLog?.steps ?? 0;
     _caloriesBurned = entry?.healthLog?.caloriesBurned;
     _meals = List.of(entry?.healthLog?.meals ?? const []);
-    _aiAdviceText = entry?.healthLog?.aiAdvice;
     _healthDataSource = widget.healthDataSource ?? locator.healthDataSource;
     _photoStorage = widget.photoStorage ?? photo_locator.photoStorage;
     _draftEntryId = entry?.id ?? const Uuid().v4();
@@ -444,9 +440,10 @@ class _CreateEditEntryScreenState extends ConsumerState<CreateEditEntryScreen> {
         createdAt: createdAt,
         updatedAt: now,
         creationOrderAt: creationOrderAt,
-        // Preserve whatever advice already existed — generateAndAttachAdvice
-        // regenerates it as a separate step right after this save completes,
-        // per IMPLEMENTATION_PLAN_UX_AI.md §3.
+        // Preserve whatever advice already existed - AI advice is only ever
+        // generated/edited from EntryDetailScreen's own explicit button, so a
+        // save here (of the title/mood/meals/location/etc.) must never touch
+        // it, however trivial the edit.
         healthLog: HealthLog(
           id: healthLogId,
           entryId: entryId,
@@ -531,7 +528,10 @@ class _CreateEditEntryScreenState extends ConsumerState<CreateEditEntryScreen> {
         ),
       );
 
-      unawaited(_generateAdvice(entry));
+      // AI advice is no longer generated here — it's a deliberate,
+      // button-triggered action on the entry's detail screen
+      // (EntryDetailScreen), so saving never silently overwrites advice the
+      // user hasn't asked to regenerate.
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -592,36 +592,6 @@ class _CreateEditEntryScreenState extends ConsumerState<CreateEditEntryScreen> {
       ),
     );
     return confirmed ?? false;
-  }
-
-  /// Generates AI advice for [entry] and persists it, showing a loading
-  /// state while it runs. Failure never loses the (already-saved) entry —
-  /// it just leaves a "couldn't generate, tap to retry" affordance.
-  Future<void> _generateAdvice(JournalEntry entry) async {
-    setState(() {
-      _generatingAdvice = true;
-      _adviceFailed = false;
-    });
-
-    final controller = ref.read(journalControllerProvider.notifier);
-    final advice = await controller.generateAndAttachAdvice(entry);
-    if (!mounted) return;
-
-    setState(() {
-      _generatingAdvice = false;
-      if (advice != null) {
-        _aiAdviceText = advice;
-        _adviceFailed = false;
-        final healthLog = entry.healthLog;
-        if (healthLog != null) {
-          _persistedEntry = entry.copyWith(
-            healthLog: healthLog.copyWith(aiAdvice: advice),
-          );
-        }
-      } else {
-        _adviceFailed = true;
-      }
-    });
   }
 
   @override
@@ -805,26 +775,8 @@ class _CreateEditEntryScreenState extends ConsumerState<CreateEditEntryScreen> {
                                   },
                                 ),
                         ),
-                        if (_generatingAdvice ||
-                            _adviceFailed ||
-                            _aiAdviceText != null) ...[
-                          const SizedBox(height: 16),
-                          AppFormSection(
-                            title: 'AI suggestion',
-                            icon: Icons.auto_awesome_outlined,
-                            helperText:
-                                'A short reflection generated after saving.',
-                            child: _AdviceContent(
-                              generating: _generatingAdvice,
-                              failed: _adviceFailed,
-                              advice: _aiAdviceText,
-                              onRetry: () {
-                                final entry = _persistedEntry;
-                                if (entry != null) _generateAdvice(entry);
-                              },
-                            ),
-                          ),
-                        ],
+                        // AI advice now lives on EntryDetailScreen, generated
+                        // only on demand — see the comment in _save().
                       ],
                     ),
                   ),
@@ -944,50 +896,6 @@ class _FormEmptyState extends StatelessWidget {
         ],
       ),
     );
-  }
-}
-
-class _AdviceContent extends StatelessWidget {
-  const _AdviceContent({
-    required this.generating,
-    required this.failed,
-    required this.advice,
-    required this.onRetry,
-  });
-
-  final bool generating;
-  final bool failed;
-  final String? advice;
-  final VoidCallback onRetry;
-
-  @override
-  Widget build(BuildContext context) {
-    if (generating) {
-      return const Row(
-        key: Key('ai-advice-loading'),
-        children: [
-          SizedBox(
-            width: 18,
-            height: 18,
-            child: CircularProgressIndicator(strokeWidth: 2),
-          ),
-          SizedBox(width: 10),
-          Expanded(child: Text('Generating suggestion…')),
-        ],
-      );
-    }
-    if (failed) {
-      return InkWell(
-        key: const Key('ai-advice-retry'),
-        onTap: onRetry,
-        borderRadius: BorderRadius.circular(12),
-        child: const Padding(
-          padding: EdgeInsets.symmetric(vertical: 8),
-          child: Text("Couldn't generate suggestion — tap to retry."),
-        ),
-      );
-    }
-    return Text(advice ?? '', key: const Key('ai-advice-text'));
   }
 }
 

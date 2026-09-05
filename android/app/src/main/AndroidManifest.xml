@@ -21,12 +21,6 @@
         android:label="TripJournal"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
-        <!-- Populated from the GOOGLE_MAPS_ANDROID_KEY Dart define by
-             android/app/build.gradle.kts. The tracked manifest never contains
-             a rendering key. -->
-        <meta-data
-            android:name="com.google.android.geo.API_KEY"
-            android:value="${GOOGLE_MAPS_ANDROID_KEY}" />
         <activity
             android:name=".MainActivity"
             android:exported="true"

@@ -21,7 +21,7 @@ import '../journal/widgets/mood_display.dart';
 import '../journal/widgets/photo_thumbnail.dart';
 import '../settings/settings_providers.dart';
 import 'controller/trip_controller.dart';
-import 'map/google_trip_map_surface.dart';
+import 'map/osm_trip_map_surface.dart';
 import 'map/trip_map_view.dart';
 import 'screens/food_showcase_screen.dart';
 import 'screens/trip_photo_slideshow_screen.dart';

@@ -31,7 +31,12 @@ class NominatimLocationTagService implements LocationTagService {
         'zoom': '10',
         'addressdetails': '1',
       }),
-      headers: const {'User-Agent': 'TripJournal/1.0'},
+      // Nominatim's usage policy requires a stable User-Agent identifying the
+      // app with a contact route - a bare version string gets silently
+      // blocked once traffic is more than trivial.
+      headers: const {
+        'User-Agent': 'TripJournal/1.0 (+https://github.com/tripjournal/tripjournal)',
+      },
     );
 
     if (response.statusCode != 200) {

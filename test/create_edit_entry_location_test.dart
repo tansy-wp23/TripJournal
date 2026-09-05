@@ -374,12 +374,12 @@ Future<void> _pumpEditorRoute(
 
 Widget _fakeLocationMap({
   required GeoTag? selectedLocation,
-  required ValueChanged<GeoTag> onPinDragged,
+  required ValueChanged<GeoTag> onPinMoved,
 }) => Center(
   child: TextButton(
     key: const Key('fake-location-pin'),
     onPressed: () =>
-        onPinDragged(const GeoTag(latitude: 34.994856, longitude: 135.785046)),
+        onPinMoved(const GeoTag(latitude: 34.994856, longitude: 135.785046)),
     child: Text('Map selection: ${selectedLocation?.placeName ?? 'none'}'),
   ),
 );

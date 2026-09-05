@@ -2,35 +2,18 @@
   "version": "0.2.0",
   "configurations": [
     {
-      // Default: works on a fresh clone with no setup. The map shows the
-      // navigable "Map unavailable" fallback; everything else, including
-      // place search, works normally.
+      // Default: works on a fresh clone with no setup. Map tiles are OpenStreetMap
+      // (no API key needed); everything, including place search, works normally.
       "name": "TripJournal",
       "request": "launch",
       "type": "dart"
     },
     {
-      // Renders real map tiles. Requires `maps.local.json` at the repo root:
-      //   copy maps.local.example.json maps.local.json
-      // then paste your own Android key in. The file is gitignored, and the
-      // key must be registered against YOUR debug SHA-1 - see
-      // docs/MAP_LOCATION_SETUP.md ("Adding another developer").
-      // Without that file this configuration fails to build.
-      "name": "TripJournal (with map tiles)",
+      // Real Supabase persistence instead of the mock backend.
+      "name": "TripJournal (Supabase)",
       "request": "launch",
       "type": "dart",
-      "toolArgs": ["--dart-define-from-file=maps.local.json"]
-    },
-    {
-      // Real Supabase persistence plus Android map tiles. This is the
-      // production-like Android configuration used for acceptance testing.
-      "name": "TripJournal (Supabase + Android Maps)",
-      "request": "launch",
-      "type": "dart",
-      "toolArgs": [
-        "--dart-define=BACKEND_MODE=supabase",
-        "--dart-define-from-file=.local/maps_defines.json"
-      ]
+      "toolArgs": ["--dart-define=BACKEND_MODE=supabase"]
     }
   ]
 }

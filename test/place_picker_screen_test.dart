@@ -2,9 +2,8 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
 
-import 'package:tripjournal/features/location/google_place_picker_map.dart';
+import 'package:tripjournal/features/location/osm_place_picker_map.dart';
 import 'package:tripjournal/features/location/current_location_service.dart';
 import 'package:tripjournal/features/location/place_picker_screen.dart';
 import 'package:tripjournal/features/location/place_search_service.dart';
@@ -590,86 +589,38 @@ void main() {
     expect(locationService.openLocationSettingsCalls, 1);
   });
 
-  testWidgets('production map has a deterministic no-key fallback', (
+  testWidgets('tapping the map moves the pin to the tapped coordinate', (
     tester,
   ) async {
+    GeoTag? moved;
+
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
-          body: buildConfiguredGooglePlacePickerMap(
-            selectedLocation: initialLocation,
-            onPinDragged: (_) {},
+          body: SizedBox(
+            width: 400,
+            height: 400,
+            child: PlacePickerMap(
+              selectedLocation: initialLocation,
+              onPinMoved: (location) => moved = location,
+            ),
           ),
         ),
       ),
     );
+    await tester.pump();
 
-    expect(
-      find.byKey(const Key('place-picker-map-unavailable')),
-      findsOneWidget,
-    );
-    expect(find.text('Map preview unavailable'), findsOneWidget);
-    expect(find.text('35.011600, 135.768100'), findsOneWidget);
-  });
+    // Tapping dead center of the viewport lands on (very close to) its
+    // initial center, which is `initialLocation`'s own coordinates here.
+    // flutter_map confirms a single tap only after its built-in
+    // double-tap-zoom window elapses (~250ms) with no second tap, so advance
+    // real time past that rather than just pumping frames.
+    await tester.tapAt(tester.getCenter(find.byType(PlacePickerMap)));
+    await tester.pump(const Duration(milliseconds: 500));
 
-  test('Google picker map disables current-location features', () {
-    GeoTag? dragged;
-    final map = buildGooglePlacePickerPlatform(
-      selectedLocation: initialLocation,
-      onPinDragged: (location) => dragged = location,
-    );
-
-    expect(map, isA<GoogleMap>());
-    final googleMap = map as GoogleMap;
-    expect(googleMap.myLocationEnabled, isFalse);
-    expect(googleMap.myLocationButtonEnabled, isFalse);
-    expect(googleMap.markers.single.draggable, isTrue);
-
-    googleMap.markers.single.onDragEnd!(const LatLng(1.25, 2.5));
-    expect(dragged?.latitude, 1.25);
-    expect(dragged?.longitude, 2.5);
-    expect(dragged?.placeName, isNull);
-  });
-
-  test('Google picker map diagnostic keys do not contain coordinates', () {
-    final map =
-        buildGooglePlacePickerPlatform(
-              selectedLocation: initialLocation,
-              onPinDragged: (_) {},
-            )
-            as GoogleMap;
-
-    expect(map.key?.toString(), isNot(contains('35.0116')));
-    expect(map.key?.toString(), isNot(contains('135.7681')));
-  });
-
-  testWidgets('Google picker map recreates its surface for new coordinates', (
-    tester,
-  ) async {
-    var initializations = 0;
-
-    Widget pickerMap(GeoTag location) => MaterialApp(
-      home: GooglePlacePickerMap(
-        selectedLocation: location,
-        onPinDragged: (_) {},
-        platformBuilder: ({required selectedLocation, required onPinDragged}) =>
-            _MapLifecycleProbe(onInit: () => initializations++),
-      ),
-    );
-
-    await tester.pumpWidget(pickerMap(initialLocation));
-    expect(initializations, 1);
-
-    await tester.pumpWidget(
-      pickerMap(
-        const GeoTag(
-          latitude: 34.994856,
-          longitude: 135.785046,
-          placeName: 'Kiyomizu-dera',
-        ),
-      ),
-    );
-    expect(initializations, 2);
+    expect(moved, isNotNull);
+    expect(moved!.latitude, closeTo(initialLocation.latitude, 0.01));
+    expect(moved!.longitude, closeTo(initialLocation.longitude, 0.01));
   });
 }
 
@@ -725,14 +676,14 @@ Future<void> _openPicker(
 
 Widget _fakeMapBuilder({
   required GeoTag? selectedLocation,
-  required ValueChanged<GeoTag> onPinDragged,
+  required ValueChanged<GeoTag> onPinMoved,
 }) => SizedBox(
   height: 160,
   child: Center(
     child: TextButton(
       key: const Key('fake-drag-pin'),
       onPressed: () =>
-          onPinDragged(const GeoTag(latitude: 3.14159265, longitude: 101.6869)),
+          onPinMoved(const GeoTag(latitude: 3.14159265, longitude: 101.6869)),
       child: Text(selectedLocation?.placeName ?? 'Drag pin'),
     ),
   ),
@@ -816,24 +767,4 @@ class _FakeCurrentLocationService implements CurrentLocationService {
     openLocationSettingsCalls++;
     return true;
   }
-}
-
-class _MapLifecycleProbe extends StatefulWidget {
-  const _MapLifecycleProbe({required this.onInit});
-
-  final VoidCallback onInit;
-
-  @override
-  State<_MapLifecycleProbe> createState() => _MapLifecycleProbeState();
-}
-
-class _MapLifecycleProbeState extends State<_MapLifecycleProbe> {
-  @override
-  void initState() {
-    super.initState();
-    widget.onInit();
-  }
-
-  @override
-  Widget build(BuildContext context) => const SizedBox.expand();
 }

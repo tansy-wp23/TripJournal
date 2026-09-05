@@ -1,30 +1,9 @@
-import java.util.Base64
 import java.util.Properties
 
 plugins {
     id("com.android.application")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
-}
-
-fun dartDefine(name: String): String? {
-    val encodedDefines = providers.gradleProperty("dart-defines").orNull
-        ?: return null
-    return encodedDefines
-        .split(',')
-        .mapNotNull { encoded ->
-            runCatching {
-                Base64.getDecoder().decode(encoded).toString(Charsets.UTF_8)
-            }.getOrNull()
-        }
-        .firstNotNullOfOrNull { definition ->
-            val separator = definition.indexOf('=')
-            if (separator > 0 && definition.substring(0, separator) == name) {
-                definition.substring(separator + 1)
-            } else {
-                null
-            }
-        }
 }
 
 val signingPropertiesFile = rootProject.file("../.local/android-signing.properties")
@@ -62,10 +41,6 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
-        // `--dart-define[-from-file]` is the single source used by both Dart's
-        // fallback selector and the native Maps SDK manifest placeholder.
-        manifestPlaceholders["GOOGLE_MAPS_ANDROID_KEY"] =
-            dartDefine("GOOGLE_MAPS_ANDROID_KEY").orEmpty()
     }
 
     signingConfigs.create("release") {
