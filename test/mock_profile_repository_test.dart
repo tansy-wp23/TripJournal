@@ -68,6 +68,30 @@ void main() {
       expect(result.lastLoginAt, isNotNull);
     });
 
+    test('createProfileIfMissing does not stamp last_login_at for a non-active '
+        'profile (mirrors RLS-safe Supabase behavior)', () async {
+      for (final state in [
+        MockProfileState.deactivated,
+        MockProfileState.suspended,
+      ]) {
+        final repo = MockProfileRepository(state: state);
+
+        final existing = await repo.getProfile('user-001');
+        expect(existing!.lastLoginAt, isNull);
+
+        final result = await repo.createProfileIfMissing(
+          userId: 'user-001',
+          email: 'other@example.com',
+          displayName: 'Other',
+        );
+
+        expect(result.userID, existing.userID);
+        expect(result.status, existing.status);
+        // Fetches and returns the row as-is — no last_login_at write.
+        expect(result.lastLoginAt, isNull);
+      }
+    });
+
     test('getProfile returns null for an unknown user', () async {
       final repo = MockProfileRepository(state: MockProfileState.active);
 
