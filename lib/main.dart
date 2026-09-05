@@ -8,6 +8,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'error_reporting.dart';
 import 'features/auth/auth_gate.dart';
 import 'features/settings/settings_providers.dart';
+import 'features/trip/trip_link_listener.dart';
 import 'models/system_error_log.dart';
 import 'theme/app_theme.dart';
 
@@ -63,6 +64,8 @@ Future<void> main() async {
 
 final supabase = Supabase.instance.client;
 
+final _rootNavigatorKey = GlobalKey<NavigatorState>();
+
 class TripJournalApp extends ConsumerWidget {
   const TripJournalApp({super.key});
 
@@ -73,11 +76,15 @@ class TripJournalApp extends ConsumerWidget {
         .preferences
         .themeMode;
     return MaterialApp(
+      navigatorKey: _rootNavigatorKey,
       title: 'TripJournal',
       themeMode: themeMode,
       theme: AppTheme.light,
       darkTheme: AppTheme.dark,
-      home: const AuthGate(),
+      home: TripLinkListener(
+        navigatorKey: _rootNavigatorKey,
+        child: const AuthGate(),
+      ),
     );
   }
 }

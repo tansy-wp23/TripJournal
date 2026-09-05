@@ -13,6 +13,7 @@ import '../journal/widgets/meal_rating_stars.dart';
 import '../journal/widgets/mood_display.dart';
 import '../journal/widgets/photo_thumbnail.dart';
 import '../trip/trip_day_groups.dart';
+import '../trip/trip_link.dart';
 import '../trip/trip_summary_stats.dart';
 import '../trip/widgets/trip_cover_photo.dart';
 import '../trip/widgets/trip_photo_carousel.dart';
@@ -60,7 +61,9 @@ class _PublicTripViewScreenState extends ConsumerState<PublicTripViewScreen> {
     final trip = widget.trip;
     final shareText =
         'Check out this trip "${trip.title}" on TripJournal!\n\n'
-        'Open the app → Community → Search by ID:\n${trip.id}';
+        'Open this link on a phone with TripJournal installed (paste into '
+        "your browser's address bar if it doesn't open automatically):\n"
+        '${tripLinkFor(trip.id)}';
     Share.share(shareText, subject: 'TripJournal: ${trip.title}');
   }
 

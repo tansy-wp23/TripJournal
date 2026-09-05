@@ -30,6 +30,7 @@ import 'trip_day_groups.dart';
 import 'trip_entry_date_range.dart';
 import 'trip_photos.dart';
 import 'trip_form_screen.dart';
+import 'trip_link.dart';
 import 'trip_notes_editor_screen.dart';
 import 'trip_summary_stats.dart';
 import 'widgets/delete_trip_confirmation_dialog.dart';
@@ -274,7 +275,9 @@ class _TripViewScreenState extends ConsumerState<TripViewScreen>
   void _shareTripLink(Trip trip) {
     final shareText =
         'Check out my trip "${trip.title}" on TripJournal!\n\n'
-        'Open the app → Community → Search by ID:\n${trip.id}';
+        'Open this link on a phone with TripJournal installed (paste into '
+        "your browser's address bar if it doesn't open automatically):\n"
+        '${tripLinkFor(trip.id)}';
     Share.share(shareText, subject: 'TripJournal: ${trip.title}');
   }
 

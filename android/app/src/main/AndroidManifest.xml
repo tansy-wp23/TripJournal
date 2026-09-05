@@ -47,6 +47,20 @@
             <intent-filter>
                 <action android:name="androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE" />
             </intent-filter>
+            <!-- Share-a-trip deep link: tripjournal://trip/<id>. Pasted into a
+                 browser's address bar (not a search box), the OS offers to
+                 open this app directly to that trip. Flutter's own built-in
+                 deep-linking must be disabled (below) so the app_links plugin
+                 is the only thing handling this intent-filter. -->
+            <meta-data
+                android:name="flutter_deeplinking_enabled"
+                android:value="false" />
+            <intent-filter android:label="Open a shared TripJournal trip">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="tripjournal" android:host="trip" />
+            </intent-filter>
         </activity>
         <receiver android:exported="false" android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationReceiver" />
         <receiver android:exported="false" android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationBootReceiver">

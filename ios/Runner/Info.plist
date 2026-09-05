@@ -30,7 +30,22 @@
 				<string>com.googleusercontent.apps.793492431727-b5ph4ij0rjh70k7b48rflucq8207t6ov</string>
 			</array>
 		</dict>
+		<!-- Share-a-trip deep link: tripjournal://trip/<id>. Pasted into
+		     Safari's address bar (not a search), iOS offers to open this app
+		     directly to that trip. -->
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.tripjournal.tripjournal.share</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>tripjournal</string>
+			</array>
+		</dict>
 	</array>
+	<!-- Flutter's own built-in deep-linking must be off (Flutter >= 3.24) so
+	     the app_links plugin is the only thing handling the intent above. -->
+	<key>FlutterDeepLinkingEnabled</key>
+	<false/>
 	<key>CFBundleVersion</key>
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
