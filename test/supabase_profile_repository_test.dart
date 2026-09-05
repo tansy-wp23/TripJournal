@@ -172,6 +172,37 @@ void main() {
       expect(profile.userID, _userId);
       expect(requestCount, 2);
     });
+
+    test('does not PATCH a deactivated/suspended profile (RLS-safe)', () async {
+      // A deactivated or suspended user's sign-in still calls
+      // createProfileIfMissing, but the profiles UPDATE policy requires
+      // is_active_user() and would reject them — so the repository must not
+      // attempt the last_login_at stamp (which would throw a row-level
+      // security error and break sign-in) and should return the row as-is.
+      for (final status in ['deactivated', 'suspended']) {
+        var requestCount = 0;
+        final repository = _repository(
+          MockClient((request) async {
+            requestCount++;
+            // Only the GET look-up should happen — never a PATCH.
+            expect(request.method, 'GET');
+            return _jsonResponse(
+              _profileRow(status: status),
+              request: request,
+            );
+          }),
+        );
+
+        final profile = await repository.createProfileIfMissing(
+          userId: _userId,
+          email: 'sangyou@example.com',
+          displayName: 'Sang You',
+        );
+
+        expect(requestCount, 1, reason: 'status "$status" must not trigger an UPDATE');
+        expect(profile.status.name, status);
+      }
+    });
   });
 
   group('updateProfile', () {

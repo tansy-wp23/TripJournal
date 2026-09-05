@@ -1442,3 +1442,35 @@ manually on all paths:
   via raw enum `toString()` leaks. Role remains visible where it is
   meaningful: the admin user-detail screen. "Member since" and "Last login"
   stay — they are real, varying data.
+
+## Sign-in after deactivation blocked by `last_login_at` stamp (2026-09-03)
+
+**Reported live:** after deactivating, signing in again showed
+"We couldn't finish setting up your account. Please try again." instead of
+entering the reactivation flow.
+
+**Root cause:** `createProfileIfMissing` in `SupabaseProfileRepository` stamps
+`last_login_at` via `updateProfile` on every sign-in of an existing user. The
+`profiles_update_own` RLS policy (migration `202608160001_is_active_user.sql`)
+requires `is_active_user()`, i.e. `status = 'active'` — so for a deactivated
+(or suspended) profile the PATCH is rejected with a row-level-security error.
+That exception was caught by `AuthController._performSignInWithGoogle`'s
+account-creation catch block, which cleared the just-created session and
+surfaced the (misleading) creation-failure message — before
+`requestReactivation()` could ever run. The passive session-restore path hit
+the same wall on app relaunch.
+
+**Fix (both repos, mock + real kept consistent):**
+`createProfileIfMissing` now only stamps `last_login_at` when the existing
+profile is active; non-active profiles are returned unchanged. This matches
+the RLS reality (defense in depth intentionally kept — the policy is not
+weakened) and the intent: users who cannot enter the app don't get a login
+stamp; it is stamped on their next *active* sign-in. `MockProfileState` gained
+a `suspended` value to mirror the real repo's handling.
+
+**Tests:** `supabase_profile_repository_test.dart` asserts an existing
+deactivated profile issues only the GET (no PATCH) and is returned unchanged;
+`mock_profile_repository_test.dart` mirrors this for both deactivated and
+suspended states. The existing `auth_controller_test` deactivated sign-in →
+reactivation-code test now exercises the real happy path.
+

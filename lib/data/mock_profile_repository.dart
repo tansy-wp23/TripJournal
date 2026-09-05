@@ -57,6 +57,19 @@ class MockProfileRepository implements ProfileRepository {
           updatedAt: now,
         );
         break;
+      case MockProfileState.suspended:
+        // Added for the profile-sign-in fix (2026-09-02): mirrors the admin
+        // module's suspended status so mock behavior matches the real backend
+        // for a user who can't satisfy is_active_user().
+        _profile = Profile(
+          userID: mockUserId,
+          email: mockEmail,
+          displayName: mockDisplayName,
+          status: AccountStatus.suspended,
+          createdAt: now,
+          updatedAt: now,
+        );
+        break;
     }
   }
 
@@ -73,6 +86,13 @@ class MockProfileRepository implements ProfileRepository {
     required String displayName,
   }) async {
     if (_profile != null) {
+      if (!_profile!.isActive) {
+        // Mirror SupabaseProfileRepository: don't stamp last_login_at (or
+        // attempt any write) for a deactivated/suspended profile — each is
+        // gated at sign-in and can never reach the app, and the real backend
+        // RLS forbids the update anyway.
+        return _profile!;
+      }
       // Stamp last_login_at on every sign-in (interactive or restored),
       // mirroring SupabaseProfileRepository.
       _profile = _profile!.copyWith(lastLoginAt: DateTime.now());
@@ -105,4 +125,4 @@ class MockProfileRepository implements ProfileRepository {
 }
 
 /// Configurable initial state of the mock profile.
-enum MockProfileState { firstTime, active, deactivated }
+enum MockProfileState { firstTime, active, deactivated, suspended }

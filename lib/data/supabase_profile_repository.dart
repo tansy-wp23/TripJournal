@@ -34,9 +34,17 @@ class SupabaseProfileRepository implements ProfileRepository {
     // existed or in edge cases where the trigger didn't fire.
     final existing = await getProfile(userId);
     if (existing != null) {
-      // Stamp last_login_at on every sign-in (interactive or restored).
-      // Nothing else writes this column, so without this it stays NULL
-      // forever. See docs/user-management/PROGRESS.md.
+      // Only stamp last_login_at for an active profile. A deactivated or
+      // suspended profile is routed by AuthController to the reactivation /
+      // suspended screens and can never enter the app itself, and the
+      // profiles UPDATE is RLS-blocked for non-active users
+      // (profiles_update_own requires is_active_user()), so attempting the
+      // stamp would throw a row-level-security error and turn the whole
+      // sign-in into a hard failure (surfaced misleadingly as "couldn't
+      // finish setting up your account"). Returning the row unchanged means
+      // last_login_at just stays as it was before deactivation and gets
+      // stamped again on the next active sign-in.
+      if (!existing.isActive) return existing;
       return updateProfile(existing.copyWith(lastLoginAt: DateTime.now()));
     }
 
