@@ -13,6 +13,12 @@ import 'screens/admin_login_screen.dart';
 /// surfaces `AdminAuthController.error` regardless of status, the same way
 /// the traveler `LoginScreen` does — no dashboard access either way (Phase 2
 /// Definition of Done).
+///
+/// An explicit "Sign out" from `AdminDashboardScreen` doesn't settle on
+/// `AdminLoginScreen` at all — it auto-pops this whole route back to the
+/// traveler `LoginScreen` underneath (see the `hasPendingSignOutPop` check
+/// below), so re-entering the portal needs the triple-tap logo entry again
+/// rather than just a back-press off of `AdminLoginScreen`.
 class AdminGate extends ConsumerWidget {
   const AdminGate({super.key});
 
@@ -45,6 +51,20 @@ class AdminGate extends ConsumerWidget {
         messenger
           ..hideCurrentSnackBar()
           ..showSnackBar(SnackBar(content: Text(message)));
+      });
+    }
+
+    // An explicit "Sign out" from AdminDashboardScreen auto-pops the same
+    // way a rejected sign-in does above — just without a message to relay,
+    // since this was the admin's own action rather than an error. Lands
+    // back on the traveler LoginScreen this route was pushed from; getting
+    // back into the portal from there needs the triple-tap logo entry
+    // again, same as the first time.
+    if (controller.hasPendingSignOutPop) {
+      controller.consumePendingSignOutPop();
+      final navigator = Navigator.of(context);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        navigator.maybePop();
       });
     }
 

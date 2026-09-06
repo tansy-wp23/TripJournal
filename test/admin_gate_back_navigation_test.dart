@@ -92,30 +92,30 @@ void main() {
       },
     );
 
-    testWidgets('back is allowed again after logging out', (tester) async {
-      final harness = AdminTestHarness();
-      addTearDown(harness.dispose);
+    testWidgets(
+      'logging out auto-pops back to the traveler screen underneath, same '
+      'as a rejected sign-in — no lingering AdminLoginScreen or manual back '
+      'press needed',
+      (tester) async {
+        final harness = AdminTestHarness();
+        addTearDown(harness.dispose);
 
-      await tester.pumpWidget(wrapPushed(harness));
-      await tester.tap(find.byKey(const Key('push-admin-gate')));
-      await tester.pumpAndSettle();
+        await tester.pumpWidget(wrapPushed(harness));
+        await tester.tap(find.byKey(const Key('push-admin-gate')));
+        await tester.pumpAndSettle();
 
-      await tester.tap(find.byKey(const Key('admin-sign-in-with-google')));
-      await tester.pumpAndSettle();
-      await tester.tap(find.byTooltip('Admin account actions'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const Key('admin-logout')));
-      await tester.pumpAndSettle();
-      expect(find.byType(AdminLoginScreen), findsOneWidget);
+        await tester.tap(find.byKey(const Key('admin-sign-in-with-google')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byTooltip('Admin account actions'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('admin-logout')));
+        await tester.pumpAndSettle();
 
-      final popped = await Navigator.of(
-        tester.element(find.byType(AdminLoginScreen)),
-      ).maybePop();
-      await tester.pumpAndSettle();
-
-      expect(popped, isTrue);
-      expect(find.text('open admin'), findsOneWidget);
-    });
+        expect(find.byType(AdminLoginScreen), findsNothing);
+        expect(find.byType(AdminDashboardScreen), findsNothing);
+        expect(find.text('open admin'), findsOneWidget);
+      },
+    );
 
     testWidgets(
       'back is allowed before any sign-in attempt — nothing sensitive to '
