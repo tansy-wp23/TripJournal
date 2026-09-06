@@ -112,16 +112,17 @@ USE_CASES: list[dict] = [
             "decision data loaded",
             "decision trips available",
             "display trips and remaining recovery period",
+            "decision recovery period expired",
             "select Restore",
             "call UC213",
         ],
-        "decisions": ["data loaded", "trips available"],
+        "decisions": ["data loaded", "trips available", "recovery period expired"],
         "alternate_flows": [
             {"id": "A1", "steps": ["displays empty state"]},
+            {"id": "A2", "steps": ["displays load error and Retry"]},
             {
-                "id": "A2",
+                "id": "A3",
                 "steps": [
-                    "displays load error and Retry",
                     "expired items show recovery-period message and cannot start restoration",
                 ],
             },
