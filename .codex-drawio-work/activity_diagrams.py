@@ -1,4 +1,7 @@
-"""Structured activity-flow definitions for the Trip Management use cases."""
+"""Structured activity-flow definitions and editable Draw.io export helpers."""
+
+from pathlib import Path
+import xml.etree.ElementTree as ET
 
 USE_CASES: list[dict] = [
     {
@@ -322,3 +325,334 @@ USE_CASES: list[dict] = [
         "references": ["UC212 Share Published Trip Link"],
     },
 ]
+
+
+SWIMLANE_STYLE = (
+    "shape=swimlane;horizontal=0;startSize=38;fillColor=#DAE8FC;"
+    "strokeColor=#6C8EBF;fontStyle=1;fontSize=14;html=1;rounded=0;"
+)
+ACTIVITY_STYLE = (
+    "rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;"
+    "strokeColor=#4D4D4D;fontSize=12;arcSize=12;"
+)
+CALL_ACTIVITY_STYLE = (
+    "rounded=1;whiteSpace=wrap;html=1;fillColor=#E1D5E7;"
+    "strokeColor=#9673A6;fontSize=12;arcSize=12;fontStyle=1;"
+)
+DECISION_STYLE = (
+    "rhombus;whiteSpace=wrap;html=1;fillColor=#FFF2CC;"
+    "strokeColor=#D6B656;fontSize=11;"
+)
+START_STYLE = "ellipse;html=1;shape=startState;fillColor=#000000;strokeColor=#FF0000;"
+END_STYLE = "ellipse;html=1;shape=endState;fillColor=#000000;strokeColor=#FF0000;"
+CONNECTOR_STYLE = (
+    "edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;"
+    "html=1;endArrow=block;endFill=1;strokeColor=#333333;fontSize=11;"
+)
+ALTERNATE_FRAME_STYLE = (
+    "rounded=0;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#FF0000;"
+    "strokeWidth=2;verticalAlign=top;align=left;spacingTop=6;spacingLeft=8;"
+    "fontColor=#CC0000;fontStyle=1;"
+)
+
+
+def add_cell(
+    root,
+    *,
+    cell_id,
+    value="",
+    style="",
+    parent="1",
+    vertex=False,
+    edge=False,
+    x=None,
+    y=None,
+    width=None,
+    height=None,
+    source=None,
+    target=None,
+    points=None,
+):
+    """Append one Draw.io cell and its geometry to a graph-model root."""
+    attributes = {"id": str(cell_id), "value": value, "style": style, "parent": str(parent)}
+    if vertex:
+        attributes["vertex"] = "1"
+    if edge:
+        attributes["edge"] = "1"
+    if source is not None:
+        attributes["source"] = str(source)
+    if target is not None:
+        attributes["target"] = str(target)
+
+    cell = ET.SubElement(root, "mxCell", attributes)
+    if edge:
+        geometry = ET.SubElement(cell, "mxGeometry", {"relative": "1", "as": "geometry"})
+        if points:
+            point_array = ET.SubElement(geometry, "Array", {"as": "points"})
+            for point_x, point_y in points:
+                ET.SubElement(point_array, "mxPoint", {"x": str(point_x), "y": str(point_y)})
+    elif vertex:
+        geometry_attributes = {"as": "geometry"}
+        if x is not None:
+            geometry_attributes["x"] = str(x)
+        if y is not None:
+            geometry_attributes["y"] = str(y)
+        if width is not None:
+            geometry_attributes["width"] = str(width)
+        if height is not None:
+            geometry_attributes["height"] = str(height)
+        ET.SubElement(cell, "mxGeometry", geometry_attributes)
+    return cell
+
+
+def add_activity(root, lane_id, cell_id, label, x, y, width=220, height=52):
+    """Add an action, using the call-activity style for cross-use-case calls."""
+    style = CALL_ACTIVITY_STYLE if label.startswith("call UC") else ACTIVITY_STYLE
+    return add_cell(
+        root,
+        cell_id=cell_id,
+        value=label,
+        style=style,
+        parent=lane_id,
+        vertex=True,
+        x=x,
+        y=y,
+        width=width,
+        height=height,
+    )
+
+
+def add_decision(root, lane_id, cell_id, label, x, y):
+    """Add a labeled UML decision node to a swimlane."""
+    return add_cell(
+        root,
+        cell_id=cell_id,
+        value=label,
+        style=DECISION_STYLE,
+        parent=lane_id,
+        vertex=True,
+        x=x,
+        y=y,
+        width=120,
+        height=56,
+    )
+
+
+def add_connector(root, cell_id, source, target, label="", red=False, points=None):
+    """Add an orthogonal control-flow connector between existing cells."""
+    style = CONNECTOR_STYLE
+    if red:
+        style += "strokeColor=#FF0000;"
+    return add_cell(
+        root,
+        cell_id=cell_id,
+        value=label,
+        style=style,
+        edge=True,
+        source=source,
+        target=target,
+        points=points,
+    )
+
+
+def add_alternate_frame(root, cell_id, label, x, y, width, height):
+    """Add the red outlined grouping frame mandated for an alternate flow."""
+    return add_cell(
+        root,
+        cell_id=cell_id,
+        value=label,
+        style=ALTERNATE_FRAME_STYLE,
+        vertex=True,
+        x=x,
+        y=y,
+        width=width,
+        height=height,
+    )
+
+
+def _step_lane(step, lanes):
+    """Choose the responsible lane using the use-case wording consistently."""
+    lower_step = step.lower()
+    if len(lanes) == 3 and (
+        "external application" in lower_step
+        or "external" in lower_step
+        or "delivery" in lower_step
+    ):
+        return lanes[2]
+    if lower_step.startswith(("select", "open", "enter", "browse", "review", "accept")):
+        return lanes[0]
+    if "user completes" in lower_step:
+        return lanes[0]
+    return lanes[1] if len(lanes) > 1 else lanes[0]
+
+
+def build_page(use_case):
+    """Build one uncompressed, editable activity diagram page for a use case."""
+    diagram = ET.Element(
+        "diagram",
+        {"id": use_case["id"], "name": f'{use_case["id"]} {use_case["name"]}'},
+    )
+    model = ET.SubElement(
+        diagram,
+        "mxGraphModel",
+        {
+            "dx": "1214",
+            "dy": "1004",
+            "grid": "1",
+            "gridSize": "10",
+            "guides": "1",
+            "tooltips": "1",
+            "connect": "1",
+            "arrows": "1",
+            "fold": "1",
+            "page": "1",
+            "pageScale": "1",
+            "pageWidth": "827",
+            "pageHeight": "1169",
+            "math": "0",
+            "shadow": "0",
+        },
+    )
+    root = ET.SubElement(model, "root")
+    ET.SubElement(root, "mxCell", {"id": "0"})
+    ET.SubElement(root, "mxCell", {"id": "1", "parent": "0"})
+
+    page_id = use_case["id"]
+    lane_width = 240 if len(use_case["lanes"]) == 3 else 365
+    lane_gap = 12
+    lane_left = 25
+    lane_ids = {}
+    for index, lane_name in enumerate(use_case["lanes"]):
+        lane_id = f"{page_id}-lane-{index}"
+        lane_ids[lane_name] = lane_id
+        add_cell(
+            root,
+            cell_id=lane_id,
+            value=lane_name,
+            style=SWIMLANE_STYLE,
+            vertex=True,
+            x=lane_left + index * (lane_width + lane_gap),
+            y=25,
+            width=lane_width,
+            height=1100,
+        )
+
+    start_id = f"{page_id}-start"
+    add_cell(
+        root,
+        cell_id=start_id,
+        style=START_STYLE,
+        vertex=True,
+        x=lane_left + (lane_width - 24) // 2,
+        y=44,
+        width=24,
+        height=24,
+    )
+
+    previous_id = start_id
+    previous_y = 44
+    created_steps = []
+    last_decision_id = None
+    previous_was_decision = False
+    for index, step in enumerate(use_case["main_steps"]):
+        node_id = f"{page_id}-main-{index}"
+        lane_name = _step_lane(step, use_case["lanes"])
+        lane_id = lane_ids[lane_name]
+        node_y = 82 + index * 61
+        is_decision = step.startswith("decision ")
+        if is_decision:
+            label = step.removeprefix("decision ") + "?"
+            add_decision(root, lane_id, node_id, label, (lane_width - 120) // 2, node_y)
+            last_decision_id = node_id
+        else:
+            add_activity(root, lane_id, node_id, step, 15, node_y)
+        add_connector(
+            root,
+            f"{page_id}-flow-{index}",
+            previous_id,
+            node_id,
+            label="yes" if previous_was_decision else "",
+        )
+        previous_id = node_id
+        previous_y = node_y
+        previous_was_decision = is_decision
+        created_steps.append(node_id)
+
+    end_id = f"{page_id}-end"
+    end_y = min(previous_y + 72, 700)
+    add_cell(
+        root,
+        cell_id=end_id,
+        style=END_STYLE,
+        vertex=True,
+        x=lane_left + (lane_width - 24) // 2,
+        y=end_y,
+        width=24,
+        height=24,
+    )
+    add_connector(root, f"{page_id}-finish", previous_id, end_id, label="yes" if previous_was_decision else "")
+
+    alternate_y = 770
+    alternate_source = last_decision_id or previous_id
+    for index, alternate_flow in enumerate(use_case["alternate_flows"]):
+        steps = alternate_flow["steps"]
+        frame_height = max(92, 42 + 48 * len(steps))
+        frame_id = f"{page_id}-alternate-frame-{alternate_flow['id']}"
+        add_alternate_frame(
+            root,
+            frame_id,
+            f"Alternate Flow {alternate_flow['id']}",
+            25,
+            alternate_y,
+            777,
+            frame_height,
+        )
+        prior_id = alternate_source
+        for step_index, step in enumerate(steps):
+            step_id = f"{page_id}-alternate-{alternate_flow['id']}-{step_index}"
+            lane_name = _step_lane(step, use_case["lanes"])
+            add_activity(
+                root,
+                lane_ids[lane_name],
+                step_id,
+                step,
+                15,
+                alternate_y + 37 + step_index * 48,
+                height=42,
+            )
+            add_connector(
+                root,
+                f"{page_id}-alternate-flow-{alternate_flow['id']}-{step_index}",
+                prior_id,
+                step_id,
+                label="no" if step_index == 0 and last_decision_id else "",
+                red=True,
+            )
+            prior_id = step_id
+        alternate_y += frame_height + 10
+    return diagram
+
+
+def build_drawio(use_cases: list[dict]) -> ET.ElementTree:
+    """Build an uncompressed Draw.io document from the supplied use cases."""
+    mxfile = ET.Element(
+        "mxfile",
+        {
+            "host": "app.diagrams.net",
+            "modified": "2026-09-06T00:00:00.000Z",
+            "agent": "TripJournal activity diagram generator",
+            "version": "26.0.14",
+            "pages": str(len(use_cases)),
+        },
+    )
+    for use_case in use_cases:
+        mxfile.append(build_page(use_case))
+    return ET.ElementTree(mxfile)
+
+
+def write_drawio(output_path: Path) -> None:
+    """Write the complete Trip Management activity diagram document to disk."""
+    output_path = Path(output_path)
+    tree = build_drawio(USE_CASES)
+    ET.indent(tree, space="  ")
+    tree.write(output_path, encoding="utf-8", xml_declaration=True)
