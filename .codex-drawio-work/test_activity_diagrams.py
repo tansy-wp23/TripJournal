@@ -1,6 +1,8 @@
 from pathlib import Path
 import unittest
 import xml.etree.ElementTree as ET
+from itertools import combinations
+import textwrap
 
 import activity_diagrams
 from activity_diagrams import USE_CASES
@@ -36,6 +38,131 @@ class ActivityDiagramDefinitionsTests(unittest.TestCase):
 
 
 class ActivityDiagramGenerationTests(unittest.TestCase):
+    @staticmethod
+    def bounds(cell, cells):
+        geometry = cell.find("mxGeometry")
+        x, y = float(geometry.get("x", 0)), float(geometry.get("y", 0))
+        parent = cells.get(cell.get("parent"))
+        if parent is not None and parent.get("vertex") == "1":
+            px, py, _, _ = ActivityDiagramGenerationTests.bounds(parent, cells)
+            x, y = x + px, y + py
+        return x, y, x + float(geometry.get("width")), y + float(geometry.get("height"))
+
+    def test_complete_xml_integrity(self):
+        """Every exported page has valid identities, links and UML containers."""
+        root = activity_diagrams.build_drawio(USE_CASES).getroot()
+        self.assertEqual(len(root.findall("diagram")), 15)
+        for page, case in zip(root.findall("diagram"), USE_CASES):
+            with self.subTest(page=page.get("name")):
+                items = list(page.iter("mxCell"))
+                cells = {cell.get("id"): cell for cell in items}
+                self.assertEqual(len(cells), len(items))
+                self.assertEqual(
+                    [c.get("value") for c in items if "shape=swimlane" in c.get("style", "")],
+                    case["lanes"],
+                )
+                for cell in items:
+                    if cell.get("parent"):
+                        self.assertIn(cell.get("parent"), cells)
+                    if cell.get("edge") == "1":
+                        for end in ("source", "target"):
+                            self.assertIn(cell.get(end), cells)
+                            self.assertEqual(cells[cell.get(end)].get("vertex"), "1")
+                self.assertEqual(sum("shape=startState" in c.get("style", "") for c in items), 1)
+                self.assertGreaterEqual(sum("shape=endState" in c.get("style", "") for c in items), 1)
+                self.assertEqual(
+                    [c.get("value") for c in items if "-alternate-frame-" in c.get("id", "")],
+                    [f"Alternate Flow A{i + 1}" for i in range(len(case["alternate_flows"]))],
+                )
+
+    def test_nodes_clear_swimlane_headers_and_other_nodes(self):
+        """Absolute rectangles do not overlap nodes or the vertical lane title strip."""
+        for page in activity_diagrams.build_drawio(USE_CASES).getroot():
+            cells = {cell.get("id"): cell for cell in page.iter("mxCell")}
+            nodes = [c for c in cells.values() if c.get("vertex") == "1"
+                     and "shape=swimlane" not in c.get("style", "")
+                     and "-alternate-frame-" not in c.get("id", "")]
+            for cell in nodes:
+                parent = cells[cell.get("parent")]
+                if "shape=swimlane" in parent.get("style", ""):
+                    with self.subTest(node=cell.get("id")):
+                        self.assertGreaterEqual(float(cell.find("mxGeometry").get("x")), 48)
+                        left, top, right, bottom = self.bounds(cell, cells)
+                        pl, pt, pr, pb = self.bounds(parent, cells)
+                        self.assertLessEqual(right, pr - 10)
+                        self.assertLessEqual(bottom, pb)
+            for first, second in combinations(nodes, 2):
+                ax, ay, ar, ab = self.bounds(first, cells)
+                bx, by, br, bb = self.bounds(second, cells)
+                with self.subTest(first=first.get("id"), second=second.get("id")):
+                    self.assertFalse(max(ax, bx) < min(ar, br) and max(ay, by) < min(ab, bb))
+
+    def test_all_vertices_fit_a4_page(self):
+        """All visible nodes and frames fit inside the declared portrait A4 page."""
+        for page in activity_diagrams.build_drawio(USE_CASES).getroot():
+            model = page.find("mxGraphModel")
+            self.assertEqual((model.get("pageWidth"), model.get("pageHeight")), ("827", "1169"))
+            cells = {cell.get("id"): cell for cell in page.iter("mxCell")}
+            for cell in cells.values():
+                if cell.get("vertex") == "1":
+                    with self.subTest(node=cell.get("id")):
+                        left, top, right, bottom = self.bounds(cell, cells)
+                        self.assertGreaterEqual(left, 0)
+                        self.assertGreaterEqual(top, 0)
+                        self.assertLessEqual(right, 827)
+                        self.assertLessEqual(bottom, 1169)
+
+    def test_labels_have_conservative_wrapping_space(self):
+        """Actions and central diamond labels reserve space for wrapped text."""
+        for page in activity_diagrams.build_drawio(USE_CASES).getroot():
+            for cell in page.iter("mxCell"):
+                if cell.get("vertex") != "1" or not cell.get("value"):
+                    continue
+                style = cell.get("style", "")
+                if "shape=swimlane" in style or "-alternate-frame-" in cell.get("id", ""):
+                    continue
+                geometry = cell.find("mxGeometry")
+                width, height = float(geometry.get("width")), float(geometry.get("height"))
+                diamond = "rhombus" in style
+                # Central half of a diamond remains inside its sloped outline.
+                usable_width = width * 0.5 if diamond else width - 16
+                usable_height = height * 0.5 if diamond else height - 8
+                lines = textwrap.wrap(cell.get("value"), width=int(usable_width / (6 if diamond else 7)))
+                with self.subTest(node=cell.get("id"), label=cell.get("value")):
+                    self.assertLessEqual(len(lines) * (13 if diamond else 15), usable_height)
+
+    def test_alternate_routes_clear_intervening_nodes(self):
+        """Long alternate connectors use an explicit clear corridor beside nodes."""
+        for page in activity_diagrams.build_drawio(USE_CASES).getroot():
+            cells = {cell.get("id"): cell for cell in page.iter("mxCell")}
+            nodes = [c for c in cells.values() if c.get("vertex") == "1"
+                     and "shape=swimlane" not in c.get("style", "")
+                     and "-alternate-frame-" not in c.get("id", "")]
+            for edge in cells.values():
+                if "-alternate-flow-" not in edge.get("id", ""):
+                    continue
+                with self.subTest(edge=edge.get("id")):
+                    points = [(float(p.get("x")), float(p.get("y")))
+                              for p in edge.findall("mxGeometry/Array/mxPoint")]
+                    self.assertGreaterEqual(len(points), 2)
+                    source = self.bounds(cells[edge.get("source")], cells)
+                    target = self.bounds(cells[edge.get("target")], cells)
+                    path = [(source[2], (source[1] + source[3]) / 2), *points,
+                            (target[2], (target[1] + target[3]) / 2)]
+                    for x, y in path:
+                        self.assertTrue(0 <= x <= 827 and 0 <= y <= 1169)
+                    for (x1, y1), (x2, y2) in zip(path, path[1:]):
+                        self.assertTrue(x1 == x2 or y1 == y2)
+                        for node in nodes:
+                            if node.get("id") in (edge.get("source"), edge.get("target")):
+                                continue
+                            left, top, right, bottom = self.bounds(node, cells)
+                            crosses = (x1 == x2 and left < x1 < right and
+                                       max(min(y1, y2), top) < min(max(y1, y2), bottom)) or (
+                                       y1 == y2 and top < y1 < bottom and
+                                       max(min(x1, x2), left) < min(max(x1, x2), right))
+                            self.assertFalse(crosses, node.get("id"))
+
     def write_generated_file(self, tmp_path: Path) -> ET.Element:
         output = tmp_path / "activity.drawio"
         write_drawio = getattr(activity_diagrams, "write_drawio", None)

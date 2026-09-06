@@ -422,7 +422,7 @@ def add_activity(root, lane_id, cell_id, label, x, y, width=220, height=52):
     )
 
 
-def add_decision(root, lane_id, cell_id, label, x, y):
+def add_decision(root, lane_id, cell_id, label, x, y, width=120):
     """Add a labeled UML decision node to a swimlane."""
     return add_cell(
         root,
@@ -433,7 +433,7 @@ def add_decision(root, lane_id, cell_id, label, x, y):
         vertex=True,
         x=x,
         y=y,
-        width=120,
+        width=width,
         height=56,
     )
 
@@ -442,7 +442,7 @@ def add_connector(root, cell_id, source, target, label="", red=False, points=Non
     """Add an orthogonal control-flow connector between existing cells."""
     style = CONNECTOR_STYLE
     if red:
-        style += "strokeColor=#FF0000;"
+        style += "strokeColor=#FF0000;exitX=1;exitY=0.5;entryX=1;entryY=0.5;"
     return add_cell(
         root,
         cell_id=cell_id,
@@ -522,6 +522,9 @@ def build_page(use_case):
     lane_gap = 12
     lane_left = 25
     lane_top = 25
+    # horizontal=0 reserves a vertical 38px title strip on the left.
+    activity_x = 53
+    activity_width = lane_width - activity_x - 15
     lane_ids = {}
     for index, lane_name in enumerate(use_case["lanes"]):
         lane_id = f"{page_id}-lane-{index}"
@@ -544,7 +547,7 @@ def build_page(use_case):
         cell_id=start_id,
         style=START_STYLE,
         vertex=True,
-        x=lane_left + (lane_width - 24) // 2,
+        x=lane_left + activity_x + (activity_width - 24) // 2,
         y=44,
         width=24,
         height=24,
@@ -553,6 +556,7 @@ def build_page(use_case):
     previous_id = start_id
     previous_y = 44
     created_steps = []
+    node_positions = {}
     last_decision_id = None
     previous_was_decision = False
     for index, step in enumerate(use_case["main_steps"]):
@@ -563,10 +567,13 @@ def build_page(use_case):
         is_decision = step.startswith("decision ")
         if is_decision:
             label = step.removeprefix("decision ") + "?"
-            add_decision(root, lane_id, node_id, label, (lane_width - 120) // 2, node_y)
+            add_decision(root, lane_id, node_id, label, activity_x, node_y, width=activity_width)
             last_decision_id = node_id
         else:
-            add_activity(root, lane_id, node_id, step, 15, node_y)
+            add_activity(root, lane_id, node_id, step, activity_x, node_y, width=activity_width, height=54)
+        lane_index = use_case["lanes"].index(lane_name)
+        lane_right = lane_left + lane_index * (lane_width + lane_gap) + lane_width
+        node_positions[node_id] = (lane_right, lane_top + node_y + (28 if is_decision else 27))
         add_connector(
             root,
             f"{page_id}-flow-{index}",
@@ -580,13 +587,14 @@ def build_page(use_case):
         created_steps.append(node_id)
 
     end_id = f"{page_id}-end"
-    end_y = min(previous_y + 72, 700)
+    # Main nodes are lane-relative; the end node is root-relative.
+    end_y = lane_top + previous_y + 72
     add_cell(
         root,
         cell_id=end_id,
         style=END_STYLE,
         vertex=True,
-        x=lane_left + (lane_width - 24) // 2,
+        x=lane_left + activity_x + (activity_width - 24) // 2,
         y=end_y,
         width=24,
         height=24,
@@ -597,7 +605,7 @@ def build_page(use_case):
     alternate_source = last_decision_id or previous_id
     for index, alternate_flow in enumerate(use_case["alternate_flows"]):
         steps = alternate_flow["steps"]
-        frame_height = max(92, 42 + 48 * len(steps))
+        frame_height = 110 + 72 * (len(steps) - 1)
         frame_id = f"{page_id}-alternate-frame-{alternate_flow['id']}"
         add_alternate_frame(
             root,
@@ -617,10 +625,17 @@ def build_page(use_case):
                 lane_ids[lane_name],
                 step_id,
                 step,
-                15,
-                alternate_y + 37 + step_index * 48 - lane_top,
-                height=42,
+                activity_x,
+                alternate_y + 37 + step_index * 72 - lane_top,
+                width=activity_width,
+                height=62,
             )
+            lane_index = use_case["lanes"].index(lane_name)
+            lane_right = lane_left + lane_index * (lane_width + lane_gap) + lane_width
+            target_y = alternate_y + 37 + step_index * 72 + 31
+            source_right, source_y = node_positions[prior_id]
+            corridor_x = max(source_right, lane_right) - 6
+            node_positions[step_id] = (lane_right, target_y)
             add_connector(
                 root,
                 f"{page_id}-alternate-flow-{alternate_flow['id']}-{step_index}",
@@ -628,6 +643,7 @@ def build_page(use_case):
                 step_id,
                 label="no" if step_index == 0 and last_decision_id else "",
                 red=True,
+                points=[(corridor_x, source_y), (corridor_x, target_y)],
             )
             prior_id = step_id
         alternate_y += frame_height + 10
