@@ -53,7 +53,7 @@ jobs:
       - uses: denoland/setup-deno@v2
         with:
           deno-version: v2.x
-      - run: deno test supabase/functions/places-proxy/places_proxy_test.ts
+      - run: deno test --allow-env supabase/functions/places-proxy/places_proxy_test.ts
 
   supabase-database:
     runs-on: ubuntu-latest
