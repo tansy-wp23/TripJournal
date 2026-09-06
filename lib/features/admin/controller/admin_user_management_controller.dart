@@ -56,6 +56,35 @@ class AdminUserManagementController extends ChangeNotifier {
   /// screen first opens.
   Future<void> loadAll() => _search(_query);
 
+  /// Starts a freshly-opened `AdminUserListScreen` from a clean baseline —
+  /// no leftover query or filter from whatever screen instance last used
+  /// this controller — then applies the given initial filter, if any.
+  ///
+  /// This controller is one app-lifetime provider shared by every visit to
+  /// `AdminUserListScreen`, but each visit is a brand-new screen instance
+  /// with its own, empty `TextEditingController`. Without this, a fresh
+  /// unfiltered open (e.g. the dashboard's "Manage users" tile, right after
+  /// a previous visit had searched "chong" under the "Suspended" filter)
+  /// would silently keep executing that stale query+filter — the search
+  /// box and filter chip look reset because they belong to the new
+  /// instance, but the results shown are still the old, stale ones.
+  /// `_debounce?.cancel()` guards the same scenario for a query typed just
+  /// before navigating away: without it, a debounce timer still in flight
+  /// could fire after this reset and clobber it right back to the stale
+  /// query.
+  Future<void> resetForNewScreen({
+    AccountStatus? status,
+    UserRole? role,
+    bool newThisWeek = false,
+  }) {
+    _debounce?.cancel();
+    _query = '';
+    _statusFilter = status;
+    _roleFilter = role;
+    _newThisWeekOnly = newThisWeek;
+    return _search('');
+  }
+
   /// Called on every keystroke. Debounces before actually searching, so
   /// rapid typing doesn't fire a request per character.
   void setQuery(String value) {

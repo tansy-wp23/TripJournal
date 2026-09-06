@@ -181,6 +181,81 @@ void main() {
       expect(find.text('Alice Tan'), findsOneWidget);
     });
 
+    testWidgets(
+      'reopening the list fresh (unfiltered) after a previous visit '
+      'searched and filtered does not inherit that stale state — '
+      'AdminUserManagementController is shared app-wide, but each screen '
+      'visit is a brand-new pushed instance',
+      (tester) async {
+        final harness = AdminTestHarness();
+        addTearDown(harness.dispose);
+
+        await tester.pumpWidget(
+          harness.wrap(
+            Builder(
+              builder: (context) => Scaffold(
+                body: Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      ElevatedButton(
+                        key: const Key('open-filtered'),
+                        onPressed: () => Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => const AdminUserListScreen(
+                              title: 'Suspended Users',
+                              initialStatusFilter: AccountStatus.suspended,
+                            ),
+                          ),
+                        ),
+                        child: const Text('open filtered'),
+                      ),
+                      ElevatedButton(
+                        key: const Key('open-unfiltered'),
+                        onPressed: () => Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => const AdminUserListScreen(),
+                          ),
+                        ),
+                        child: const Text('open unfiltered'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+
+        // Visit 1: opened pre-filtered to Suspended, then search "chong".
+        await tester.tap(find.byKey(const Key('open-filtered')));
+        await tester.pump();
+        await tester.pumpAndSettle();
+        await tester.enterText(
+          find.byKey(const Key('admin-user-search-field')),
+          'chong',
+        );
+        await tester.pump(const Duration(milliseconds: 350));
+        await tester.pumpAndSettle();
+        expect(find.text('Chong Mei Ling'), findsOneWidget);
+
+        // Back to the "dashboard", then a fresh unfiltered visit — as
+        // AdminDashboardScreen's "Manage users" tile would push.
+        Navigator.of(tester.element(find.byType(AdminUserListScreen))).pop();
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('open-unfiltered')));
+        await tester.pump();
+        await tester.pumpAndSettle();
+
+        final searchField = tester.widget<TextField>(
+          find.byKey(const Key('admin-user-search-field')),
+        );
+        expect(searchField.controller?.text, isEmpty);
+        expect(find.byKey(const Key('admin-user-filter-chip')), findsNothing);
+        expect(find.text('Alice Tan'), findsOneWidget);
+      },
+    );
+
     testWidgets('a filter matching nobody shows a filter-specific empty '
         'state', (tester) async {
       final harness = AdminTestHarness();
