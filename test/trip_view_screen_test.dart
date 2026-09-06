@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:tripjournal/data/mock_journal_repository.dart';
@@ -17,6 +18,18 @@ import 'support/auth_test_harness.dart';
 Widget _wrapped(String tripId) {
   return ProviderScope(
     child: MaterialApp(home: TripViewScreen(tripId: tripId)),
+  );
+}
+
+Widget _wrappedWithFreshTrips(AuthTestHarness harness, String tripId) {
+  final controller = TripController(
+    MockTripRepository(),
+    MockJournalRepository(),
+    MockTripCoverStorage(),
+  );
+  return ProviderScope(
+    overrides: [tripControllerProvider.overrideWith((ref) => controller)],
+    child: harness.wrap(TripViewScreen(tripId: tripId)),
   );
 }
 
@@ -232,9 +245,7 @@ void main() {
 
       final harness = AuthTestHarness();
       addTearDown(harness.dispose);
-      await tester.pumpWidget(
-        harness.wrap(const TripViewScreen(tripId: 'trip-001')),
-      );
+      await tester.pumpWidget(_wrappedWithFreshTrips(harness, 'trip-001'));
       await tester.pumpAndSettle();
 
       expect(find.byKey(const Key('trip-view-public-chip')), findsNothing);
@@ -264,41 +275,130 @@ void main() {
     },
   );
 
-  testWidgets(
-    'Share Link only appears in the overflow menu once the trip is public',
-    (tester) async {
-      tester.view.physicalSize = const Size(1200, 2600);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.resetPhysicalSize);
-      addTearDown(tester.view.resetDevicePixelRatio);
+  testWidgets('published sharing actions only appear once the trip is public', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1200, 2600);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
 
-      final harness = AuthTestHarness();
-      addTearDown(harness.dispose);
-      await tester.pumpWidget(
-        harness.wrap(const TripViewScreen(tripId: 'trip-001')),
-      );
-      await tester.pumpAndSettle();
+    final harness = AuthTestHarness();
+    addTearDown(harness.dispose);
+    await tester.pumpWidget(_wrappedWithFreshTrips(harness, 'trip-001'));
+    await tester.pumpAndSettle();
 
-      await tester.tap(find.byKey(const Key('trip-view-more-menu')));
-      await tester.pumpAndSettle();
-      expect(
-        find.byKey(const Key('trip-view-share-link-button')),
-        findsNothing,
-      );
-      await tester.tap(find.byKey(const Key('trip-view-publish-button')));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Publish'));
-      await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('trip-view-more-menu')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('trip-view-share-link-button')), findsNothing);
+    expect(find.byKey(const Key('trip-view-copy-id-button')), findsNothing);
+    await tester.tap(find.byKey(const Key('trip-view-publish-button')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Publish'));
+    await tester.pumpAndSettle();
 
-      await tester.tap(find.byKey(const Key('trip-view-more-menu')));
-      await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('trip-view-more-menu')));
+    await tester.pumpAndSettle();
 
-      expect(
-        find.byKey(const Key('trip-view-share-link-button')),
-        findsOneWidget,
-      );
-    },
-  );
+    expect(
+      find.byKey(const Key('trip-view-share-link-button')),
+      findsOneWidget,
+    );
+    expect(find.byKey(const Key('trip-view-copy-id-button')), findsOneWidget);
+  });
+
+  testWidgets('Share link sends only the TripJournal deep link', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1200, 2600);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final methodCalls = <MethodCall>[];
+    const shareChannel = MethodChannel('dev.fluttercommunity.plus/share');
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(shareChannel, (call) async {
+          methodCalls.add(call);
+          return '';
+        });
+    addTearDown(
+      () => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(shareChannel, null),
+    );
+
+    final harness = AuthTestHarness();
+    addTearDown(harness.dispose);
+    await tester.pumpWidget(_wrappedWithFreshTrips(harness, 'trip-001'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('trip-view-more-menu')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('trip-view-publish-button')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Publish'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('trip-view-more-menu')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('trip-view-share-link-button')));
+    await tester.pumpAndSettle();
+
+    expect(methodCalls, hasLength(1));
+    expect(methodCalls.single.method, 'share');
+    final arguments = methodCalls.single.arguments as Map<Object?, Object?>;
+    expect(arguments['text'], 'tripjournal://trip/trip-001');
+    expect(arguments['subject'], isNull);
+  });
+
+  testWidgets('Copy trip ID copies only the raw ID and confirms success', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1200, 2600);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    String? copiedText;
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(SystemChannels.platform, (call) async {
+          if (call.method == 'Clipboard.setData') {
+            final arguments = call.arguments as Map<Object?, Object?>;
+            copiedText = arguments['text'] as String?;
+          }
+          if (call.method == 'Clipboard.getData') {
+            return <String, Object?>{'text': copiedText};
+          }
+          return null;
+        });
+    addTearDown(
+      () => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(SystemChannels.platform, null),
+    );
+
+    final harness = AuthTestHarness();
+    addTearDown(harness.dispose);
+    await tester.pumpWidget(_wrappedWithFreshTrips(harness, 'trip-001'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('trip-view-more-menu')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('trip-view-publish-button')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Publish'));
+    await tester.pumpAndSettle();
+    await tester.pump(const Duration(seconds: 5));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('trip-view-more-menu')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('trip-view-copy-id-button')));
+    await tester.pumpAndSettle();
+
+    final clipboard = await Clipboard.getData(Clipboard.kTextPlain);
+    expect(clipboard?.text, 'trip-001');
+    expect(find.text('Trip ID copied'), findsOneWidget);
+  });
 }
 
 final class _CountingTripRepository extends MockTripRepository {

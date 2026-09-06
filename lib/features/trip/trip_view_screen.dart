@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/services.dart';
 import 'package:printing/printing.dart';
 import 'package:share_plus/share_plus.dart';
 
@@ -273,12 +274,15 @@ class _TripViewScreenState extends ConsumerState<TripViewScreen>
   }
 
   void _shareTripLink(Trip trip) {
-    final shareText =
-        'Check out my trip "${trip.title}" on TripJournal!\n\n'
-        'Open this link on a phone with TripJournal installed (paste into '
-        "your browser's address bar if it doesn't open automatically):\n"
-        '${tripLinkFor(trip.id)}';
-    Share.share(shareText, subject: 'TripJournal: ${trip.title}');
+    Share.share(tripLinkFor(trip.id));
+  }
+
+  Future<void> _copyTripId(Trip trip) async {
+    await Clipboard.setData(ClipboardData(text: trip.id));
+    if (!mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Trip ID copied')));
   }
 
   Future<void> _openEditTrip(Trip trip) async {
@@ -565,6 +569,8 @@ class _TripViewScreenState extends ConsumerState<TripViewScreen>
                   _unpublishTrip(trip);
                 case _TripViewMenuAction.shareLink:
                   _shareTripLink(trip);
+                case _TripViewMenuAction.copyTripId:
+                  _copyTripId(trip);
                 case _TripViewMenuAction.reportIssue:
                   showReportIssueSheet(
                     context,
@@ -594,6 +600,12 @@ class _TripViewScreenState extends ConsumerState<TripViewScreen>
                   value: _TripViewMenuAction.shareLink,
                   label: 'Share link',
                   icon: Icons.share_outlined,
+                ),
+                const AppActionMenuItem(
+                  key: Key('trip-view-copy-id-button'),
+                  value: _TripViewMenuAction.copyTripId,
+                  label: 'Copy trip ID',
+                  icon: Icons.content_copy_outlined,
                 ),
               ] else
                 const AppActionMenuItem(
@@ -1516,6 +1528,7 @@ enum _TripViewMenuAction {
   publish,
   unpublish,
   shareLink,
+  copyTripId,
   reportIssue,
   moveToTrash,
 }
