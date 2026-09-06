@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../data/repository_locator.dart';
@@ -18,6 +19,7 @@ import '../trip/trip_summary_stats.dart';
 import '../trip/widgets/trip_cover_photo.dart';
 import '../trip/widgets/trip_photo_carousel.dart';
 import '../trip/widgets/wellness_stats_row.dart';
+import '../../widgets/app_action_menu.dart';
 
 /// Read-only view of a public trip. No edit/add/delete actions.
 class PublicTripViewScreen extends ConsumerStatefulWidget {
@@ -58,13 +60,15 @@ class _PublicTripViewScreenState extends ConsumerState<PublicTripViewScreen> {
   }
 
   void _shareTripLink() {
-    final trip = widget.trip;
-    final shareText =
-        'Check out this trip "${trip.title}" on TripJournal!\n\n'
-        'Open this link on a phone with TripJournal installed (paste into '
-        "your browser's address bar if it doesn't open automatically):\n"
-        '${tripLinkFor(trip.id)}';
-    Share.share(shareText, subject: 'TripJournal: ${trip.title}');
+    Share.share(tripLinkFor(widget.trip.id));
+  }
+
+  Future<void> _copyTripId() async {
+    await Clipboard.setData(ClipboardData(text: widget.trip.id));
+    if (!mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Trip ID copied')));
   }
 
   @override
@@ -78,11 +82,31 @@ class _PublicTripViewScreenState extends ConsumerState<PublicTripViewScreen> {
       appBar: AppBar(
         title: Text(trip.title),
         actions: [
-          IconButton(
-            key: const Key('public-trip-share-button'),
-            icon: const Icon(Icons.share),
-            tooltip: 'Share trip',
-            onPressed: _shareTripLink,
+          AppActionMenu<_PublicTripMenuAction>(
+            key: const Key('public-trip-more-menu'),
+            tooltip: 'More trip actions',
+            onSelected: (action) {
+              switch (action) {
+                case _PublicTripMenuAction.shareLink:
+                  _shareTripLink();
+                case _PublicTripMenuAction.copyTripId:
+                  _copyTripId();
+              }
+            },
+            items: const [
+              AppActionMenuItem(
+                key: Key('public-trip-share-link-button'),
+                value: _PublicTripMenuAction.shareLink,
+                label: 'Share link',
+                icon: Icons.share_outlined,
+              ),
+              AppActionMenuItem(
+                key: Key('public-trip-copy-id-button'),
+                value: _PublicTripMenuAction.copyTripId,
+                label: 'Copy trip ID',
+                icon: Icons.content_copy_outlined,
+              ),
+            ],
           ),
         ],
       ),
@@ -376,6 +400,8 @@ class _PublicTripViewScreenState extends ConsumerState<PublicTripViewScreen> {
     return widgets;
   }
 }
+
+enum _PublicTripMenuAction { shareLink, copyTripId }
 
 /// One meal's full detail — photo, name, type/portion/calories, restaurant,
 /// review, and rating — read-only. Mirrors the meal row on
