@@ -327,6 +327,135 @@ USE_CASES: list[dict] = [
 ]
 
 
+# Each main action owns an explicit actor. Alternate triples are source index,
+# guard, and rejoin index (or end); no lexical or last-decision inference is used.
+FLOW_SPECS = {
+    "UC200": {
+        "steps": [("select Create Trip", "User"), ("display form", "System"), ("call UC207", "User"),
+                  ("decision update cover", "User"), ("optionally call UC208", "User"), ("preview", "System"),
+                  ("select Save", "User"), ("validate trip information", "System"), ("decision valid", "System"),
+                  ("save trip", "System"), ("decision saved", "System"), ("display saved trip", "System")],
+        "alternates": [(8, "no", 2), (10, "no", 6)], "bypasses": [(3, "no", 5)],
+    },
+    "UC201": {
+        "steps": [("select Edit", "User"), ("display existing details", "System"), ("call UC207", "User"),
+                  ("decision update cover", "User"), ("optionally call UC208", "User"), ("preview", "System"),
+                  ("select Save", "User"), ("validate title, overlap and journal-entry date coverage", "System"),
+                  ("decision valid", "System"), ("save changes", "System"), ("decision saved", "System"),
+                  ("display updated trip", "System")],
+        "alternates": [(8, "no", 2), (10, "no", "end")], "bypasses": [(3, "no", 5)],
+    },
+    "UC202": {
+        "steps": [("open Home", "User"), ("retrieve active owned trips", "System"), ("decision data loaded", "System"),
+                  ("decision trips available", "System"), ("display cards", "System"), ("browse", "User"),
+                  ("select trip", "User"), ("call UC203", "System")],
+        "alternates": [(3, "no", "end"), (2, "no", 1)],
+    },
+    "UC203": {
+        "steps": [("select trip", "User"), ("retrieve owned active trip", "System"), ("decision data loaded", "System"),
+                  ("decision accessible", "System"), ("display details and actions", "System"),
+                  ("review", "User"), ("decision action selected", "User"), ("open selected function", "System")],
+        "alternates": [(3, "no", "end"), (2, "no", 1)], "bypasses": [(6, "no", "end")],
+    },
+    "UC204": {
+        "steps": [("select Move to Trash", "User"), ("show confirmation", "System"), ("decision confirmed", "User"),
+                  ("move trip and entries to recoverable Trash", "System"), ("decision moved", "System"),
+                  ("remove from active and Community lists", "System"), ("return to trip list", "User"),
+                  ("refresh list", "System")],
+        "alternates": [(2, "no", "end"), (4, "no", "end")],
+    },
+    "UC205": {
+        "steps": [("open Trip Trash", "User"), ("retrieve owned recoverable trips", "System"), ("decision data loaded", "System"),
+                  ("decision trips available", "System"), ("display trips and recovery period", "System"),
+                  ("browse deleted trips", "User"), ("decision recovery period expired", "System"),
+                  ("select Restore", "User"), ("call UC213", "System")],
+        "alternates": [(3, "no", "end"), (2, "no", 1), (6, "yes", "end")], "guards": {6: "no"},
+    },
+    "UC206": {
+        "steps": [("open Community", "User"), ("retrieve public non-trashed trips", "System"), ("decision data loaded", "System"),
+                  ("browse or search Community feed", "User"), ("apply criteria", "System"), ("decision trips match", "System"),
+                  ("display public cards", "System"), ("select published trip", "User"), ("call UC214", "System")],
+        "alternates": [(5, "no", 3), (2, "no", 1)],
+    },
+    "UC207": {
+        "steps": [("enter title and destination", "User"), ("accept input", "System"), ("select start and end dates", "User"),
+                  ("display range", "System"), ("proceed to Save", "User"),
+                  ("validate required fields, title length and date order", "System"), ("decision valid", "System"),
+                  ("return valid details to UC200 or UC201", "System")],
+        "alternates": [(6, "no", 0)],
+    },
+    "UC208": {
+        "steps": [("select cover option", "User"), ("display photo sources", "System"),
+                  ("select or capture supported image", "User"), ("decision selection completed", "User"),
+                  ("preview", "System"), ("save parent form", "User"), ("decision storage successful", "System"),
+                  ("associate cover with trip", "System")],
+        "alternates": [(3, "no", "end"), (6, "no", "end")],
+    },
+    "UC209": {
+        "steps": [("open search/filter controls", "User"), ("display controls", "System"), ("decision clear criteria", "User"),
+                  ("enter title/destination or select status", "User"), ("apply criteria", "System"),
+                  ("decision matches found", "System"), ("display matching trips", "System"), ("browse results", "User")],
+        "alternates": [(5, "no", 2), (2, "yes", "end")], "guards": {2: "no"},
+    },
+    "UC210": {
+        "steps": [("select Publish to Community", "User"), ("show confirmation", "System"), ("decision confirmed", "User"),
+                  ("verify owner, private and non-trashed state", "System"), ("decision publish successful", "System"),
+                  ("mark public and record publisher", "System"), ("include in Community", "System"),
+                  ("return to trip details", "User"), ("display Public status", "System")],
+        "alternates": [(2, "no", "end"), (4, "no", "end")],
+    },
+    "UC211": {
+        "steps": [("select Unpublish", "User"), ("process request", "System"), ("wait for completion", "User"),
+                  ("decision successful", "System"), ("mark private", "System"), ("remove from Community", "System"),
+                  ("continue viewing trip", "User"), ("remove Public indicator and confirm change", "System")],
+        "alternates": [(3, "no", "end")],
+    },
+    "UC212": {
+        "steps": [("select Share Link", "User"), ("verify public trip and sharing service", "System"),
+                  ("decision sharing available", "System"), ("prepare title and Trip ID message", "System"),
+                  ("open sharing interface", "System"), ("decision user selects target", "User"),
+                  ("transfer message to external application", "System"), ("user completes sharing", "User"),
+                  ("external application handles delivery", "External Sharing Application")],
+        "alternates": [(5, "no", "end"), (2, "no", "end")],
+    },
+    "UC213": {
+        "steps": [("select Restore", "User"), ("display confirmation", "System"), ("decision confirmed", "User"),
+                  ("check recovery period", "System"), ("decision not expired", "System"), ("check date overlap", "System"),
+                  ("decision no conflict", "System"), ("wait for completion", "User"),
+                  ("restore trip and journal entries", "System"), ("remove from Trash", "System"),
+                  ("refresh list", "System")],
+        "alternates": [(4, "no", "end"), (6, "no", 5)], "bypasses": [(2, "no", "end")],
+    },
+    "UC214": {
+        "steps": [("select Community trip", "User"), ("retrieve latest public information", "System"),
+                  ("decision still public and found", "System"), ("decision load successful", "System"),
+                  ("display title, destination, dates, cover, publisher and shared content", "System"), ("review", "User"),
+                  ("decision share selected", "User"), ("call UC212", "System")],
+        "alternates": [(2, "no", "end"), (3, "no", 1)], "bypasses": [(6, "no", "end")],
+    },
+}
+
+for _case in USE_CASES:
+    _spec = FLOW_SPECS[_case["id"]]
+    _case["main_steps"] = [label for label, lane in _spec["steps"]]
+    _case["step_lanes"] = [lane for label, lane in _spec["steps"]]
+    _case["main_guards"] = {i: "yes" for i, step in enumerate(_case["main_steps"]) if step.startswith("decision ")}
+    _case["main_guards"].update(_spec.get("guards", {}))
+    _case["bypasses"] = _spec.get("bypasses", [])
+    _case["decisions"] = [step.removeprefix("decision ") for step in _case["main_steps"] if step.startswith("decision ")]
+    for _alt, (_source, _guard, _destination) in zip(_case["alternate_flows"], _spec["alternates"]):
+        _alt.update(source=_source, guard=_guard, destination=_destination, lane="System")
+        if _destination != "end":
+            _alt["choice"] = "Retry?" if "Retry" in _alt["steps"][0] or "retry" in _alt["steps"][0] else "Correct details?"
+    if _case["id"] == "UC206":
+        _case["alternate_flows"][0]["choice"] = "Change search?"
+    if _case["id"] == "UC209":
+        _case["alternate_flows"][0]["choice"] = "Change criteria?"
+    if _case["id"] == "UC213":
+        _case["alternate_flows"][1]["choice"] = "Edit dates and retry?"
+        _case["alternate_flows"][1]["user_action"] = "enter different trip dates"
+
+
 SWIMLANE_STYLE = (
     "shape=swimlane;horizontal=0;startSize=38;fillColor=#DAE8FC;"
     "strokeColor=#6C8EBF;fontStyle=1;fontSize=14;html=1;rounded=0;"
@@ -407,7 +536,7 @@ def add_cell(
 
 def add_activity(root, lane_id, cell_id, label, x, y, width=220, height=52):
     """Add an action, using the call-activity style for cross-use-case calls."""
-    style = CALL_ACTIVITY_STYLE if label.startswith("call UC") else ACTIVITY_STYLE
+    style = CALL_ACTIVITY_STYLE if "call UC" in label else ACTIVITY_STYLE
     return add_cell(
         root,
         cell_id=cell_id,
@@ -553,42 +682,25 @@ def build_page(use_case):
         height=24,
     )
 
-    previous_id = start_id
-    previous_y = 44
-    created_steps = []
-    node_positions = {}
-    last_decision_id = None
-    previous_was_decision = False
+    node_positions = {start_id: (lane_left + activity_x + (activity_width - 24) // 2, 44, 24, 24)}
     for index, step in enumerate(use_case["main_steps"]):
         node_id = f"{page_id}-main-{index}"
-        lane_name = _step_lane(step, use_case["lanes"])
+        lane_name = use_case["step_lanes"][index]
         lane_id = lane_ids[lane_name]
         node_y = 82 + index * 61
         is_decision = step.startswith("decision ")
         if is_decision:
             label = step.removeprefix("decision ") + "?"
             add_decision(root, lane_id, node_id, label, activity_x, node_y, width=activity_width)
-            last_decision_id = node_id
         else:
             add_activity(root, lane_id, node_id, step, activity_x, node_y, width=activity_width, height=54)
         lane_index = use_case["lanes"].index(lane_name)
-        lane_right = lane_left + lane_index * (lane_width + lane_gap) + lane_width
-        node_positions[node_id] = (lane_right, lane_top + node_y + (28 if is_decision else 27))
-        add_connector(
-            root,
-            f"{page_id}-flow-{index}",
-            previous_id,
-            node_id,
-            label="yes" if previous_was_decision else "",
-        )
-        previous_id = node_id
-        previous_y = node_y
-        previous_was_decision = is_decision
-        created_steps.append(node_id)
+        node_positions[node_id] = (lane_left + lane_index * (lane_width + lane_gap) + activity_x,
+                                   lane_top + node_y, activity_width, 56 if is_decision else 54)
 
     end_id = f"{page_id}-end"
     # Main nodes are lane-relative; the end node is root-relative.
-    end_y = lane_top + previous_y + 72
+    end_y = lane_top + 82 + (len(use_case["main_steps"]) - 1) * 61 + 72
     add_cell(
         root,
         cell_id=end_id,
@@ -599,13 +711,47 @@ def build_page(use_case):
         width=24,
         height=24,
     )
-    add_connector(root, f"{page_id}-finish", previous_id, end_id, label="yes" if previous_was_decision else "")
+    node_positions[end_id] = (lane_left + activity_x + (activity_width - 24) // 2, end_y, 24, 24)
 
-    alternate_y = 770
-    alternate_source = last_decision_id or previous_id
+    def route(edge_id, source, target, label="", mode="forward", red=False, offset=0):
+        sx, sy, sw, sh = node_positions[source]
+        tx, ty, tw, th = node_positions[target]
+        if mode == "side":
+            corridor = 790 - offset
+            points = [(corridor, sy + sh / 2), (corridor, ty + th / 2)]
+            anchors = "exitX=1;exitY=0.5;entryX=1;entryY=0.5;"
+        elif mode == "return":
+            corridor = 70 + offset / 2
+            points = [(corridor, sy + sh / 2), (corridor, ty - 3), (tx + tw / 2, ty - 3)]
+            anchors = "exitX=0;exitY=0.5;entryX=0.5;entryY=0;"
+        elif mode == "across":
+            points = []
+            anchors = "exitX=0;exitY=0.5;entryX=1;entryY=0.5;"
+        elif mode == "offer":
+            points = [(tx + tw + 20, sy + sh / 2), (tx + tw + 20, ty - 10), (tx + tw / 2, ty - 10)]
+            anchors = "exitX=0;exitY=0.5;entryX=0.5;entryY=0;"
+        else:
+            middle_y = (sy + sh + ty) / 2
+            points = [(sx + sw / 2, middle_y), (tx + tw / 2, middle_y)]
+            anchors = "exitX=0.5;exitY=1;entryX=0.5;entryY=0;"
+        cell = add_connector(root, edge_id, source, target, label=label, red=red, points=points)
+        cell.set("style", CONNECTOR_STYLE + ("strokeColor=#FF0000;" if red else "") + anchors + "labelBackgroundColor=#FFFFFF;")
+
+    previous = start_id
+    for index in range(len(use_case["main_steps"])):
+        current = f"{page_id}-main-{index}"
+        route(f"{page_id}-flow-{index}", previous, current,
+              use_case["main_guards"].get(index - 1, ""))
+        previous = current
+    route(f"{page_id}-finish", previous, end_id, use_case["main_guards"].get(len(use_case["main_steps"]) - 1, ""))
+    for index, (source, guard, destination) in enumerate(use_case["bypasses"]):
+        route(f"{page_id}-bypass-{index}", f"{page_id}-main-{source}",
+              end_id if destination == "end" else f"{page_id}-main-{destination}", guard, "side", offset=24)
+
+    alternate_y = max(770, end_y + 55)
     for index, alternate_flow in enumerate(use_case["alternate_flows"]):
         steps = alternate_flow["steps"]
-        frame_height = 110 + 72 * (len(steps) - 1)
+        frame_height = 110 + (65 if alternate_flow.get("user_action") else 0)
         frame_id = f"{page_id}-alternate-frame-{alternate_flow['id']}"
         add_alternate_frame(
             root,
@@ -616,10 +762,10 @@ def build_page(use_case):
             777,
             frame_height,
         )
-        prior_id = alternate_source
+        prior_id = f"{page_id}-main-{alternate_flow['source']}"
         for step_index, step in enumerate(steps):
             step_id = f"{page_id}-alternate-{alternate_flow['id']}-{step_index}"
-            lane_name = _step_lane(step, use_case["lanes"])
+            lane_name = alternate_flow["lane"]
             add_activity(
                 root,
                 lane_ids[lane_name],
@@ -631,21 +777,43 @@ def build_page(use_case):
                 height=62,
             )
             lane_index = use_case["lanes"].index(lane_name)
-            lane_right = lane_left + lane_index * (lane_width + lane_gap) + lane_width
-            target_y = alternate_y + 37 + step_index * 72 + 31
-            source_right, source_y = node_positions[prior_id]
-            corridor_x = max(source_right, lane_right) - 6
-            node_positions[step_id] = (lane_right, target_y)
-            add_connector(
-                root,
-                f"{page_id}-alternate-flow-{alternate_flow['id']}-{step_index}",
-                prior_id,
-                step_id,
-                label="no" if step_index == 0 and last_decision_id else "",
-                red=True,
-                points=[(corridor_x, source_y), (corridor_x, target_y)],
-            )
+            node_positions[step_id] = (lane_left + lane_index * (lane_width + lane_gap) + activity_x,
+                                       alternate_y + 37 + step_index * 72, activity_width, 62)
+            route(f"{page_id}-alternate-flow-{alternate_flow['id']}-{step_index}", prior_id, step_id,
+                  alternate_flow["guard"] if step_index == 0 else "", "side", red=True, offset=index * 8)
             prior_id = step_id
+        alt_id = alternate_flow["id"]
+        terminal = f"{page_id}-end-{alt_id}"
+        terminal_x = lane_left + lane_width - 39
+        terminal_y = alternate_y + (80 if alternate_flow["destination"] != "end" else 56)
+        add_cell(root, cell_id=terminal, style=END_STYLE, vertex=True,
+                 x=terminal_x, y=terminal_y, width=24, height=24)
+        node_positions[terminal] = (terminal_x, terminal_y, 24, 24)
+        if alternate_flow["destination"] == "end":
+            route(f"{page_id}-complete-{alt_id}", prior_id, terminal, mode="across", red=True)
+        else:
+            choice = f"{page_id}-choice-{alt_id}"
+            choice_width = min(220, activity_width - 45)
+            label = alternate_flow["choice"]
+            if alternate_flow.get("user_action"):
+                label = "Retry?"
+            add_decision(root, lane_ids["User"], choice, label, activity_x,
+                         alternate_y + 40 - lane_top, width=choice_width)
+            node_positions[choice] = (lane_left + activity_x, alternate_y + 40, choice_width, 56)
+            route(f"{page_id}-offer-{alt_id}", prior_id, choice, mode="offer", red=True)
+            # User cancellation ends inside the same alternate frame.
+            cell = add_connector(root, f"{page_id}-cancel-{alt_id}", choice, terminal, label="no", red=True)
+            cell.set("style", CONNECTOR_STYLE + "strokeColor=#FF0000;exitX=1;exitY=0.5;entryX=0;entryY=0.5;labelBackgroundColor=#FFFFFF;")
+            destination = f"{page_id}-main-{alternate_flow['destination']}"
+            if alternate_flow.get("user_action"):
+                action = f"{page_id}-edit-{alt_id}"
+                add_activity(root, lane_ids["User"], action, alternate_flow["user_action"], activity_x,
+                             alternate_y + 105 - lane_top, width=activity_width, height=54)
+                node_positions[action] = (lane_left + activity_x, alternate_y + 105, activity_width, 54)
+                route(f"{page_id}-accept-{alt_id}", choice, action, "yes", red=True)
+                route(f"{page_id}-rejoin-{alt_id}", action, destination, mode="return", red=True, offset=index * 8)
+            else:
+                route(f"{page_id}-rejoin-{alt_id}", choice, destination, "yes", "return", red=True, offset=index * 8)
         alternate_y += frame_height + 10
     return diagram
 

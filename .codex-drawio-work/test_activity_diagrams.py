@@ -9,6 +9,72 @@ from activity_diagrams import USE_CASES
 
 
 class ActivityDiagramDefinitionsTests(unittest.TestCase):
+    def test_explicit_alternate_triggers_and_destinations(self):
+        cases = {c["id"]: c for c in USE_CASES}
+        expected = {
+            "UC200": [(8, "no", 2), (10, "no", 6)],
+            "UC201": [(8, "no", 2), (10, "no", "end")],
+            "UC202": [(3, "no", "end"), (2, "no", 1)],
+            "UC203": [(3, "no", "end"), (2, "no", 1)],
+            "UC204": [(2, "no", "end"), (4, "no", "end")],
+            "UC205": [(3, "no", "end"), (2, "no", 1), (6, "yes", "end")],
+            "UC206": [(5, "no", 3), (2, "no", 1)],
+            "UC207": [(6, "no", 0)],
+            "UC208": [(3, "no", "end"), (6, "no", "end")],
+            "UC209": [(5, "no", 2), (2, "yes", "end")],
+            "UC210": [(2, "no", "end"), (4, "no", "end")],
+            "UC211": [(3, "no", "end")],
+            "UC212": [(5, "no", "end"), (2, "no", "end")],
+            "UC213": [(4, "no", "end"), (6, "no", 5)],
+            "UC214": [(2, "no", "end"), (3, "no", 1)],
+        }
+        for case_id, wanted in expected.items():
+            with self.subTest(case=case_id):
+                self.assertEqual([(a.get("source"), a.get("guard"), a.get("destination"))
+                                  for a in cases[case_id]["alternate_flows"]], wanted)
+        for case in USE_CASES:
+            self.assertEqual(len(case["step_lanes"]), len(case["main_steps"]))
+            for alt in case["alternate_flows"]:
+                self.assertIn("source", alt)
+                self.assertIn("guard", alt)
+                self.assertIn("destination", alt)
+
+    def test_source_user_actions_remain_in_order_and_in_the_user_lane(self):
+        cases = {c["id"]: c for c in USE_CASES}
+        expected = {
+            "UC200": ["select Create Trip", "call UC207", "decision update cover", "optionally call UC208", "select Save"],
+            "UC201": ["select Edit", "call UC207", "decision update cover", "optionally call UC208", "select Save"],
+            "UC202": ["open Home", "browse", "select trip"],
+            "UC203": ["select trip", "review", "decision action selected"],
+            "UC204": ["select Move to Trash", "decision confirmed", "return to trip list"],
+            "UC205": ["open Trip Trash", "browse deleted trips", "select Restore"],
+            "UC206": ["open Community", "browse or search Community feed", "select published trip"],
+            "UC207": ["enter title and destination", "select start and end dates", "proceed to Save"],
+            "UC208": ["select cover option", "select or capture supported image", "decision selection completed", "save parent form"],
+            "UC209": ["open search/filter controls", "decision clear criteria", "enter title/destination or select status", "browse results"],
+            "UC210": ["select Publish to Community", "decision confirmed", "return to trip details"],
+            "UC211": ["select Unpublish", "wait for completion", "continue viewing trip"],
+            "UC212": ["select Share Link", "decision user selects target", "user completes sharing"],
+            "UC213": ["select Restore", "decision confirmed", "wait for completion"],
+            "UC214": ["select Community trip", "review", "decision share selected"],
+        }
+        for case_id, wanted in expected.items():
+            case = cases[case_id]
+            actual = [step for step, lane in zip(case["main_steps"], case["step_lanes"]) if lane == "User"]
+            with self.subTest(case=case_id):
+                self.assertEqual(actual, wanted)
+
+    def test_concrete_order_and_ownership(self):
+        cases = {c["id"]: c for c in USE_CASES}
+        self.assertEqual(cases["UC205"]["main_guards"][6], "no")
+        cover = cases["UC208"]
+        self.assertLess(cover["main_steps"].index("select or capture supported image"),
+                        cover["main_steps"].index("decision selection completed"))
+        self.assertEqual(cover["step_lanes"][cover["main_steps"].index("save parent form")], "User")
+        share = cases["UC212"]
+        self.assertEqual(share["step_lanes"][share["main_steps"].index("open sharing interface")], "System")
+        self.assertEqual(share["step_lanes"][share["main_steps"].index("transfer message to external application")], "System")
+
     def test_all_use_cases_are_defined(self):
         """The generator has complete flow data for every required use case."""
         self.assertEqual(
@@ -38,6 +104,46 @@ class ActivityDiagramDefinitionsTests(unittest.TestCase):
 
 
 class ActivityDiagramGenerationTests(unittest.TestCase):
+    def test_decisions_have_complementary_guards_and_every_node_can_finish(self):
+        for page in activity_diagrams.build_drawio(USE_CASES).getroot():
+            cells = {c.get("id"): c for c in page.iter("mxCell")}
+            edges = [c for c in cells.values() if c.get("edge") == "1"]
+            terminals = {c.get("id") for c in cells.values() if "shape=endState" in c.get("style", "")}
+            reachable = set(terminals)
+            while True:
+                enlarged = reachable | {e.get("source") for e in edges if e.get("target") in reachable}
+                if enlarged == reachable:
+                    break
+                reachable = enlarged
+            for cell in cells.values():
+                if "rhombus" in cell.get("style", ""):
+                    with self.subTest(decision=cell.get("id")):
+                        self.assertEqual({e.get("value") for e in edges if e.get("source") == cell.get("id")}, {"yes", "no"})
+                if cell.get("vertex") == "1" and "shape=swimlane" not in cell.get("style", "") and "-alternate-frame-" not in cell.get("id", ""):
+                    self.assertIn(cell.get("id"), reachable, cell.get("id"))
+
+    def test_optional_cover_calls_are_styled_and_bypassable(self):
+        for page in list(activity_diagrams.build_drawio(USE_CASES).getroot())[:2]:
+            cells = {c.get("id"): c for c in page.iter("mxCell")}
+            optional = next(c for c in cells.values() if "optionally call UC208" in c.get("value", ""))
+            self.assertIn("fillColor=#E1D5E7", optional.get("style", ""))
+            incoming = next(c for c in cells.values() if c.get("target") == optional.get("id"))
+            self.assertEqual(incoming.get("value"), "yes")
+            self.assertIn("rhombus", cells[incoming.get("source")].get("style", ""))
+            self.assertTrue(any(c.get("source") == incoming.get("source") and c.get("value") == "no" for c in cells.values()))
+
+    def test_every_use_case_call_is_a_call_activity(self):
+        for page in activity_diagrams.build_drawio(USE_CASES).getroot():
+            for cell in page.iter("mxCell"):
+                if cell.get("vertex") != "1" or "shape=swimlane" in cell.get("style", ""):
+                    continue
+                with self.subTest(page=page.get("id"), node=cell.get("id")):
+                    if "call UC" in cell.get("value", ""):
+                        self.assertIn("fillColor=#E1D5E7", cell.get("style", ""))
+                        self.assertIn("strokeColor=#9673A6", cell.get("style", ""))
+                    else:
+                        self.assertNotIn("fillColor=#E1D5E7", cell.get("style", ""))
+
     @staticmethod
     def bounds(cell, cells):
         geometry = cell.find("mxGeometry")
