@@ -521,6 +521,7 @@ def build_page(use_case):
     lane_width = 240 if len(use_case["lanes"]) == 3 else 365
     lane_gap = 12
     lane_left = 25
+    lane_top = 25
     lane_ids = {}
     for index, lane_name in enumerate(use_case["lanes"]):
         lane_id = f"{page_id}-lane-{index}"
@@ -532,7 +533,7 @@ def build_page(use_case):
             style=SWIMLANE_STYLE,
             vertex=True,
             x=lane_left + index * (lane_width + lane_gap),
-            y=25,
+            y=lane_top,
             width=lane_width,
             height=1100,
         )
@@ -617,7 +618,7 @@ def build_page(use_case):
                 step_id,
                 step,
                 15,
-                alternate_y + 37 + step_index * 48,
+                alternate_y + 37 + step_index * 48 - lane_top,
                 height=42,
             )
             add_connector(
