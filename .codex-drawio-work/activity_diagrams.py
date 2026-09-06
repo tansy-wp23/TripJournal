@@ -435,9 +435,21 @@ FLOW_SPECS = {
     },
 }
 
+USE_CASE_NAMES = {case["id"]: case["name"] for case in USE_CASES}
+
+
+def _expand_call_reference(label):
+    """Add the referenced use-case name to every call-activity label."""
+    for reference_id, reference_name in USE_CASE_NAMES.items():
+        token = f"call {reference_id}"
+        if token in label:
+            return label.replace(token, f"{token} {reference_name}", 1)
+    return label
+
+
 for _case in USE_CASES:
     _spec = FLOW_SPECS[_case["id"]]
-    _case["main_steps"] = [label for label, lane in _spec["steps"]]
+    _case["main_steps"] = [_expand_call_reference(label) for label, lane in _spec["steps"]]
     _case["step_lanes"] = [lane for label, lane in _spec["steps"]]
     _case["main_guards"] = {i: "yes" for i, step in enumerate(_case["main_steps"]) if step.startswith("decision ")}
     _case["main_guards"].update(_spec.get("guards", {}))
@@ -471,6 +483,14 @@ CALL_ACTIVITY_STYLE = (
 DECISION_STYLE = (
     "rhombus;whiteSpace=wrap;html=1;fillColor=#FFF2CC;"
     "strokeColor=#D6B656;fontSize=11;"
+)
+MERGE_STYLE = (
+    "rhombus;whiteSpace=wrap;html=1;fillColor=#FFFFFF;"
+    "strokeColor=#333333;strokeWidth=1.5;"
+)
+TITLE_STYLE = (
+    "text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;"
+    "rounded=0;strokeColor=none;fillColor=none;fontSize=16;fontStyle=1;"
 )
 START_STYLE = "ellipse;html=1;shape=startState;fillColor=#000000;strokeColor=#FF0000;"
 END_STYLE = "ellipse;html=1;shape=endState;fillColor=#000000;strokeColor=#FF0000;"
@@ -652,8 +672,19 @@ def build_page(use_case):
     lane_left = 25
     lane_top = 25
     # horizontal=0 reserves a vertical 38px title strip on the left.
-    activity_x = 53
+    activity_x = 68
     activity_width = lane_width - activity_x - 15
+    add_cell(
+        root,
+        cell_id=f"{page_id}-title",
+        value=f'{page_id} {use_case["name"]}',
+        style=TITLE_STYLE,
+        vertex=True,
+        x=25,
+        y=0,
+        width=777,
+        height=22,
+    )
     lane_ids = {}
     for index, lane_name in enumerate(use_case["lanes"]):
         lane_id = f"{page_id}-lane-{index}"
@@ -698,6 +729,42 @@ def build_page(use_case):
         node_positions[node_id] = (lane_left + lane_index * (lane_width + lane_gap) + activity_x,
                                    lane_top + node_y, activity_width, 56 if is_decision else 54)
 
+    merge_destinations = {
+        destination
+        for _source, _guard, destination in use_case["bypasses"]
+        if destination != "end"
+    } | {
+        flow["destination"]
+        for flow in use_case["alternate_flows"]
+        if flow["destination"] != "end"
+    }
+    merge_nodes = {}
+    for destination in sorted(merge_destinations):
+        merge_id = f"{page_id}-merge-{destination}"
+        lane_name = use_case["step_lanes"][destination]
+        lane_index = use_case["lanes"].index(lane_name)
+        target_height = 56 if use_case["main_steps"][destination].startswith("decision ") else 54
+        merge_x = 48
+        merge_y = 82 + destination * 61 + (target_height - 16) / 2
+        add_cell(
+            root,
+            cell_id=merge_id,
+            style=MERGE_STYLE,
+            parent=lane_ids[lane_name],
+            vertex=True,
+            x=merge_x,
+            y=merge_y,
+            width=16,
+            height=16,
+        )
+        node_positions[merge_id] = (
+            lane_left + lane_index * (lane_width + lane_gap) + merge_x,
+            lane_top + merge_y,
+            16,
+            16,
+        )
+        merge_nodes[destination] = merge_id
+
     end_id = f"{page_id}-end"
     # Main nodes are lane-relative; the end node is root-relative.
     end_y = lane_top + 82 + (len(use_case["main_steps"]) - 1) * 61 + 72
@@ -730,6 +797,9 @@ def build_page(use_case):
         elif mode == "offer":
             points = [(tx + tw + 20, sy + sh / 2), (tx + tw + 20, ty - 10), (tx + tw / 2, ty - 10)]
             anchors = "exitX=0;exitY=0.5;entryX=0.5;entryY=0;"
+        elif mode == "merge":
+            points = []
+            anchors = "exitX=1;exitY=0.5;entryX=0;entryY=0.5;"
         else:
             middle_y = (sy + sh + ty) / 2
             points = [(sx + sw / 2, middle_y), (tx + tw / 2, middle_y)]
@@ -740,13 +810,16 @@ def build_page(use_case):
     previous = start_id
     for index in range(len(use_case["main_steps"])):
         current = f"{page_id}-main-{index}"
-        route(f"{page_id}-flow-{index}", previous, current,
+        entry = merge_nodes.get(index, current)
+        route(f"{page_id}-flow-{index}", previous, entry,
               use_case["main_guards"].get(index - 1, ""))
+        if entry != current:
+            route(f"{page_id}-merge-flow-{index}", entry, current, mode="merge")
         previous = current
     route(f"{page_id}-finish", previous, end_id, use_case["main_guards"].get(len(use_case["main_steps"]) - 1, ""))
     for index, (source, guard, destination) in enumerate(use_case["bypasses"]):
         route(f"{page_id}-bypass-{index}", f"{page_id}-main-{source}",
-              end_id if destination == "end" else f"{page_id}-main-{destination}", guard, "side", offset=24)
+              end_id if destination == "end" else merge_nodes[destination], guard, "return", offset=24)
 
     alternate_y = max(770, end_y + 55)
     for index, alternate_flow in enumerate(use_case["alternate_flows"]):
@@ -780,7 +853,7 @@ def build_page(use_case):
             node_positions[step_id] = (lane_left + lane_index * (lane_width + lane_gap) + activity_x,
                                        alternate_y + 37 + step_index * 72, activity_width, 62)
             route(f"{page_id}-alternate-flow-{alternate_flow['id']}-{step_index}", prior_id, step_id,
-                  alternate_flow["guard"] if step_index == 0 else "", "side", red=True, offset=index * 8)
+                  alternate_flow["guard"] if step_index == 0 else "", "side", offset=index * 8)
             prior_id = step_id
         alt_id = alternate_flow["id"]
         terminal = f"{page_id}-end-{alt_id}"
@@ -790,7 +863,7 @@ def build_page(use_case):
                  x=terminal_x, y=terminal_y, width=24, height=24)
         node_positions[terminal] = (terminal_x, terminal_y, 24, 24)
         if alternate_flow["destination"] == "end":
-            route(f"{page_id}-complete-{alt_id}", prior_id, terminal, mode="across", red=True)
+            route(f"{page_id}-complete-{alt_id}", prior_id, terminal, mode="across")
         else:
             choice = f"{page_id}-choice-{alt_id}"
             choice_width = min(220, activity_width - 45)
@@ -800,20 +873,20 @@ def build_page(use_case):
             add_decision(root, lane_ids["User"], choice, label, activity_x,
                          alternate_y + 40 - lane_top, width=choice_width)
             node_positions[choice] = (lane_left + activity_x, alternate_y + 40, choice_width, 56)
-            route(f"{page_id}-offer-{alt_id}", prior_id, choice, mode="offer", red=True)
+            route(f"{page_id}-offer-{alt_id}", prior_id, choice, mode="offer")
             # User cancellation ends inside the same alternate frame.
-            cell = add_connector(root, f"{page_id}-cancel-{alt_id}", choice, terminal, label="no", red=True)
-            cell.set("style", CONNECTOR_STYLE + "strokeColor=#FF0000;exitX=1;exitY=0.5;entryX=0;entryY=0.5;labelBackgroundColor=#FFFFFF;")
-            destination = f"{page_id}-main-{alternate_flow['destination']}"
+            cell = add_connector(root, f"{page_id}-cancel-{alt_id}", choice, terminal, label="no")
+            cell.set("style", CONNECTOR_STYLE + "exitX=1;exitY=0.5;entryX=0;entryY=0.5;labelBackgroundColor=#FFFFFF;")
+            destination = merge_nodes[alternate_flow["destination"]]
             if alternate_flow.get("user_action"):
                 action = f"{page_id}-edit-{alt_id}"
                 add_activity(root, lane_ids["User"], action, alternate_flow["user_action"], activity_x,
                              alternate_y + 105 - lane_top, width=activity_width, height=54)
                 node_positions[action] = (lane_left + activity_x, alternate_y + 105, activity_width, 54)
-                route(f"{page_id}-accept-{alt_id}", choice, action, "yes", red=True)
-                route(f"{page_id}-rejoin-{alt_id}", action, destination, mode="return", red=True, offset=index * 8)
+                route(f"{page_id}-accept-{alt_id}", choice, action, "yes")
+                route(f"{page_id}-rejoin-{alt_id}", action, destination, mode="return", offset=index * 8)
             else:
-                route(f"{page_id}-rejoin-{alt_id}", choice, destination, "yes", "return", red=True, offset=index * 8)
+                route(f"{page_id}-rejoin-{alt_id}", choice, destination, "yes", "return", offset=index * 8)
         alternate_y += frame_height + 10
     return diagram
 

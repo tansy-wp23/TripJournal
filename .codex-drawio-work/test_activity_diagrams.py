@@ -42,8 +42,8 @@ class ActivityDiagramDefinitionsTests(unittest.TestCase):
     def test_source_user_actions_remain_in_order_and_in_the_user_lane(self):
         cases = {c["id"]: c for c in USE_CASES}
         expected = {
-            "UC200": ["select Create Trip", "call UC207", "decision update cover", "optionally call UC208", "select Save"],
-            "UC201": ["select Edit", "call UC207", "decision update cover", "optionally call UC208", "select Save"],
+            "UC200": ["select Create Trip", "call UC207 Enter Trip Details", "decision update cover", "optionally call UC208 Update Cover Photo", "select Save"],
+            "UC201": ["select Edit", "call UC207 Enter Trip Details", "decision update cover", "optionally call UC208 Update Cover Photo", "select Save"],
             "UC202": ["open Home", "browse", "select trip"],
             "UC203": ["select trip", "review", "decision action selected"],
             "UC204": ["select Move to Trash", "decision confirmed", "return to trip list"],
@@ -116,11 +116,77 @@ class ActivityDiagramGenerationTests(unittest.TestCase):
                     break
                 reachable = enlarged
             for cell in cells.values():
-                if "rhombus" in cell.get("style", ""):
+                if "rhombus" in cell.get("style", "") and "-merge-" not in cell.get("id", ""):
                     with self.subTest(decision=cell.get("id")):
                         self.assertEqual({e.get("value") for e in edges if e.get("source") == cell.get("id")}, {"yes", "no"})
-                if cell.get("vertex") == "1" and "shape=swimlane" not in cell.get("style", "") and "-alternate-frame-" not in cell.get("id", ""):
+                if (cell.get("vertex") == "1" and "shape=swimlane" not in cell.get("style", "")
+                        and "-alternate-frame-" not in cell.get("id", "")
+                        and "-title" not in cell.get("id", "")):
                     self.assertIn(cell.get("id"), reachable, cell.get("id"))
+
+    def test_merges_prevent_implicit_action_joins(self):
+        for page, case in zip(activity_diagrams.build_drawio(USE_CASES).getroot(), USE_CASES):
+            cells = {c.get("id"): c for c in page.iter("mxCell")}
+            edges = [c for c in cells.values() if c.get("edge") == "1"]
+            expected_targets = {
+                destination
+                for _source, _guard, destination in case["bypasses"]
+                if destination != "end"
+            } | {
+                flow["destination"]
+                for flow in case["alternate_flows"]
+                if flow["destination"] != "end"
+            }
+            merges = {
+                c.get("id"): c
+                for c in cells.values()
+                if c.get("vertex") == "1" and "-merge-" in c.get("id", "")
+            }
+            self.assertEqual(
+                set(merges),
+                {f'{case["id"]}-merge-{destination}' for destination in expected_targets},
+            )
+            for merge_id, merge in merges.items():
+                destination = merge_id.rsplit("-", 1)[1]
+                target_id = f'{case["id"]}-main-{destination}'
+                incoming = [edge for edge in edges if edge.get("target") == merge_id]
+                outgoing = [edge for edge in edges if edge.get("source") == merge_id]
+                with self.subTest(page=page.get("id"), merge=merge_id):
+                    self.assertEqual(merge.get("value"), "")
+                    self.assertIn("rhombus", merge.get("style", ""))
+                    self.assertGreaterEqual(len(incoming), 2)
+                    self.assertEqual(len(outgoing), 1)
+                    self.assertEqual(outgoing[0].get("target"), target_id)
+                    self.assertEqual(
+                        [edge.get("source") for edge in edges if edge.get("target") == target_id],
+                        [merge_id],
+                    )
+            for cell in cells.values():
+                if cell.get("vertex") != "1" or "rounded=1" not in cell.get("style", ""):
+                    continue
+                with self.subTest(page=page.get("id"), action=cell.get("id")):
+                    self.assertLessEqual(
+                        sum(edge.get("target") == cell.get("id") for edge in edges),
+                        1,
+                        "mutually exclusive flows must merge before entering an action",
+                    )
+
+    def test_every_page_has_an_editable_visible_title(self):
+        for page, case in zip(activity_diagrams.build_drawio(USE_CASES).getroot(), USE_CASES):
+            cells = {c.get("id"): c for c in page.iter("mxCell")}
+            title = cells[f'{case["id"]}-title']
+            with self.subTest(page=page.get("id")):
+                self.assertEqual(title.get("value"), f'{case["id"]} {case["name"]}')
+                self.assertEqual(title.get("vertex"), "1")
+                self.assertEqual(title.get("parent"), "1")
+                self.assertNotIn("locked=1", title.get("style", ""))
+                self.assertIn("fontSize=16", title.get("style", ""))
+                geometry = title.find("mxGeometry")
+                self.assertLessEqual(
+                    float(geometry.get("y")) + float(geometry.get("height")),
+                    min(float(c.find("mxGeometry").get("y")) for c in cells.values()
+                        if "shape=swimlane" in c.get("style", "")),
+                )
 
     def test_optional_cover_calls_are_styled_and_bypassable(self):
         for page in list(activity_diagrams.build_drawio(USE_CASES).getroot())[:2]:
@@ -133,16 +199,42 @@ class ActivityDiagramGenerationTests(unittest.TestCase):
             self.assertTrue(any(c.get("source") == incoming.get("source") and c.get("value") == "no" for c in cells.values()))
 
     def test_every_use_case_call_is_a_call_activity(self):
+        expected = {
+            "UC200-main-2": "call UC207 Enter Trip Details",
+            "UC200-main-4": "optionally call UC208 Update Cover Photo",
+            "UC201-main-2": "call UC207 Enter Trip Details",
+            "UC201-main-4": "optionally call UC208 Update Cover Photo",
+            "UC202-main-7": "call UC203 View Trip Details",
+            "UC205-main-8": "call UC213 Restore Trip",
+            "UC206-main-8": "call UC214 View Community Trip Details",
+            "UC214-main-7": "call UC212 Share Published Trip Link",
+        }
+        found = {}
         for page in activity_diagrams.build_drawio(USE_CASES).getroot():
             for cell in page.iter("mxCell"):
                 if cell.get("vertex") != "1" or "shape=swimlane" in cell.get("style", ""):
                     continue
                 with self.subTest(page=page.get("id"), node=cell.get("id")):
                     if "call UC" in cell.get("value", ""):
+                        found[cell.get("id")] = cell.get("value")
                         self.assertIn("fillColor=#E1D5E7", cell.get("style", ""))
                         self.assertIn("strokeColor=#9673A6", cell.get("style", ""))
                     else:
                         self.assertNotIn("fillColor=#E1D5E7", cell.get("style", ""))
+        self.assertEqual(found, expected)
+
+    def test_red_is_reserved_for_frames_and_start_end_outlines(self):
+        for page in activity_diagrams.build_drawio(USE_CASES).getroot():
+            for cell in page.iter("mxCell"):
+                style = cell.get("style", "")
+                if cell.get("edge") == "1":
+                    with self.subTest(page=page.get("id"), edge=cell.get("id")):
+                        self.assertIn("strokeColor=#333333", style)
+                        self.assertNotIn("strokeColor=#FF0000", style)
+                elif "-alternate-frame-" in cell.get("id", ""):
+                    self.assertIn("strokeColor=#FF0000", style)
+                elif "shape=startState" in style or "shape=endState" in style:
+                    self.assertIn("strokeColor=#FF0000", style)
 
     @staticmethod
     def bounds(cell, cells):
@@ -225,7 +317,8 @@ class ActivityDiagramGenerationTests(unittest.TestCase):
                 if cell.get("vertex") != "1" or not cell.get("value"):
                     continue
                 style = cell.get("style", "")
-                if "shape=swimlane" in style or "-alternate-frame-" in cell.get("id", ""):
+                if ("shape=swimlane" in style or "-alternate-frame-" in cell.get("id", "")
+                        or "-title" in cell.get("id", "")):
                     continue
                 geometry = cell.find("mxGeometry")
                 width, height = float(geometry.get("width")), float(geometry.get("height"))
