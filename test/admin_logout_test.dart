@@ -15,6 +15,13 @@ import 'support/admin_test_harness.dart';
 /// plan's own Phase 6 Definition of Done calls for, driven through
 /// `AdminGate` end-to-end rather than pumping `AdminDashboardScreen` in
 /// isolation.
+///
+/// `AdminGate` is pumped as `home` here (no traveler route underneath it),
+/// so the "auto-pop back to the traveler screen" behavior described in
+/// `admin_gate_back_navigation_test.dart` has nothing to pop to — the pop
+/// attempt is a no-op and `AdminGate` is left showing whatever its own
+/// `status` now resolves to, `AdminLoginScreen`, same as before that
+/// behavior existed.
 void main() {
   group('PB-10: Logout Administrator', () {
     testWidgets('logout returns to AdminLoginScreen, driven by AdminGate state '
@@ -35,7 +42,9 @@ void main() {
 
       // AdminGate swapped the screen on its own by reacting to
       // AdminAuthController.status — the logout button's handler itself
-      // only calls signOut(), no Navigator call.
+      // only calls signOut(), no Navigator call. The auto-pop this triggers
+      // (see class doc comment above) has no underlying route to pop here,
+      // so it's a no-op and this in-place swap is what's left showing.
       expect(find.byType(AdminLoginScreen), findsOneWidget);
       expect(find.byType(AdminDashboardScreen), findsNothing);
     });

@@ -51,20 +51,17 @@ class _AdminUserListScreenState extends ConsumerState<AdminUserListScreen> {
     if (_loadInProgress) return;
     _loadInProgress = true;
     try {
-      final controller = ref.read(
-        adminUserManagementControllerProvider.notifier,
-      );
-      if (widget.initialStatusFilter != null ||
-          widget.initialRoleFilter != null ||
-          widget.initialNewThisWeek) {
-        await controller.setFilter(
-          status: widget.initialStatusFilter,
-          role: widget.initialRoleFilter,
-          newThisWeek: widget.initialNewThisWeek,
-        );
-      } else {
-        await controller.loadAll();
-      }
+      // resetForNewScreen (rather than setFilter/loadAll) so this screen
+      // instance never inherits a stale query or filter left behind by
+      // whatever screen last used the shared controller — see that
+      // method's doc comment.
+      await ref
+          .read(adminUserManagementControllerProvider.notifier)
+          .resetForNewScreen(
+            status: widget.initialStatusFilter,
+            role: widget.initialRoleFilter,
+            newThisWeek: widget.initialNewThisWeek,
+          );
     } finally {
       _loadInProgress = false;
     }

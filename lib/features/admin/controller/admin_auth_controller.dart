@@ -66,11 +66,21 @@ class AdminAuthController extends ChangeNotifier {
   /// See that method's doc comment for why this exists.
   String? _pendingRejectionMessage;
 
+  /// True exactly when [signOut] just ran from an authenticated admin
+  /// session — [AdminGate] consumes this via [consumePendingSignOutPop] to
+  /// pop itself back to the traveler screen underneath, the same way a
+  /// rejected sign-in already auto-pops (see [_pendingRejectionMessage]
+  /// above). Without this, a logged-out admin would sit on
+  /// [AdminLoginScreen] with the portal only one manual back-press away;
+  /// popping means re-entering requires the triple-tap logo entry again.
+  bool _pendingSignOutPop = false;
+
   AppSession? get session => _session;
   Profile? get profile => _profile;
   bool get loading => _loading;
   String? get error => _error;
   bool get hasPendingRejection => _pendingRejectionMessage != null;
+  bool get hasPendingSignOutPop => _pendingSignOutPop;
 
   /// One-shot read of [_pendingRejectionMessage] — clears it so a later
   /// rebuild of whatever consumes this doesn't pop/relay a second time.
@@ -83,6 +93,16 @@ class AdminAuthController extends ChangeNotifier {
     }
     _pendingRejectionMessage = null;
     return message;
+  }
+
+  /// One-shot consume of [_pendingSignOutPop] — mirrors
+  /// [consumePendingRejection]'s contract (throws if nothing pending;
+  /// callers should guard with [hasPendingSignOutPop] first).
+  void consumePendingSignOutPop() {
+    if (!_pendingSignOutPop) {
+      throw StateError('consumePendingSignOutPop() with nothing pending');
+    }
+    _pendingSignOutPop = false;
   }
 
   /// The current admin auth status, derived from [session] and [profile].
@@ -202,11 +222,14 @@ class AdminAuthController extends ChangeNotifier {
   }
 
   /// Signs the admin out and clears all admin auth state (PB-10, Phase 6).
+  /// Sets [_pendingSignOutPop] so [AdminGate] pops itself back to the
+  /// traveler screen underneath rather than sitting on [AdminLoginScreen].
   Future<void> signOut() async {
     await _authRepository.signOut();
     _session = null;
     _profile = null;
     _error = null;
+    _pendingSignOutPop = true;
     notifyListeners();
   }
 
