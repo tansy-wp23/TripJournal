@@ -1,109 +1,116 @@
-# Complete TripJournal Screenshot Catalog Design
+# Complete TripJournal Page Screenshot Catalog Design
 
 ## Goal
 
-Create a Word document that presents the complete TripJournal application through clear mobile screenshots. Each page will show one application page or meaningful function state together with a short English description.
+Create a Word document that presents every safely reachable TripJournal page through clear mobile screenshots. Each catalog page will contain one application screenshot, an English title, and one short English description.
 
 ## Output
 
-The existing blank document at `D:\Download\TripJournal ScreenShots.docx` will be populated as a standalone screenshot catalog.
-
-The document will use:
+The existing blank document at `D:\Download\TripJournal ScreenShots.docx` will become a standalone screenshot catalog with:
 
 - A title page named **TripJournal Application Screenshots**.
-- A short introduction explaining that the catalog covers user and administrator functions.
-- Module divider headings.
-- One screenshot per page at a readable phone-screen size.
-- A concise English screen title and one-sentence description below each screenshot.
-- Page numbers and consistent margins, typography, and spacing.
+- A short introduction explaining the User and Admin coverage.
+- Pages grouped by module.
+- One mobile screenshot per Word page.
+- A concise English page title and one-sentence description.
+- Consistent margins, typography, image sizing, and page numbers.
 
-The expected length is approximately 45 to 60 pages, depending on which function states are available in the current account.
+The expected length is approximately 30 to 40 pages.
 
-## Screenshot Organisation
+## Page Coverage
 
 ### Authentication and Guest
 
-- Guest home and Community access.
-- User sign-in page.
-- Account verification, reactivation, suspension, onboarding, deactivation, and deletion pages when they can be reached without changing the account state.
+- Guest Home.
+- User Sign In.
+- Profile Onboarding, verification, reactivation, or suspension pages only when naturally reachable without changing the current account state.
 
-### Trip Management
+### Trip Management and Community
 
-- Trips home and search or status filtering.
-- Create Trip form and cover-photo controls.
-- Trip Details with Entries and Map tabs.
-- Edit Trip form.
-- Published and private trip action menus.
-- Publish and Unpublish confirmation states.
-- Share link and Copy trip ID actions.
-- Move to Trash confirmation, Recently Deleted, and Restore confirmation states.
+- Trips Home.
+- Create Trip.
+- Edit Trip Details.
+- Trip Details Entries tab.
+- Trip Details Map tab.
+- Recently Deleted Trips.
+- Community Trips.
+- Community Trip Details.
 
-### Community and Sharing
+### Wellness Journal Location and Recap
 
-- Community trip feed and destination search.
-- Open trip by ID dialog.
-- Another user's published trip details.
-- Community Share link and Copy trip ID menu.
-- Unavailable-trip feedback when it can be shown safely.
-
-### Wellness Journal and Location
-
-- Entry timeline, entry search, mood filter, and date filter.
-- Create and Edit Entry pages.
-- Mood, journal text, photo, health, meal, and AI food-detection controls.
-- Location search, current-location action, map pin adjustment, accuracy notice, and confirmed location.
-- Entry Details, AI advice, PDF export action, and Move to Trash confirmation.
-- Photo viewer, meal detail, and Food Showcase.
-
-### Trip Recap and PDF
-
-- Trip notes or summary editor.
-- Trip wellness statistics.
-- Trip PDF export action and an available PDF preview or share state.
+- Create Journal Entry.
+- Edit Journal Entry.
+- Journal Entry Details.
+- Place Picker.
+- Photo Viewer.
+- Food Showcase.
+- Trip Notes and Summary.
+- Trip Wellness Summary.
 
 ### Profile and Settings
 
-- Profile overview and Edit Profile.
-- Travel interests and personal details.
-- Settings overview.
-- Theme, journal reminder, health-data status, About, and Legal notices.
-- Logout, deactivate-account, and delete-account confirmation or entry states without completing them.
+- User Profile.
+- Edit Profile.
+- Settings.
+- Deactivate Account.
+- Delete Account.
+- About or Legal content only if the app presents it as an independent page; temporary dialogs are not separate catalog entries.
 
 ### Admin Management and Monitoring
 
-- Admin sign-in and dashboard.
-- User list, search or filters, and user details.
-- Suspend and Reactivate confirmation states without changing a real account.
-- Monitoring hub, system health, AI request monitoring, failed AI requests, system error log, and audit log.
-- Issue report list and issue report details.
-- Monitoring report, date filtering, PDF export, and CSV export controls.
-- Admin account and sign-out menu.
+- Administrator Sign In.
+- Administrator Dashboard.
+- Admin Account.
+- User Management.
+- User Account Details.
+- System Monitoring.
+- System Health.
+- AI Request Monitoring.
+- Failed AI Requests.
+- System Error Log.
+- Administrator Audit Log.
+- Issue Reports.
+- Issue Report Details.
+- Monitoring Report.
+
+## Excluded Function States
+
+The catalog will not create separate screenshots for temporary interface states, including:
+
+- Overflow menus.
+- Search fields or filter sheets after expansion.
+- Publish, Unpublish, Delete, Restore, Suspend, or other confirmation dialogs.
+- Share link, Copy trip ID, save, or export confirmation messages.
+- Camera and gallery source sheets.
+- Other transient snackbars, pop-ups, and system share surfaces.
+
+Full-screen tabs that present materially different page content, such as Entries and Map within Trip Details, remain separate screenshots.
 
 ## Data and Safety Rules
 
-- Capture the user-facing pages from the current Supabase account.
-- Perform create or edit actions only inside a trip whose name contains `TEST`.
-- Do not complete destructive or account-state-changing actions. Open their confirmation page or dialog, capture it, and cancel.
-- Do not suspend, reactivate, deactivate, delete, publish, unpublish, trash, or restore non-TEST real data.
+- Capture user pages from the current Supabase account.
+- Do not modify existing real trips.
+- If content must be created for a missing page, create or edit data only inside a trip whose title contains `TEST`.
+- Do not complete destructive or account-state-changing actions.
 - Do not expose API keys, Supabase session data, signing credentials, or passwords.
-- Mask other users' email addresses, IDs, and other personally identifying details in administrator screenshots before they enter the final report.
-- If a page cannot be reached without a destructive state change, unavailable role, or new authentication, omit it and list the omission to the user rather than fabricating a screenshot.
+- Avoid showing another user's personal information in Admin screenshots. Search for the current account where possible; otherwise omit the unsafe page.
+- If a page cannot be reached without destructive changes, unavailable permissions, or another person's credentials, omit it and report the omission instead of fabricating a screenshot.
 
 ## Capture and Editing Workflow
 
-1. Inventory all reachable pages and function states against this specification.
-2. Navigate the running Android application and capture screenshots at its native emulator resolution.
-3. Use only safe, reversible interactions; cancel confirmation dialogs after capture.
-4. Crop screenshots consistently to the application surface and mask private administrator data where required.
-5. Insert the screenshots into the Word document in module order with titles and one-sentence descriptions.
-6. Render the completed Word document to images and inspect every page for clipping, overlap, unreadable text, or poor screenshot sizing.
-7. Correct any layout defects and repeat the render check before delivery.
+1. Inventory the independent pages against this specification.
+2. Navigate the installed Android APK and capture each page at the emulator's native resolution.
+3. Use only safe, reversible navigation and avoid temporary function-state captures.
+4. Insert screenshots into the Word document in module order with an English title and one-sentence description.
+5. Render the completed document and inspect every page for readability and layout defects.
+6. Correct any defects and repeat the render check before delivery.
 
 ## Success Criteria
 
-- Every safely reachable TripJournal page and meaningful function state is represented.
+- Every safely reachable independent User and Admin page is represented once.
+- Entries and Map receive separate screenshots because they present different full-page content.
+- No temporary menu, dialog, filter, or confirmation state receives its own page.
 - Every screenshot has an accurate English title and short description.
-- The user and administrator modules use the same document style.
-- No real non-TEST content is changed.
-- No private credentials or other users' personal information appear in the final document.
-- Every Word page is visually readable and free of layout defects.
+- No existing real trip or account state is changed.
+- No private credentials or another user's personal information appear in the final document.
+- Every Word page is readable and free of clipping, overlap, or broken pagination.
