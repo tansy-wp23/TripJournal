@@ -421,6 +421,12 @@ class _CreateEditEntryScreenState extends ConsumerState<CreateEditEntryScreen> {
       final createdAt =
           existing?.createdAt ??
           deriveEntryTimestamp(widget.initialDate ?? now, now: now);
+      final selectedDate = existing?.calendarDate ?? widget.initialDate ?? now;
+      final entryDate = DateTime(
+        selectedDate.year,
+        selectedDate.month,
+        selectedDate.day,
+      );
       final creationOrderAt = existing?.creationOrderAt ?? now;
       final entryId = existing?.id ?? _draftEntryId;
       final healthLogId = existing?.healthLog?.id ?? _draftHealthLogId;
@@ -437,6 +443,7 @@ class _CreateEditEntryScreenState extends ConsumerState<CreateEditEntryScreen> {
         mood: _mood,
         photoPaths: _photoPaths,
         location: _location,
+        entryDate: entryDate,
         createdAt: createdAt,
         updatedAt: now,
         creationOrderAt: creationOrderAt,

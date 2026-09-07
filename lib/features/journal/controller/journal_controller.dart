@@ -114,7 +114,7 @@ class JournalController extends ChangeNotifier {
 
     if (checkDate) {
       final dateError = validateEntryDate(
-        entry.createdAt,
+        entry.calendarDate,
         now: DateTime.now(),
         trip: trip,
       );

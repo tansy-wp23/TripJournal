@@ -4,16 +4,18 @@ import 'package:tripjournal/models/journal_entry.dart';
 import 'package:tripjournal/models/mood.dart';
 import 'package:tripjournal/models/trip.dart';
 
-JournalEntry _entry(String id, DateTime createdAt) => JournalEntry(
-  id: id,
-  tripId: 'trip-1',
-  title: id,
-  body: '',
-  mood: Mood.neutral,
-  photoPaths: const [],
-  createdAt: createdAt,
-  updatedAt: createdAt,
-);
+JournalEntry _entry(String id, DateTime createdAt, {DateTime? entryDate}) =>
+    JournalEntry(
+      id: id,
+      tripId: 'trip-1',
+      title: id,
+      body: '',
+      mood: Mood.neutral,
+      photoPaths: const [],
+      entryDate: entryDate,
+      createdAt: createdAt,
+      updatedAt: createdAt,
+    );
 
 void main() {
   final trip = Trip(
@@ -44,4 +46,23 @@ void main() {
       expect(isEntryWithinTrip(trip, after), isFalse);
     },
   );
+
+  test('checks the logical entry date instead of the UTC timestamp date', () {
+    final boundaryTrip = Trip(
+      id: 'trip-1',
+      userId: 'user-1',
+      title: 'Boundary trip',
+      startDate: DateTime(2026, 9, 7),
+      endDate: DateTime(2026, 9, 8),
+      createdAt: DateTime(2026, 9, 1),
+      updatedAt: DateTime(2026, 9, 1),
+    );
+    final entry = _entry(
+      'utc-boundary',
+      DateTime.utc(2026, 9, 6, 10, 2, 38),
+      entryDate: DateTime(2026, 9, 7),
+    );
+
+    expect(isEntryWithinTrip(boundaryTrip, entry), isTrue);
+  });
 }

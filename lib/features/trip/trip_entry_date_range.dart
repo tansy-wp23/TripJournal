@@ -2,7 +2,7 @@ import '../../models/journal_entry.dart';
 import '../../models/trip.dart';
 
 bool isEntryWithinTrip(Trip trip, JournalEntry entry) {
-  final entryDay = _localDateOnly(entry.createdAt);
+  final entryDay = entry.calendarDate;
   final startDay = _localDateOnly(trip.startDate);
   final endDay = _localDateOnly(trip.endDate);
   return !entryDay.isBefore(startDay) && !entryDay.isAfter(endDay);

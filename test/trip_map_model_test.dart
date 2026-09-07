@@ -7,6 +7,7 @@ import 'package:tripjournal/models/mood.dart';
 JournalEntry journalEntry({
   required String id,
   required DateTime createdAt,
+  DateTime? entryDate,
   DateTime? creationOrderAt,
   GeoTag? location,
 }) {
@@ -18,6 +19,7 @@ JournalEntry journalEntry({
     mood: Mood.happy,
     photoPaths: const [],
     location: location,
+    entryDate: entryDate,
     createdAt: createdAt,
     updatedAt: createdAt,
     creationOrderAt: creationOrderAt,
@@ -27,6 +29,24 @@ JournalEntry journalEntry({
 void main() {
   final tripStart = DateTime(2026, 8, 15);
   final tripEnd = DateTime(2026, 9, 30);
+
+  test('assigns Map Day from the logical entry date, not created_at', () {
+    final model = buildTripMapModel(
+      entries: [
+        journalEntry(
+          id: 'utc-boundary',
+          createdAt: DateTime.utc(2026, 9, 6, 10, 2, 38),
+          entryDate: DateTime(2026, 9, 7),
+          location: const GeoTag(latitude: 3.1, longitude: 101.7),
+        ),
+      ],
+      tripStartDate: DateTime(2026, 9, 6),
+      tripEndDate: DateTime(2026, 9, 8),
+    );
+
+    expect(model.availableDays, [2]);
+    expect(model.groups.single.dayNumber, 2);
+  });
 
   test('excludes mapped entries outside the inclusive trip dates', () {
     final day1 = journalEntry(

@@ -99,13 +99,13 @@ TripMapModel buildTripMapModel({
   final tripStartDay = _dateOnly(tripStartDate);
   final tripEndDay = _dateOnly(tripEndDate);
   final tripEntries = entries.where((entry) {
-    final entryDay = _dateOnly(entry.createdAt);
+    final entryDay = entry.calendarDate;
     return !entryDay.isBefore(tripStartDay) && !entryDay.isAfter(tripEndDay);
   }).toList();
   final mapped = tripEntries.where((entry) => entry.location != null).toList();
   final availableDays =
       mapped
-          .map((entry) => _dayNumber(entry.createdAt, tripStartDate))
+          .map((entry) => _dayNumber(entry.calendarDate, tripStartDate))
           .toSet()
           .toList()
         ..sort();
@@ -114,8 +114,9 @@ TripMapModel buildTripMapModel({
   final visibleMapped = [
     for (final entry in orderedTripEntries)
       if ((selectedDay == null ||
-              (_dayNumber(entry.createdAt, tripStartDate) >= 1 &&
-                  _dayNumber(entry.createdAt, tripStartDate) <= selectedDay)) &&
+              (_dayNumber(entry.calendarDate, tripStartDate) >= 1 &&
+                  _dayNumber(entry.calendarDate, tripStartDate) <=
+                      selectedDay)) &&
           entry.location != null)
         entry,
   ];
@@ -138,7 +139,7 @@ TripMapModel buildTripMapModel({
         latitude: firstLocation.latitude,
         longitude: firstLocation.longitude,
         entries: List.unmodifiable(groupEntries),
-        dayNumber: _dayNumber(groupEntries.first.createdAt, tripStartDate),
+        dayNumber: _dayNumber(groupEntries.first.calendarDate, tripStartDate),
       ),
     );
   }
@@ -174,8 +175,8 @@ List<TripMapRouteSegment> _routeSegmentsFor({
       TripMapRouteSegment(
         fromEntryId: from.id,
         toEntryId: to.id,
-        fromDay: _dayNumber(from.createdAt, tripStartDate),
-        toDay: _dayNumber(to.createdAt, tripStartDate),
+        fromDay: _dayNumber(from.calendarDate, tripStartDate),
+        toDay: _dayNumber(to.calendarDate, tripStartDate),
         fromLatitude: fromLocation.latitude,
         fromLongitude: fromLocation.longitude,
         toLatitude: toLocation.latitude,
@@ -259,9 +260,9 @@ int _compareRouteEntries(
   DateTime tripStartDate,
 ) {
   final byDay = _dayNumber(
-    a.createdAt,
+    a.calendarDate,
     tripStartDate,
-  ).compareTo(_dayNumber(b.createdAt, tripStartDate));
+  ).compareTo(_dayNumber(b.calendarDate, tripStartDate));
   if (byDay != 0) return byDay;
   final byCreationOrder = a.creationOrderAt.compareTo(b.creationOrderAt);
   if (byCreationOrder != 0) return byCreationOrder;

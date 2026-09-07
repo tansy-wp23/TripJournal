@@ -2,7 +2,7 @@ import '../../models/journal_entry.dart';
 import '../../models/trip.dart';
 
 /// One day of a trip's timeline. [entries] holds every journal entry whose
-/// `createdAt` falls on [date], ordered by time — a day may hold zero, one,
+/// logical calendar date falls on [date], ordered by immutable creation order — a day may hold zero, one,
 /// or many entries (decision #2 in IMPLEMENTATION_PLAN_HOMEPAGE.md).
 class DayGroup {
   const DayGroup({
@@ -21,15 +21,19 @@ class DayGroup {
 
 /// Pure aggregation — no I/O, easy to unit test directly. Builds one
 /// [DayGroup] per day in [trip.dayList], grouping [entries] by the calendar
-/// day their `createdAt` falls on.
+/// day stored in `entry_date`.
 List<DayGroup> buildDayGroups(Trip trip, List<JournalEntry> entries) {
   final entriesByDay = <DateTime, List<JournalEntry>>{};
   for (final entry in entries) {
-    final day = DateTime(entry.createdAt.year, entry.createdAt.month, entry.createdAt.day);
+    final day = entry.calendarDate;
     entriesByDay.putIfAbsent(day, () => []).add(entry);
   }
   for (final dayEntries in entriesByDay.values) {
-    dayEntries.sort((a, b) => a.createdAt.compareTo(b.createdAt));
+    dayEntries.sort((a, b) {
+      final byCreationOrder = a.creationOrderAt.compareTo(b.creationOrderAt);
+      if (byCreationOrder != 0) return byCreationOrder;
+      return a.id.compareTo(b.id);
+    });
   }
 
   final days = trip.dayList;
