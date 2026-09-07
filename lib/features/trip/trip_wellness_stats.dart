@@ -3,8 +3,6 @@ import '../../models/journal_entry.dart';
 import '../../models/mood.dart';
 import '../../models/trip.dart';
 
-DateTime _dateOnly(DateTime d) => DateTime(d.year, d.month, d.day);
-
 /// Richer per-trip wellness aggregation for the dedicated "Trip Wellness"
 /// view (IMPLEMENTATION_PLAN_EXTRA_FEATURES.md #1). This is a superset of
 /// `trip_summary_stats.dart`'s `TripStats` (which stays as-is, feeding the
@@ -78,7 +76,7 @@ TripWellnessStats computeTripWellnessStats({
 
   for (final entry in entries) {
     moodBreakdown[entry.mood] = moodBreakdown[entry.mood]! + 1;
-    final day = _dateOnly(entry.createdAt);
+    final day = entry.calendarDate;
     loggedDays.add(day);
 
     final healthLog = entry.healthLog;

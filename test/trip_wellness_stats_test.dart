@@ -10,6 +10,7 @@ JournalEntry _entry({
   required String id,
   required DateTime createdAt,
   required Mood mood,
+  DateTime? entryDate,
   HealthLog? healthLog,
 }) {
   return JournalEntry(
@@ -19,6 +20,7 @@ JournalEntry _entry({
     body: 'body',
     mood: mood,
     photoPaths: const [],
+    entryDate: entryDate,
     createdAt: createdAt,
     updatedAt: createdAt,
     healthLog: healthLog,
@@ -39,6 +41,31 @@ Trip _trip({required DateTime start, required DateTime end}) {
 
 void main() {
   group('computeTripWellnessStats', () {
+    test('buckets steps by logical entry date instead of timestamp date', () {
+      final trip = _trip(
+        start: DateTime(2026, 9, 6),
+        end: DateTime(2026, 9, 8),
+      );
+      final entry = _entry(
+        id: 'boundary',
+        createdAt: DateTime(2026, 9, 6, 10),
+        entryDate: DateTime(2026, 9, 7),
+        mood: Mood.happy,
+        healthLog: const HealthLog(
+          id: 'health',
+          entryId: 'boundary',
+          steps: 900,
+          caloriesEaten: 100,
+          meals: [],
+        ),
+      );
+
+      final stats = computeTripWellnessStats(entries: [entry], trip: trip);
+
+      expect(stats.stepsPerDay, {DateTime(2026, 9, 7): 900});
+      expect(stats.daysLogged, 1);
+    });
+
     test(
       'aggregates steps/calories/mood breakdown across entries on different days',
       () {

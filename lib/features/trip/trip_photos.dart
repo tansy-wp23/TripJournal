@@ -46,48 +46,46 @@ class TripPhoto {
 /// user sees — the slideshow can never disagree with the day list about which
 /// day a photo belongs to.
 ///
-/// Ordering is deliberately made *total* here. [buildDayGroups] sorts by
-/// `createdAt` alone, and `List.sort` is not stable, while
-/// `deriveEntryTimestamp` stamps every backfilled past day at exactly noon —
-/// so two entries backfilled to the same day compare equal and can swap places
-/// between rebuilds. A slideshow position is handed across a `Navigator.push`,
-/// so an unstable order would mean "tap photo 7" opening a different photo
-/// after an unrelated save. Breaking ties on `id` pins it down. This is done
-/// here rather than in [buildDayGroups] to leave the timeline's own behaviour
-/// (and its tests) untouched.
+/// Ordering is deliberately made *total* here. Immutable creation order keeps
+/// multiple entries on one logical day stable after edits, and `id` resolves
+/// the unlikely case of identical creation timestamps.
 List<TripPhoto> buildTripPhotos(Trip trip, List<JournalEntry> entries) {
   final photos = <TripPhoto>[];
 
   for (final group in buildDayGroups(trip, entries)) {
     final ordered = List<JournalEntry>.of(group.entries)
       ..sort((a, b) {
-        final byTime = a.createdAt.compareTo(b.createdAt);
-        return byTime != 0 ? byTime : a.id.compareTo(b.id);
+        final byCreationOrder = a.creationOrderAt.compareTo(b.creationOrderAt);
+        return byCreationOrder != 0 ? byCreationOrder : a.id.compareTo(b.id);
       });
 
     for (final entry in ordered) {
       for (final path in entry.photoPaths) {
-        photos.add(TripPhoto(
-          path: path,
-          kind: TripPhotoKind.entry,
-          entryId: entry.id,
-          date: group.date,
-          dayNumber: group.dayNumber,
-          caption: entry.displayTitle,
-        ));
+        photos.add(
+          TripPhoto(
+            path: path,
+            kind: TripPhotoKind.entry,
+            entryId: entry.id,
+            date: group.date,
+            dayNumber: group.dayNumber,
+            caption: entry.displayTitle,
+          ),
+        );
       }
 
       for (final meal in entry.healthLog?.meals ?? const []) {
         final path = meal.photoPath;
         if (path == null) continue;
-        photos.add(TripPhoto(
-          path: path,
-          kind: TripPhotoKind.meal,
-          entryId: entry.id,
-          date: group.date,
-          dayNumber: group.dayNumber,
-          caption: meal.name,
-        ));
+        photos.add(
+          TripPhoto(
+            path: path,
+            kind: TripPhotoKind.meal,
+            entryId: entry.id,
+            date: group.date,
+            dayNumber: group.dayNumber,
+            caption: meal.name,
+          ),
+        );
       }
     }
   }

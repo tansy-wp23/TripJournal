@@ -324,7 +324,7 @@ class _EntryPreview extends StatelessWidget {
       container: true,
       button: true,
       label:
-          'Open map entry ${entry.displayTitle} at $locationLabel. ${formatDate(entry.createdAt)}. ${moodLabel(entry.mood)}',
+          'Open map entry ${entry.displayTitle} at $locationLabel. ${formatDate(entry.calendarDate)}. ${moodLabel(entry.mood)}',
       child: ExcludeSemantics(
         child: Material(
           color: Theme.of(context).colorScheme.surface,
@@ -374,7 +374,7 @@ class _EntryPreview extends StatelessWidget {
                         ),
                         const SizedBox(height: 3),
                         Text(
-                          formatDate(entry.createdAt),
+                          formatDate(entry.calendarDate),
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
                             color: Theme.of(

@@ -79,7 +79,7 @@ pw.Widget _entryHeader(JournalEntry entry) {
         style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold),
       ),
       pw.SizedBox(height: 4),
-      pw.Text('${formatDate(entry.createdAt)} · ${moodLabel(entry.mood)}'),
+      pw.Text('${formatDate(entry.calendarDate)} · ${moodLabel(entry.mood)}'),
       if (entry.location?.placeName != null)
         pw.Text(entry.location!.placeName!),
     ],
@@ -172,8 +172,9 @@ pw.Widget _healthSection(
 // than failing loudly — a numeric rating degrades gracefully everywhere.
 String _mealLine(Meal meal) {
   final rating = meal.rating == null ? '' : ', ${meal.rating}/5';
-  final restaurant =
-      meal.restaurantName == null ? '' : ' — ${meal.restaurantName}';
+  final restaurant = meal.restaurantName == null
+      ? ''
+      : ' — ${meal.restaurantName}';
   final line =
       '${meal.name} (${mealTypeLabel(meal.mealType)}, ~${meal.calories} kcal$rating)$restaurant';
   if (meal.foodReview == null) return line;
@@ -203,9 +204,7 @@ pw.Widget _mealRow(Meal meal, pw.MemoryImage? photo) {
         pw.SizedBox(width: 6),
         // Expanded so a long meal name wraps inside the health box rather than
         // running past its border.
-        pw.Expanded(
-          child: pw.Text(_mealLine(meal)),
-        ),
+        pw.Expanded(child: pw.Text(_mealLine(meal))),
       ],
     ),
   );

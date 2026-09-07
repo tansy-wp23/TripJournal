@@ -10,6 +10,7 @@ JournalEntry _entry({
   String body = '',
   required Mood mood,
   required DateTime createdAt,
+  DateTime? entryDate,
 }) {
   return JournalEntry(
     id: id,
@@ -18,6 +19,7 @@ JournalEntry _entry({
     body: body,
     mood: mood,
     photoPaths: const [],
+    entryDate: entryDate,
     createdAt: createdAt,
     updatedAt: createdAt,
   );
@@ -56,27 +58,61 @@ void main() {
     });
 
     test('matches text against title OR body, case-insensitively', () {
-      final byTitle = filterJournalEntries(entries, const JournalFilter(query: 'BEACH'));
+      final byTitle = filterJournalEntries(
+        entries,
+        const JournalFilter(query: 'BEACH'),
+      );
       expect(byTitle.map((e) => e.id), ['e1']);
 
-      final byBody = filterJournalEntries(entries, const JournalFilter(query: 'dolphins'));
+      final byBody = filterJournalEntries(
+        entries,
+        const JournalFilter(query: 'dolphins'),
+      );
       expect(byBody.map((e) => e.id), ['e1']);
 
-      final noMatch = filterJournalEntries(entries, const JournalFilter(query: 'volcano'));
+      final noMatch = filterJournalEntries(
+        entries,
+        const JournalFilter(query: 'volcano'),
+      );
       expect(noMatch, isEmpty);
     });
 
     test('filters by exact mood', () {
-      final result = filterJournalEntries(entries, const JournalFilter(mood: Mood.tired));
+      final result = filterJournalEntries(
+        entries,
+        const JournalFilter(mood: Mood.tired),
+      );
       expect(result.map((e) => e.id), ['e2']);
     });
 
     test('filters by inclusive date range', () {
       final result = filterJournalEntries(
         entries,
-        JournalFilter(startDate: DateTime(2026, 4, 11), endDate: DateTime(2026, 4, 11)),
+        JournalFilter(
+          startDate: DateTime(2026, 4, 11),
+          endDate: DateTime(2026, 4, 11),
+        ),
       );
       expect(result.map((e) => e.id), ['e2']);
+    });
+
+    test('filters by logical entry date rather than UTC timestamp date', () {
+      final boundary = _entry(
+        id: 'boundary',
+        mood: Mood.happy,
+        createdAt: DateTime.utc(2026, 9, 6, 10, 2, 38),
+        entryDate: DateTime(2026, 9, 7),
+      );
+
+      final result = filterJournalEntries(
+        [boundary],
+        JournalFilter(
+          startDate: DateTime(2026, 9, 7),
+          endDate: DateTime(2026, 9, 7),
+        ),
+      );
+
+      expect(result.map((entry) => entry.id), ['boundary']);
     });
 
     test('combines query, mood, and date range with AND semantics', () {

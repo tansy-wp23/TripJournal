@@ -69,14 +69,24 @@ class GeminiTripSummaryService implements TripSummaryService {
 
   String _buildPrompt(Trip trip, List<JournalEntry> entries) {
     final chronological = [...entries]
-      ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
+      ..sort((a, b) {
+        final byDay = a.calendarDate.compareTo(b.calendarDate);
+        if (byDay != 0) return byDay;
+        final byCreationOrder = a.creationOrderAt.compareTo(b.creationOrderAt);
+        if (byCreationOrder != 0) return byCreationOrder;
+        return a.id.compareTo(b.id);
+      });
     final buffer = StringBuffer()
       ..writeln('Trip: ${trip.title}')
-      ..writeln('Dates: ${trip.startDate.toIso8601String()} to ${trip.endDate.toIso8601String()}')
+      ..writeln(
+        'Dates: ${trip.startDate.toIso8601String()} to ${trip.endDate.toIso8601String()}',
+      )
       ..writeln('Journal entries:');
     for (final entry in chronological) {
       buffer
-        ..writeln('- ${entry.createdAt.toIso8601String()} | mood: ${entry.mood.name}')
+        ..writeln(
+          '- ${entry.calendarDate.toIso8601String()} | mood: ${entry.mood.name}',
+        )
         ..writeln('  Title: ${entry.displayTitle}')
         ..writeln('  Reflection: ${entry.body}');
       if (entry.location?.placeName case final placeName?) {

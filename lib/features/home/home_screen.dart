@@ -614,9 +614,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   JournalEntry? _findTodaysEntry(List<JournalEntry> entries) {
     final today = DateTime.now();
     for (final entry in entries) {
-      if (entry.createdAt.year == today.year &&
-          entry.createdAt.month == today.month &&
-          entry.createdAt.day == today.day) {
+      final entryDay = entry.calendarDate;
+      if (entryDay.year == today.year &&
+          entryDay.month == today.month &&
+          entryDay.day == today.day) {
         return entry;
       }
     }

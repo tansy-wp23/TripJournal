@@ -68,7 +68,7 @@ List<JournalEntry> filterJournalEntries(
     }
     if (filter.mood != null && entry.mood != filter.mood) return false;
 
-    final day = _dateOnly(entry.createdAt);
+    final day = entry.calendarDate;
     if (start != null && day.isBefore(start)) return false;
     if (end != null && day.isAfter(end)) return false;
 

@@ -200,7 +200,7 @@ class _EntryDetailScreenState extends ConsumerState<EntryDetailScreen> {
                 avatar: Icon(moodIcon(entry.mood), size: 18),
                 label: Text(moodLabel(entry.mood)),
               ),
-              Text(formatDate(entry.createdAt)),
+              Text(formatDate(entry.calendarDate)),
               OutlinedButton.icon(
                 key: const Key('edit-entry-button'),
                 icon: const Icon(Icons.edit_outlined),
@@ -422,10 +422,7 @@ class _AiAdviceCard extends StatelessWidget {
               ],
             ),
           if (advice == null && !isEditing)
-            const Text(
-              'No AI advice yet.',
-              key: Key('entry-ai-advice-text'),
-            ),
+            const Text('No AI advice yet.', key: Key('entry-ai-advice-text')),
           if (isEditing)
             TextField(
               key: const Key('advice-editor-field'),
@@ -467,7 +464,9 @@ class _AiAdviceCard extends StatelessWidget {
               key: const Key('generate-advice-button'),
               onPressed: onGenerate,
               icon: const Icon(Icons.auto_awesome_outlined),
-              label: Text(advice == null ? 'Generate advice' : 'Regenerate advice'),
+              label: Text(
+                advice == null ? 'Generate advice' : 'Regenerate advice',
+              ),
             ),
         ],
       ],

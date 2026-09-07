@@ -29,7 +29,13 @@ class _JournalListScreenState extends ConsumerState<JournalListScreen> {
   Widget build(BuildContext context) {
     final controller = ref.watch(journalControllerProvider);
     final entries = [...controller.entries]
-      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      ..sort((a, b) {
+        final byDay = b.calendarDate.compareTo(a.calendarDate);
+        if (byDay != 0) return byDay;
+        final byCreationOrder = b.creationOrderAt.compareTo(a.creationOrderAt);
+        if (byCreationOrder != 0) return byCreationOrder;
+        return b.id.compareTo(a.id);
+      });
 
     return Scaffold(
       appBar: AppBar(title: const Text('Journal')),
@@ -42,7 +48,9 @@ class _JournalListScreenState extends ConsumerState<JournalListScreen> {
             return Center(child: Text('Error: ${controller.error}'));
           }
           if (entries.isEmpty) {
-            return const Center(child: Text('No journal entries yet. Tap + to add one.'));
+            return const Center(
+              child: Text('No journal entries yet. Tap + to add one.'),
+            );
           }
           return ListView.separated(
             itemCount: entries.length,
@@ -53,15 +61,19 @@ class _JournalListScreenState extends ConsumerState<JournalListScreen> {
               final healthSummary = healthLog == null
                   ? 'No health log'
                   : '${formatThousands(healthLog.steps)} steps · '
-                      '${formatThousands(healthLog.caloriesEaten)} kcal';
+                        '${formatThousands(healthLog.caloriesEaten)} kcal';
               return ListTile(
                 leading: Icon(moodIcon(entry.mood)),
                 title: Text(entry.displayTitle),
-                subtitle: Text('${formatDate(entry.createdAt)}\n$healthSummary'),
+                subtitle: Text(
+                  '${formatDate(entry.calendarDate)}\n$healthSummary',
+                ),
                 isThreeLine: true,
                 onTap: () => Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (_) => EntryDetailScreen(entryId: entry.id)),
+                  MaterialPageRoute(
+                    builder: (_) => EntryDetailScreen(entryId: entry.id),
+                  ),
                 ),
               );
             },

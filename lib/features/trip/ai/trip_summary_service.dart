@@ -26,7 +26,13 @@ class MockTripSummaryService implements TripSummaryService {
     }
 
     final chronological = [...entries]
-      ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
+      ..sort((a, b) {
+        final byDay = a.calendarDate.compareTo(b.calendarDate);
+        if (byDay != 0) return byDay;
+        final byCreationOrder = a.creationOrderAt.compareTo(b.creationOrderAt);
+        if (byCreationOrder != 0) return byCreationOrder;
+        return a.id.compareTo(b.id);
+      });
     final highlights = chronological
         .map((entry) => entry.displayTitle)
         .take(3)
@@ -35,10 +41,12 @@ class MockTripSummaryService implements TripSummaryService {
     for (final entry in chronological) {
       moodCounts.update(entry.mood, (count) => count + 1, ifAbsent: () => 1);
     }
-    final prevailingMood = moodCounts.entries.reduce(
-      (current, candidate) =>
-          candidate.value > current.value ? candidate : current,
-    ).key;
+    final prevailingMood = moodCounts.entries
+        .reduce(
+          (current, candidate) =>
+              candidate.value > current.value ? candidate : current,
+        )
+        .key;
 
     return '${trip.title} was captured across ${chronological.length} '
         '${chronological.length == 1 ? 'journal entry' : 'journal entries'}. '

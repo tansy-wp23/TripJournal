@@ -85,12 +85,14 @@ TripStats computeTripStats({
       }
     }
     moodScores.add(moodScale[entry.mood]!);
-    loggedDays.add(DateTime(entry.createdAt.year, entry.createdAt.month, entry.createdAt.day));
+    loggedDays.add(entry.calendarDate);
   }
 
   final averageMood = moodScores.isEmpty
       ? null
-      : _moodClosestToScore((moodScores.reduce((a, b) => a + b) / moodScores.length).round());
+      : _moodClosestToScore(
+          (moodScores.reduce((a, b) => a + b) / moodScores.length).round(),
+        );
 
   return TripStats(
     totalSteps: totalSteps,
@@ -104,7 +106,10 @@ TripStats computeTripStats({
 
 /// Fetches [trip]'s journal entries via [journalRepository] and aggregates
 /// them into a [TripStats]. Thin async wrapper around [computeTripStats].
-Future<TripStats> tripStatsForTrip(Trip trip, JournalRepository journalRepository) async {
+Future<TripStats> tripStatsForTrip(
+  Trip trip,
+  JournalRepository journalRepository,
+) async {
   final entries = await journalRepository.getEntries(trip.id);
   return computeTripStats(entries: entries, totalDays: trip.durationDays);
 }
