@@ -50,6 +50,29 @@ Add regression coverage for the UTC+8 boundary demonstrated by the reported bug:
 - Legacy model/JSON data without an explicit entry date retains its previous local-calendar behaviour.
 - Existing within-day creation-order tests continue to pass.
 
+## Regression Safety
+
+The implementation must remain narrowly scoped and must not rewrite existing
+Supabase rows. To reduce regression risk:
+
+- Introduce one shared, date-only model value rather than adding separate UTC
+  conversions to individual screens.
+- Keep `createdAt`, `updatedAt`, and `creationOrderAt` unchanged so entry audit
+  timestamps and immutable route ordering do not change.
+- Preserve backward compatibility for mock and locally stored entries that do
+  not yet contain the explicit calendar-date field.
+- Add the reported UTC+8 boundary case as a failing test before changing the
+  implementation.
+- Run focused tests after each affected layer is updated, followed by the full
+  Flutter test suite and `flutter analyze --no-pub`.
+- Rebuild and run the Supabase-configured Android app, then verify an entry
+  around the UTC date boundary appears under the same Day in Entries and Map.
+- Confirm route order, cumulative Day map filters, date filters, trip-range
+  validation, wellness totals, photo grouping, PDFs, and public trip details
+  retain their existing behaviour.
+- Use only a trip whose name contains `TEST` for emulator verification; do not
+  edit unrelated real user data.
+
 ## Scope
 
 This change fixes calendar-date interpretation only. It does not change route drawing, location data, immutable creation ordering, trip dates, or any Supabase records.
