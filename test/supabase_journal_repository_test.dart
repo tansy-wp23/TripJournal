@@ -223,6 +223,23 @@ void main() {
       expect(entry.creationOrderAt, DateTime.utc(2026, 8, 29, 1, 2, 3));
     });
 
+    test(
+      'uses entry_date as the calendar day without changing the UTC timestamp',
+      () async {
+        final row = _entryRow()
+          ..['entry_date'] = '2026-09-07'
+          ..['created_at'] = '2026-09-06T23:02:38.000Z';
+        final repository = _repository(
+          MockClient((request) async => _jsonResponse([row], request: request)),
+        );
+
+        final entry = (await repository.getEntries(_tripId)).single;
+
+        expect(entry.createdAt, DateTime.utc(2026, 9, 6, 23, 2, 38));
+        expect(entry.calendarDate, DateTime(2026, 9, 7));
+      },
+    );
+
     test('getEntries falls back to updatedAt for legacy rows', () async {
       final repository = _repository(
         MockClient((request) async {
@@ -447,6 +464,31 @@ void main() {
       expect(body['p_health_log'], isNull);
       expect(body['p_meals'], isEmpty);
     });
+
+    test(
+      'writes the logical entry date instead of the UTC timestamp day',
+      () async {
+        final recorder = _Recorder();
+        final repository = _repository(recorder.client());
+        final entry = JournalEntry(
+          id: _entryId,
+          tripId: _tripId,
+          title: 'Boundary entry',
+          body: '',
+          mood: Mood.happy,
+          photoPaths: const [],
+          entryDate: DateTime(2026, 9, 7),
+          createdAt: DateTime.utc(2026, 9, 6, 23, 2, 38),
+          updatedAt: DateTime.utc(2026, 9, 6, 23, 2, 38),
+        );
+
+        await repository.addEntry(entry);
+
+        final entryBody = recorder.bodyAt(0)['p_entry'] as Map<String, dynamic>;
+        expect(entryBody['entry_date'], '2026-09-07');
+        expect(entryBody['created_at'], '2026-09-06T23:02:38.000Z');
+      },
+    );
 
     test('throws before writing anything when nobody is signed in', () async {
       // RLS would not reject this -- it would accept rows keyed to a user that

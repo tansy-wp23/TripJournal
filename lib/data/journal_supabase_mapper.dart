@@ -17,6 +17,7 @@ import '../models/portion_size.dart';
 /// `SupabaseJournalRepository`).
 
 JournalEntry journalEntryFromSupabaseRow(Map<String, dynamic> row) {
+  final createdAt = DateTime.parse(row['created_at'] as String);
   return JournalEntry(
     id: row['id'] as String,
     tripId: row['trip_id'] as String,
@@ -28,7 +29,8 @@ JournalEntry journalEntryFromSupabaseRow(Map<String, dynamic> row) {
     mood: _moodFromRow(row['mood']),
     photoPaths: _stringList(row['photo_urls']),
     location: _geoTagFromRow(row['location']),
-    createdAt: DateTime.parse(row['created_at'] as String),
+    entryDate: _entryDateFromRow(row['entry_date']),
+    createdAt: createdAt,
     updatedAt: DateTime.parse(row['updated_at'] as String),
     creationOrderAt: DateTime.parse(
       (row['creation_order_at'] ?? row['updated_at']) as String,
@@ -125,7 +127,7 @@ Map<String, dynamic> journalEntryEditableFieldsToSupabaseRow(
     'location': entry.location?.toJson(),
     // Denormalised calendar day of the entry timestamp. Written as date-only so
     // the value is valid whether the column is `date` or `timestamptz`.
-    'entry_date': formatDateOnly(entry.createdAt),
+    'entry_date': formatDateOnly(entry.calendarDate),
     'updated_at': entry.updatedAt.toIso8601String(),
   };
 }
@@ -169,6 +171,13 @@ String formatDateOnly(DateTime date) {
   final month = date.month.toString().padLeft(2, '0');
   final day = date.day.toString().padLeft(2, '0');
   return '${date.year}-$month-$day';
+}
+
+DateTime? _entryDateFromRow(Object? value) {
+  if (value is! String) return null;
+  final parsed = DateTime.tryParse(value);
+  if (parsed == null) return null;
+  return DateTime(parsed.year, parsed.month, parsed.day);
 }
 
 List<String> _stringList(Object? value) {

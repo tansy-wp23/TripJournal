@@ -10,6 +10,7 @@ class JournalEntry {
   final Mood mood;
   final List<String> photoPaths;
   final GeoTag? location;
+  final DateTime? entryDate;
   final DateTime createdAt;
   final DateTime updatedAt;
   final DateTime creationOrderAt;
@@ -23,11 +24,22 @@ class JournalEntry {
     required this.mood,
     required this.photoPaths,
     this.location,
+    this.entryDate,
     required this.createdAt,
     required this.updatedAt,
     DateTime? creationOrderAt,
     this.healthLog,
   }) : creationOrderAt = creationOrderAt ?? updatedAt;
+
+  /// The entry's logical, timezone-independent journal day.
+  ///
+  /// Supabase persists this separately as `entry_date`. Older local data and
+  /// callers that predate that field fall back to the local calendar day of
+  /// [createdAt].
+  DateTime get calendarDate {
+    final value = entryDate ?? createdAt.toLocal();
+    return DateTime(value.year, value.month, value.day);
+  }
 
   /// A title is never required — the "title OR body" rule (see
   /// IMPLEMENTATION_PLAN_VALIDATION.md) allows a body-only entry. Anywhere
@@ -56,6 +68,9 @@ class JournalEntry {
       location: json['location'] == null
           ? null
           : GeoTag.fromJson(json['location'] as Map<String, dynamic>),
+      entryDate: json['entryDate'] == null
+          ? null
+          : DateTime.tryParse(json['entryDate'] as String),
       createdAt: DateTime.parse(json['createdAt'] as String),
       updatedAt: updatedAt,
       creationOrderAt: json['creationOrderAt'] == null
@@ -76,6 +91,7 @@ class JournalEntry {
       'mood': mood.name,
       'photoPaths': photoPaths,
       'location': location?.toJson(),
+      'entryDate': calendarDate.toIso8601String(),
       'createdAt': createdAt.toIso8601String(),
       'updatedAt': updatedAt.toIso8601String(),
       'creationOrderAt': creationOrderAt.toIso8601String(),
@@ -92,6 +108,7 @@ class JournalEntry {
     List<String>? photoPaths,
     GeoTag? location,
     bool clearLocation = false,
+    DateTime? entryDate,
     DateTime? createdAt,
     DateTime? updatedAt,
     DateTime? creationOrderAt,
@@ -106,6 +123,7 @@ class JournalEntry {
       mood: mood ?? this.mood,
       photoPaths: photoPaths ?? this.photoPaths,
       location: clearLocation ? null : (location ?? this.location),
+      entryDate: entryDate ?? this.entryDate,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       creationOrderAt: creationOrderAt ?? this.creationOrderAt,
