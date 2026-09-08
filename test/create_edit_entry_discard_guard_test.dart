@@ -30,11 +30,11 @@ void main() {
       await tester.pageBack();
       await tester.pumpAndSettle();
 
-      expect(find.text('Discard changes?'), findsNothing);
+      expect(find.text('Keep this entry?'), findsNothing);
       expect(find.text('New entry'), findsNothing); // actually left the screen
     });
 
-    testWidgets('a dirty (edited but unsaved) entry prompts "Discard changes?" on back', (tester) async {
+    testWidgets('a dirty (edited but unsaved) entry prompts on back', (tester) async {
       tester.view.physicalSize = const Size(1200, 2600);
       tester.view.devicePixelRatio = 1.0;
       addTearDown(tester.view.resetPhysicalSize);
@@ -47,7 +47,12 @@ void main() {
       await tester.pageBack();
       await tester.pumpAndSettle();
 
-      expect(find.text('Discard changes?'), findsOneWidget);
+      // An unsaved NEW entry can be parked, so the prompt offers all three
+      // options rather than the old discard-or-stay pair.
+      expect(find.text('Keep this entry?'), findsOneWidget);
+      expect(find.byKey(const Key('discard-save-draft')), findsOneWidget);
+      expect(find.byKey(const Key('discard-confirm')), findsOneWidget);
+      expect(find.byKey(const Key('discard-keep-editing')), findsOneWidget);
       expect(find.text('New entry'), findsOneWidget); // still on the editor, blocked
     });
 
@@ -66,7 +71,7 @@ void main() {
       await tester.tap(find.byKey(const Key('discard-keep-editing')));
       await tester.pumpAndSettle();
 
-      expect(find.text('Discard changes?'), findsNothing);
+      expect(find.text('Keep this entry?'), findsNothing);
       expect(find.text('New entry'), findsOneWidget); // still here
       expect(find.widgetWithText(TextField, 'Keep me'), findsOneWidget); // input untouched
     });
@@ -88,7 +93,12 @@ void main() {
 
       expect(find.text('New entry'), findsNothing); // left the screen
 
-      final entries = await journalRepository.getEntries('trip-001');
+      // Nothing at all — not a published entry, and not a draft either.
+      // Discard must still mean discard now that parking is on the same dialog.
+      final entries = await journalRepository.getEntries(
+        'trip-001',
+        includeDrafts: true,
+      );
       expect(entries.any((e) => e.title == 'Should be discarded'), isFalse);
     });
 
@@ -110,7 +120,42 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Discard changes?'), findsNothing);
+      expect(find.text('Keep this entry?'), findsNothing);
       expect(find.text('Edit entry'), findsNothing); // actually left the screen
     });
+
+    testWidgets(
+      'editing an already-published entry keeps the plain discard prompt — '
+      'no draft option, so a real entry is never replaced by half-finished edits',
+      (tester) async {
+        tester.view.physicalSize = const Size(1200, 2600);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+
+        await _openCreateEntryForKyotoDay(tester, 5);
+        await tester.enterText(
+          find.byKey(const Key('entry-title-field')),
+          'Published entry',
+        );
+        await tester.tap(find.byKey(const Key('save-entry-button')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('save-confirm-confirm')));
+        await tester.pumpAndSettle();
+
+        // Dirty it again, now that it is a real saved entry.
+        await tester.enterText(
+          find.byKey(const Key('entry-title-field')),
+          'Published entry, edited',
+        );
+        await tester.pump();
+
+        await tester.pageBack();
+        await tester.pumpAndSettle();
+
+        expect(find.text('Discard changes?'), findsOneWidget);
+        expect(find.byKey(const Key('discard-save-draft')), findsNothing);
+      },
+    );
   });
 }

@@ -368,7 +368,7 @@ final class _RecordingJournalRepository implements JournalRepository {
   final List<String> requestedTripIds = [];
 
   @override
-  Future<List<JournalEntry>> getEntries(String tripId) async {
+  Future<List<JournalEntry>> getEntries(String tripId, {bool includeDrafts = false}) async {
     requestedTripIds.add(tripId);
     return const [];
   }

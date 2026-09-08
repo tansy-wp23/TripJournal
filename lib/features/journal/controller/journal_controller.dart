@@ -26,11 +26,20 @@ class JournalController extends ChangeNotifier {
 
   String? _tripId;
   List<JournalEntry> _entries = [];
+  List<JournalEntry> _drafts = [];
   bool _loading = false;
   String? _error;
   JournalFilter _filter = const JournalFilter();
 
+  /// Published entries only. Deliberately excludes drafts so every existing
+  /// consumer — the map, wellness/summary stats, the AI trip summary, PDF
+  /// export, the home screen — stays correct without knowing drafts exist.
   List<JournalEntry> get entries => _entries;
+
+  /// Parked, half-written entries. Only the trip timeline renders these
+  /// (badged, alongside [entries]); everything else should use [entries].
+  List<JournalEntry> get drafts => _drafts;
+
   bool get loading => _loading;
   String? get error => _error;
 
@@ -63,13 +72,26 @@ class JournalController extends ChangeNotifier {
     notifyListeners();
 
     try {
-      _entries = await _repository.getEntries(tripId);
+      _applyLoaded(await _repository.getEntries(tripId, includeDrafts: true));
     } catch (e) {
       _error = e.toString();
     } finally {
       _loading = false;
       notifyListeners();
     }
+  }
+
+  /// One query, split two ways: the owner's own trip view needs both, but
+  /// they are handed out separately so nothing can render a draft by accident.
+  void _applyLoaded(List<JournalEntry> loaded) {
+    _entries = [
+      for (final entry in loaded)
+        if (!entry.isDraft) entry,
+    ];
+    _drafts = [
+      for (final entry in loaded)
+        if (entry.isDraft) entry,
+    ];
   }
 
   /// Validates [entry] against the rules in IMPLEMENTATION_PLAN_VALIDATION.md
@@ -79,13 +101,22 @@ class JournalController extends ChangeNotifier {
   /// editing never changes an entry's day, so re-validating an unrelated
   /// field edit against dates that may have shifted since creation would be
   /// a usability harm, not a real invariant.
+  ///
+  /// [requireContent] is the one rule a draft skips: a parked entry is allowed
+  /// to be just a photo, a mood or a step count with no text yet. Everything
+  /// below it still applies, because those are the invariants the database's
+  /// own CHECK constraints enforce anyway — skipping them would trade a clear
+  /// message for a raw Postgres error at save time.
   String? _validateEntry(
     JournalEntry entry, {
     required bool checkDate,
     Trip? trip,
+    bool requireContent = true,
   }) {
-    final contentError = validateEntryContent(entry.title, entry.body);
-    if (contentError != null) return contentError;
+    if (requireContent) {
+      final contentError = validateEntryContent(entry.title, entry.body);
+      if (contentError != null) return contentError;
+    }
 
     final titleError = validateEntryTitleLength(entry.title);
     if (titleError != null) return titleError;
@@ -149,6 +180,45 @@ class JournalController extends ChangeNotifier {
     _error = null;
     try {
       await _repository.addEntry(await _autoTagLocation(entry));
+      await _refresh();
+      return null;
+    } catch (e) {
+      _error = e.toString();
+      notifyListeners();
+      return _error;
+    }
+  }
+
+  /// Parks [entry] as a draft, or returns an error message without persisting
+  /// anything.
+  ///
+  /// [isNew] distinguishes a first park (insert) from re-parking a draft the
+  /// user reopened (update). The date rules still apply on a first park for
+  /// the same reason they apply to [create]: the day is chosen up front, not
+  /// half-written, so a draft dated outside its trip is a mistake worth
+  /// catching now rather than at publish time.
+  Future<String?> saveDraft(
+    JournalEntry entry, {
+    required bool isNew,
+    Trip? trip,
+  }) async {
+    final draft = entry.copyWith(isDraft: true);
+    final validationError = _validateEntry(
+      draft,
+      checkDate: isNew,
+      trip: trip,
+      requireContent: false,
+    );
+    if (validationError != null) return validationError;
+
+    _error = null;
+    try {
+      final tagged = await _autoTagLocation(draft);
+      if (isNew) {
+        await _repository.addEntry(tagged);
+      } else {
+        await _repository.updateEntry(tagged);
+      }
       await _refresh();
       return null;
     } catch (e) {
@@ -230,7 +300,7 @@ class JournalController extends ChangeNotifier {
   Future<void> _refresh() async {
     final tripId = _tripId;
     if (tripId == null) return;
-    _entries = await _repository.getEntries(tripId);
+    _applyLoaded(await _repository.getEntries(tripId, includeDrafts: true));
     notifyListeners();
   }
 

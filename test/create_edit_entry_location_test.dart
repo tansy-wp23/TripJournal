@@ -467,7 +467,7 @@ class _RecordingJournalRepository implements JournalRepository {
   }
 
   @override
-  Future<List<JournalEntry>> getEntries(String tripId) async =>
+  Future<List<JournalEntry>> getEntries(String tripId, {bool includeDrafts = false}) async =>
       entries.where((entry) => entry.tripId == tripId).toList();
 
   @override

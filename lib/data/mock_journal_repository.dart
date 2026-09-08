@@ -11,8 +11,13 @@ class MockJournalRepository implements JournalRepository {
   final List<JournalEntry> _entries = _seedEntries();
 
   @override
-  Future<List<JournalEntry>> getEntries(String tripId) async {
-    return _entries.where((e) => e.tripId == tripId).toList();
+  Future<List<JournalEntry>> getEntries(
+    String tripId, {
+    bool includeDrafts = false,
+  }) async {
+    return _entries
+        .where((e) => e.tripId == tripId && (includeDrafts || !e.isDraft))
+        .toList();
   }
 
   @override

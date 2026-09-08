@@ -18,7 +18,7 @@ class _FailingJournalRepository implements JournalRepository {
   final List<JournalEntry> _entries;
 
   @override
-  Future<List<JournalEntry>> getEntries(String tripId) async =>
+  Future<List<JournalEntry>> getEntries(String tripId, {bool includeDrafts = false}) async =>
       _entries.where((e) => e.tripId == tripId).toList();
 
   @override

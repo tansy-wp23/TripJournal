@@ -3,10 +3,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:tripjournal/data/repository_locator.dart';
 import 'package:tripjournal/features/community/public_trip_view_screen.dart';
 import 'package:tripjournal/features/journal/screens/photo_viewer_screen.dart';
 import 'package:tripjournal/features/journal/widgets/photo_thumbnail.dart';
 import 'package:tripjournal/features/trip/mock_user.dart';
+import 'package:tripjournal/models/journal_entry.dart';
+import 'package:tripjournal/models/mood.dart';
 import 'package:tripjournal/models/trip.dart';
 
 Trip _publicTrip() {
@@ -225,4 +228,33 @@ void main() {
       expect(find.byType(PhotoThumbnail), findsWidgets);
     });
   });
+
+  testWidgets(
+    'a draft in a published trip is never shown to a viewer — this screen '
+    'reads the repository directly, so the default filter is the only guard',
+    (tester) async {
+      final draft = JournalEntry(
+        id: 'draft-in-public-trip',
+        tripId: 'trip-001',
+        title: 'Half-written and private',
+        body: 'Not ready for anyone else to read.',
+        mood: Mood.neutral,
+        photoPaths: const [],
+        createdAt: DateTime.utc(2026, 4, 10, 9),
+        updatedAt: DateTime.utc(2026, 4, 10, 9),
+        isDraft: true,
+      );
+      await journalRepository.addEntry(draft);
+
+      await tester.pumpWidget(
+        ProviderScope(
+          child: MaterialApp(home: PublicTripViewScreen(trip: _publicTrip())),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Half-written and private'), findsNothing);
+      expect(find.text('Not ready for anyone else to read.'), findsNothing);
+    },
+  );
 }
