@@ -54,6 +54,7 @@ jobs:
         with:
           deno-version: v2.x
       - run: deno test --allow-env supabase/functions/places-proxy/places_proxy_test.ts
+      - run: deno test --allow-env supabase/functions/gemini-proxy/gemini_proxy_test.ts
 
   supabase-database:
     runs-on: ubuntu-latest

@@ -16,7 +16,8 @@ void main() {
 
   group('SystemHealthScreen', () {
     testWidgets('shows Gemini as "Not configured", with no Test Connection '
-        'button, when no key is set', (tester) async {
+        'button, on the mock backend — there is no key on the client to check '
+        'any more, so this tracks the backend mode instead', (tester) async {
       await pumpScreen(tester);
 
       expect(
@@ -30,14 +31,14 @@ void main() {
       );
     });
 
-    testWidgets('shows Gemini as "Configured" with a Test Connection button '
-        'once GEMINI_API_KEY is set — the button is never tapped here, since '
-        'doing so would make a real network call to Google\'s Gemini API', (
-      tester,
-    ) async {
-      dotenv.loadFromString(envString: 'GEMINI_API_KEY=test-key-123');
-
-      await pumpScreen(tester);
+    testWidgets('shows Gemini as "Configured" with a Test Connection button on '
+        'a real backend', (tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: SystemHealthScreen(geminiConfiguredOverride: true),
+        ),
+      );
+      await tester.pumpAndSettle();
 
       expect(find.text('Configured'), findsOneWidget);
       expect(find.text('Not configured'), findsNothing);
@@ -46,6 +47,50 @@ void main() {
         findsOneWidget,
       );
       expect(find.text('Test Connection'), findsOneWidget);
+    });
+
+    testWidgets('Test Connection asks the proxy and reports a working key', (
+      tester,
+    ) async {
+      var seenAction = '';
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SystemHealthScreen(
+            geminiConfiguredOverride: true,
+            geminiInvoker: (action, _) async {
+              seenAction = action;
+              return {'ok': true, 'configured': true};
+            },
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('admin-system-health-gemini-test')));
+      await tester.pumpAndSettle();
+
+      // Never generateContent: a health check must not spend generation quota.
+      expect(seenAction, 'health');
+      expect(find.text('Reachable'), findsOneWidget);
+    });
+
+    testWidgets('Test Connection reports a key the server could not use', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SystemHealthScreen(
+            geminiConfiguredOverride: true,
+            geminiInvoker: (_, _) async => {'ok': false, 'configured': true},
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('admin-system-health-gemini-test')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Unreachable'), findsWidgets);
     });
 
     testWidgets('checks Supabase connectivity automatically on open, and '

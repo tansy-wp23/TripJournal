@@ -1,54 +1,58 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:http/http.dart' as http;
-import 'package:http/testing.dart';
 
 import 'package:tripjournal/features/admin/gemini_reachability.dart';
+import 'package:tripjournal/features/journal/ai/gemini_function_invoker.dart';
 
 void main() {
   group('checkGeminiReachability', () {
-    test('returns true on a 200 response', () async {
-      final client = MockClient((request) async {
-        expect(request.url.path, contains('/v1beta/models'));
-        return http.Response('{"models": []}', 200);
-      });
+    test('reports a configured, reachable key', () async {
+      String? seenAction;
+      final health = await checkGeminiReachability(
+        invoke: (action, _) async {
+          seenAction = action;
+          return {'ok': true, 'configured': true};
+        },
+      );
 
-      final result = await checkGeminiReachability('fake-key', client: client);
-
-      expect(result, isTrue);
+      expect(seenAction, 'health');
+      expect(health.configured, isTrue);
+      expect(health.reachable, isTrue);
     });
 
-    test('returns false on a non-200 response (e.g. an invalid key)', () async {
-      final client = MockClient((request) async {
-        return http.Response('{"error": {"message": "API key not valid"}}', 400);
-      });
+    test('reports a configured key that did not answer', () async {
+      final health = await checkGeminiReachability(
+        invoke: (_, _) async => {'ok': false, 'configured': true},
+      );
 
-      final result = await checkGeminiReachability('bad-key', client: client);
-
-      expect(result, isFalse);
+      expect(health.configured, isTrue);
+      expect(health.reachable, isFalse);
     });
 
-    test('returns false, never throws, when the request itself fails', () async {
-      final client = MockClient((request) async {
-        throw Exception('network unreachable');
-      });
+    test('reports a server with no key set at all', () async {
+      final health = await checkGeminiReachability(
+        invoke: (_, _) async => {'ok': false, 'configured': false},
+      );
 
-      final result = await checkGeminiReachability('fake-key', client: client);
-
-      expect(result, isFalse);
+      expect(health.configured, isFalse);
+      expect(health.reachable, isFalse);
     });
 
-    test('calls the ListModels endpoint, not generateContent — this must '
-        'never cost the same quota a real AI call does', () async {
-      Uri? calledUri;
-      final client = MockClient((request) async {
-        calledUri = request.url;
-        return http.Response('{}', 200);
-      });
+    test('never throws when the function itself is unreachable', () async {
+      final health = await checkGeminiReachability(
+        invoke: (_, _) async =>
+            throw const GeminiProxyException('down', code: 'provider_error'),
+      );
 
-      await checkGeminiReachability('fake-key', client: client);
+      expect(health.configured, isFalse);
+      expect(health.reachable, isFalse);
+    });
 
-      expect(calledUri?.path, endsWith('/v1beta/models'));
-      expect(calledUri?.path, isNot(contains('generateContent')));
+    test('treats a malformed answer as unavailable', () async {
+      final health = await checkGeminiReachability(
+        invoke: (_, _) async => {'ok': 'yes'},
+      );
+
+      expect(health.reachable, isFalse);
     });
   });
 }

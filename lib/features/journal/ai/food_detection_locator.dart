@@ -1,21 +1,23 @@
-import 'package:flutter_dotenv/flutter_dotenv.dart';
-
 import '../../../data/ai_request_logging.dart';
+import '../../../data/backend_mode.dart';
 import '../../../models/ai_request_log.dart';
 import 'food_detection_service.dart';
 import 'gemini_food_detection_service.dart';
+import 'gemini_function_invoker.dart';
 
 /// The one place the app resolves its [FoodDetectionService] from — mirrors
 /// `daily_advice_locator.dart`.
 ///
-/// Reads the Gemini API key from `.env` (`GEMINI_API_KEY`, loaded via
-/// `dotenv.load()` in `main()`) — never hardcode a real key in source or
-/// commit it. No key set, or `.env` not loaded yet (e.g. in tests)? Falls
-/// back to [MockFoodDetectionService] so the app keeps working out of the
-/// box for anyone without one set up.
+/// Real detection runs through the `gemini-proxy` Edge Function, which holds
+/// `GEMINI_API_KEY` as a Supabase secret. The function reads the photo from
+/// Supabase Storage by URL, so this pairing is not incidental: only
+/// `BackendMode.supabase` both authenticates the call and stores photos
+/// somewhere the function can fetch them. Mock mode keeps
+/// [MockFoodDetectionService], whose local file paths the proxy would
+/// (correctly) refuse.
 ///
 /// Kept as the raw, unwrapped resolution — `food_detection_locator_test.dart`
-/// asserts `foodDetectionService is MockFoodDetectionService` in the no-key
+/// asserts `foodDetectionService is MockFoodDetectionService` in the mock
 /// case, so this symbol can't become a decorator that hides the underlying
 /// type. Production call sites use [loggedFoodDetectionService] instead
 /// (see its doc comment).
@@ -32,9 +34,8 @@ final FoodDetectionService loggedFoodDetectionService =
     _LoggingFoodDetectionService(foodDetectionService);
 
 FoodDetectionService _resolveFoodDetectionService() {
-  final apiKey = dotenv.isInitialized ? dotenv.env['GEMINI_API_KEY'] : null;
-  if (apiKey == null || apiKey.isEmpty) return MockFoodDetectionService();
-  return GeminiFoodDetectionService(apiKey: apiKey);
+  if (backendMode != BackendMode.supabase) return MockFoodDetectionService();
+  return GeminiFoodDetectionService(invoke: geminiFunctionInvoker);
 }
 
 class _LoggingFoodDetectionService implements FoodDetectionService {

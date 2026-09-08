@@ -51,27 +51,32 @@ If you get a startup error, check this first.
 
 ## Optional: Real AI (Gemini)
 
-The AI daily advice and food-photo detection features work out of the box with
-**no key at all** — they fall back to built-in mock implementations, fully
-offline. Only add a key if you want the real model responses.
+The AI daily advice, food-photo detection and trip summary features work out of
+the box with **no setup at all** — they fall back to built-in mock
+implementations, fully offline. Real model responses need a deployed backend.
 
-1. Get a free key from [Google AI Studio](https://aistudio.google.com/).
-2. Add it to your `.env`:
-   ```
-   GEMINI_API_KEY=your-key-here
-   ```
-3. Restart the app. `daily_advice_locator.dart` and `food_detection_locator.dart`
-   pick it up automatically at startup — nothing else to wire up.
+> **The Gemini key does NOT go in `.env`.** `.env` is bundled into the APK as a
+> Flutter asset, so anything in it is readable with `unzip`. That is fine for
+> the Supabase anon key (public by design, gated by RLS) but not for a billable
+> Gemini credential. The key lives server-side as a Supabase secret, used only
+> by the `gemini-proxy` Edge Function.
 
-Leave it blank (or omit it) to keep using `MockDailyAdviceService` /
-`MockFoodDetectionService`. See `IMPLEMENTATION_PLAN_REAL_AI.md` for the full
-design (why it's dotenv-based, the safety/tone constraints sent to the model,
-etc.).
+```powershell
+npx supabase secrets set GEMINI_API_KEY=your-key-from-google-ai-studio
+npx supabase functions deploy gemini-proxy   # NOT --no-verify-jwt
+```
 
-The model name is centralized in `lib/features/journal/ai/gemini_model.dart`
-(`geminiModel`, currently `gemini-3.6-flash`) — both
-`GeminiDailyAdviceService` and `GeminiFoodDetectionService` read it from
-there, so there's one place to change if it ever needs to move.
+Then run with `--dart-define=BACKEND_MODE=supabase` and sign in — the function
+authenticates the caller's session, which is also why mock mode (and
+`flutter test`) keeps using the offline mocks.
+
+Full details, including the model-pinning rationale and how to verify the
+deploy, are in **`docs/GEMINI_PROXY_SETUP.md`**.
+
+The model names are pinned in the function (`GEMINI_TEXT_MODEL`,
+`GEMINI_SUMMARY_MODEL`, defaulting to `gemini-3.6-flash` and
+`gemini-3.1-flash-lite`), so changing model is a secret change rather than an
+app release.
 
 > ⚠️ A valid key isn't a guarantee of working calls — free-tier quota is
 > granted **per model name, not per key**, and Google periodically retires

@@ -1,287 +1,120 @@
-import 'dart:convert';
-import 'dart:io';
-
 import 'package:flutter_test/flutter_test.dart';
-import 'package:http/http.dart' as http;
-import 'package:http/testing.dart';
 
 import 'package:tripjournal/features/journal/ai/gemini_daily_advice_service.dart';
+import 'package:tripjournal/features/journal/ai/gemini_function_invoker.dart';
 import 'package:tripjournal/models/meal.dart';
 import 'package:tripjournal/models/meal_type.dart';
 import 'package:tripjournal/models/mood.dart';
 
-http.Response _geminiResponseWithText(String modelText) {
-  return http.Response(
-    jsonEncode({
-      'candidates': [
-        {
-          'content': {
-            'parts': [
-              {'text': modelText},
-            ],
-          },
-        },
-      ],
-    }),
-    200,
+// Prompt wording and the tone/safety system instruction now live in the
+// gemini-proxy Edge Function (and are covered by its Deno tests), because the
+// API key does. What is left to test here is the client half: what this
+// service sends, and how it treats what comes back.
+
+Meal _meal({
+  String name = 'Ramen',
+  int calories = 600,
+  MealType type = MealType.lunch,
+  String? review,
+}) {
+  return Meal(
+    id: 'meal-1',
+    name: name,
+    calories: calories,
+    mealType: type,
+    foodReview: review,
   );
 }
 
-const _balancedMeals = [
-  Meal(
-    id: 'm1',
-    name: 'Rice and eggs',
-    calories: 500,
-    mealType: MealType.breakfast,
-  ),
-];
-
 void main() {
-  test('parses a well-formed text response into the advice string', () async {
-    final client = MockClient((request) async {
-      return _geminiResponseWithText(
-        'You had a balanced day -- nice work staying active.',
-      );
-    });
+  test('sends the day as a daily_advice action and returns the advice', () async {
+    String? seenAction;
+    Map<String, dynamic>? seenBody;
     final service = GeminiDailyAdviceService(
-      apiKey: 'test-key',
-      client: client,
+      invoke: (action, body) async {
+        seenAction = action;
+        seenBody = body;
+        return {'advice': 'A gentle, balanced day.'};
+      },
     );
 
     final advice = await service.adviceFor(
-      meals: _balancedMeals,
-      steps: 6000,
+      meals: [_meal(review: 'Rich broth')],
+      steps: 8000,
       mood: Mood.happy,
-      caloriesEaten: 500,
+      caloriesEaten: 1800,
+      caloriesBurned: 500,
     );
 
-    expect(advice, 'You had a balanced day -- nice work staying active.');
-  });
+    expect(advice, 'A gentle, balanced day.');
+    expect(seenAction, 'daily_advice');
+    expect(seenBody!['mood'], 'happy');
+    expect(seenBody!['steps'], 8000);
+    expect(seenBody!['caloriesEaten'], 1800);
+    expect(seenBody!['caloriesBurned'], 500);
 
-  test('trims surrounding whitespace from the model response', () async {
-    final client = MockClient(
-      (request) async => _geminiResponseWithText('\n  Some advice.  \n'),
-    );
-    final service = GeminiDailyAdviceService(
-      apiKey: 'test-key',
-      client: client,
-    );
-
-    final advice = await service.adviceFor(
-      meals: _balancedMeals,
-      steps: 6000,
-      mood: Mood.happy,
-    );
-
-    expect(advice, 'Some advice.');
-  });
-
-  test(
-    'throws on a non-200 response so the caller can offer a retry',
-    () async {
-      final client = MockClient(
-        (request) async => http.Response('Server error', 500),
-      );
-      final service = GeminiDailyAdviceService(
-        apiKey: 'test-key',
-        client: client,
-      );
-
-      expect(
-        () => service.adviceFor(
-          meals: _balancedMeals,
-          steps: 6000,
-          mood: Mood.happy,
-        ),
-        throwsA(isA<Exception>()),
-      );
-    },
-  );
-
-  test(
-    'throws on malformed/unparseable JSON rather than returning garbage',
-    () async {
-      final client = MockClient(
-        (request) async => http.Response('not json at all', 200),
-      );
-      final service = GeminiDailyAdviceService(
-        apiKey: 'test-key',
-        client: client,
-      );
-
-      expect(
-        () => service.adviceFor(
-          meals: _balancedMeals,
-          steps: 6000,
-          mood: Mood.happy,
-        ),
-        throwsA(isA<Exception>()),
-      );
-    },
-  );
-
-  test('throws when the response has an empty advice string', () async {
-    final client = MockClient((request) async => _geminiResponseWithText(''));
-    final service = GeminiDailyAdviceService(
-      apiKey: 'test-key',
-      client: client,
-    );
-
-    expect(
-      () => service.adviceFor(
-        meals: _balancedMeals,
-        steps: 6000,
-        mood: Mood.happy,
-      ),
-      throwsA(isA<Exception>()),
-    );
-  });
-
-  test('throws when the network call itself throws', () async {
-    final client = MockClient(
-      (request) async => throw const SocketException('no connection'),
-    );
-    final service = GeminiDailyAdviceService(
-      apiKey: 'test-key',
-      client: client,
-    );
-
-    expect(
-      () => service.adviceFor(
-        meals: _balancedMeals,
-        steps: 6000,
-        mood: Mood.happy,
-      ),
-      throwsA(isA<SocketException>()),
-    );
-  });
-
-  test(
-    'sends the system instruction and the day\'s data, with the API key in the URL',
-    () async {
-      Uri? capturedUri;
-      Map<String, dynamic>? capturedBody;
-      final client = MockClient((request) async {
-        capturedUri = request.url;
-        capturedBody = jsonDecode(request.body) as Map<String, dynamic>;
-        return _geminiResponseWithText('ok');
-      });
-      final service = GeminiDailyAdviceService(
-        apiKey: 'my-secret-key',
-        client: client,
-      );
-
-      await service.adviceFor(
-        meals: const [
-          Meal(
-            id: 'm1',
-            name: 'Nasi lemak',
-            calories: 600,
-            mealType: MealType.lunch,
-          ),
-        ],
-        steps: 4200,
-        mood: Mood.stressed,
-        caloriesEaten: 600,
-        caloriesBurned: 900,
-      );
-
-      expect(capturedUri!.queryParameters['key'], 'my-secret-key');
-
-      final systemText =
-          (capturedBody!['systemInstruction']['parts']
-                  as List<dynamic>)[0]['text']
-              as String;
-      // The safety/tone constraints must actually be sent to the model, not
-      // just documented in a comment.
-      for (final mustContain in [
-        'Never diagnose',
-        'restrict or skip meals',
-        'compensation',
-        'gentle and optional-sounding',
-      ]) {
-        expect(systemText, contains(mustContain));
-      }
-
-      final promptText =
-          (capturedBody!['contents'] as List<dynamic>)[0]['parts'][0]['text']
-              as String;
-      expect(promptText, contains('stressed'));
-      expect(promptText, contains('4200'));
-      expect(promptText, contains('Nasi lemak'));
-      expect(promptText, contains('600'));
-      expect(promptText, contains('900'));
-    },
-  );
-
-  test('omits optional figures from the prompt when they are null', () async {
-    Map<String, dynamic>? capturedBody;
-    final client = MockClient((request) async {
-      capturedBody = jsonDecode(request.body) as Map<String, dynamic>;
-      return _geminiResponseWithText('ok');
+    final meals = seenBody!['meals'] as List;
+    expect(meals, hasLength(1));
+    expect(meals.single, {
+      'name': 'Ramen',
+      'mealType': 'lunch',
+      'calories': 600,
+      'foodReview': 'Rich broth',
     });
+  });
+
+  test('passes null figures through rather than inventing zeros', () async {
+    Map<String, dynamic>? seenBody;
     final service = GeminiDailyAdviceService(
-      apiKey: 'test-key',
-      client: client,
+      invoke: (action, body) async {
+        seenBody = body;
+        return {'advice': 'ok'};
+      },
     );
 
     await service.adviceFor(meals: const [], steps: null, mood: Mood.neutral);
 
-    final promptText =
-        (capturedBody!['contents'] as List<dynamic>)[0]['parts'][0]['text']
-            as String;
-    expect(promptText, contains('none yet today'));
-    expect(promptText, isNot(contains('Steps today')));
-    expect(promptText, isNot(contains('Calories eaten')));
-    expect(promptText, isNot(contains('Calories burned')));
+    expect(seenBody!['steps'], isNull);
+    expect(seenBody!['caloriesEaten'], isNull);
+    expect(seenBody!['caloriesBurned'], isNull);
+    expect(seenBody!['meals'], isEmpty);
   });
 
-  test('includes a meal\'s food review in the prompt when present', () async {
-    Map<String, dynamic>? capturedBody;
-    final client = MockClient((request) async {
-      capturedBody = jsonDecode(request.body) as Map<String, dynamic>;
-      return _geminiResponseWithText('ok');
-    });
-    final service = GeminiDailyAdviceService(apiKey: 'test-key', client: client);
-
-    await service.adviceFor(
-      meals: const [
-        Meal(
-          id: 'm1',
-          name: 'Ramen',
-          calories: 650,
-          mealType: MealType.lunch,
-          restaurantName: 'Ichiran Gion',
-          foodReview: 'Rich broth, too salty.',
-        ),
-      ],
-      steps: 6000,
-      mood: Mood.happy,
+  test('trims surrounding whitespace from the returned advice', () async {
+    final service = GeminiDailyAdviceService(
+      invoke: (_, _) async => {'advice': '   Take it easy today.  \n'},
     );
 
-    final promptText =
-        (capturedBody!['contents'] as List<dynamic>)[0]['parts'][0]['text']
-            as String;
-    expect(promptText, contains('Rich broth, too salty.'));
+    expect(
+      await service.adviceFor(meals: const [], steps: 1, mood: Mood.neutral),
+      'Take it easy today.',
+    );
   });
 
-  test('omits the review note from the prompt when a meal has none', () async {
-    Map<String, dynamic>? capturedBody;
-    final client = MockClient((request) async {
-      capturedBody = jsonDecode(request.body) as Map<String, dynamic>;
-      return _geminiResponseWithText('ok');
-    });
-    final service = GeminiDailyAdviceService(apiKey: 'test-key', client: client);
+  test('throws when the advice is missing or empty', () async {
+    for (final payload in [
+      <String, dynamic>{},
+      <String, dynamic>{'advice': '   '},
+      <String, dynamic>{'advice': 42},
+    ]) {
+      final service = GeminiDailyAdviceService(invoke: (_, _) async => payload);
+      expect(
+        () => service.adviceFor(meals: const [], steps: 1, mood: Mood.neutral),
+        throwsA(isA<GeminiProxyException>()),
+        reason: 'payload: $payload',
+      );
+    }
+  });
 
-    await service.adviceFor(
-      meals: _balancedMeals,
-      steps: 6000,
-      mood: Mood.happy,
+  test('lets a proxy failure surface so the caller can offer a retry', () async {
+    final service = GeminiDailyAdviceService(
+      invoke: (_, _) async =>
+          throw const GeminiProxyException('down', code: 'provider_error'),
     );
 
-    final promptText =
-        (capturedBody!['contents'] as List<dynamic>)[0]['parts'][0]['text']
-            as String;
-    expect(promptText, isNot(contains("user's note")));
+    await expectLater(
+      service.adviceFor(meals: const [], steps: 1, mood: Mood.neutral),
+      throwsA(isA<GeminiProxyException>()),
+    );
   });
 }

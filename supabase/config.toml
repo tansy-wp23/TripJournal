@@ -6,6 +6,11 @@ verify_jwt = false
 [functions.places-proxy]
 verify_jwt = true
 
+# Holds GEMINI_API_KEY. Must stay true — an unauthenticated caller here spends
+# the project owner's Gemini quota.
+[functions.gemini-proxy]
+verify_jwt = true
+
 [functions.verification-send]
 verify_jwt = false
 
