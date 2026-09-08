@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../data/countries.dart';
 import '../../data/current_user_id_provider.dart';
 import '../../data/trip_cover_storage.dart';
 import '../../data/trip_repository_locator.dart';
@@ -39,6 +40,7 @@ class _TripFormScreenState extends ConsumerState<TripFormScreen> {
   final _formKey = GlobalKey<FormState>();
   late final TextEditingController _titleController;
   late final TextEditingController _destinationController;
+  late final FocusNode _destinationFocusNode;
   late final TextEditingController _notesController;
   late DateTime _startDate;
   late DateTime _endDate;
@@ -60,6 +62,7 @@ class _TripFormScreenState extends ConsumerState<TripFormScreen> {
     _destinationController = TextEditingController(
       text: trip?.destination ?? '',
     );
+    _destinationFocusNode = FocusNode();
     _notesController = TextEditingController(text: trip?.notes ?? '');
     _startDate = trip == null
         ? today
@@ -78,6 +81,7 @@ class _TripFormScreenState extends ConsumerState<TripFormScreen> {
   void dispose() {
     _titleController.dispose();
     _destinationController.dispose();
+    _destinationFocusNode.dispose();
     _notesController.dispose();
     super.dispose();
   }
@@ -338,14 +342,69 @@ class _TripFormScreenState extends ConsumerState<TripFormScreen> {
                               validator: validateTripTitle,
                             ),
                             const SizedBox(height: 8),
-                            TextFormField(
-                              key: const Key('trip-destination-field'),
-                              controller: _destinationController,
-                              decoration: const InputDecoration(
-                                labelText: 'Destination',
-                                hintText: 'City, region, or country',
-                              ),
-                              validator: validateTripDestination,
+                            RawAutocomplete<String>(
+                              textEditingController: _destinationController,
+                              focusNode: _destinationFocusNode,
+                              optionsBuilder: (value) {
+                                final query = value.text.trim().toLowerCase();
+                                if (query.isEmpty) {
+                                  return const Iterable<String>.empty();
+                                }
+                                return kCountries.where(
+                                  (country) =>
+                                      country.toLowerCase().contains(query),
+                                );
+                              },
+                              fieldViewBuilder:
+                                  (
+                                    context,
+                                    controller,
+                                    focusNode,
+                                    onFieldSubmitted,
+                                  ) => TextFormField(
+                                    key: const Key('trip-destination-field'),
+                                    controller: controller,
+                                    focusNode: focusNode,
+                                    decoration: const InputDecoration(
+                                      labelText: 'Destination',
+                                      hintText:
+                                          'City, region, or country — search to pick a country',
+                                    ),
+                                    validator: validateTripDestination,
+                                  ),
+                              optionsViewBuilder:
+                                  (context, onSelected, options) => Align(
+                                    alignment: Alignment.topLeft,
+                                    child: Material(
+                                      elevation: 4,
+                                      borderRadius: BorderRadius.circular(12),
+                                      child: ConstrainedBox(
+                                        constraints: const BoxConstraints(
+                                          maxHeight: 240,
+                                        ),
+                                        child: ListView.builder(
+                                          key: const Key(
+                                            'trip-destination-options',
+                                          ),
+                                          padding: EdgeInsets.zero,
+                                          shrinkWrap: true,
+                                          itemCount: options.length,
+                                          itemBuilder: (context, index) {
+                                            final option = options.elementAt(
+                                              index,
+                                            );
+                                            return ListTile(
+                                              key: Key(
+                                                'trip-destination-option-$option',
+                                              ),
+                                              title: Text(option),
+                                              onTap: () => onSelected(option),
+                                            );
+                                          },
+                                        ),
+                                      ),
+                                    ),
+                                  ),
                             ),
                           ],
                         ),
