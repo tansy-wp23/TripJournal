@@ -1,8 +1,5 @@
-import 'dart:convert';
-
 import 'package:flutter_test/flutter_test.dart';
-import 'package:http/http.dart' as http;
-import 'package:http/testing.dart';
+import 'package:tripjournal/features/journal/ai/gemini_function_invoker.dart';
 import 'package:tripjournal/features/trip/ai/gemini_trip_summary_service.dart';
 import 'package:tripjournal/features/trip/ai/trip_summary_service.dart';
 import 'package:tripjournal/models/journal_entry.dart';
@@ -62,38 +59,41 @@ void main() {
     expect(summary, contains('happy'));
   });
 
-  test('Gemini summary sends selected-trip entry data and returns its text', () async {
-    Map<String, dynamic>? requestBody;
+  // Prompt wording and the system instruction live in the gemini-proxy Edge
+  // Function now (with the API key), so what this asserts is the data handed
+  // over — including the chronological ordering, which the summary depends on
+  // and which the function cannot recover on its own.
+  test('Gemini summary sends the trip and its entries oldest-first', () async {
+    String? seenAction;
+    Map<String, dynamic>? seenBody;
     final service = GeminiTripSummaryService(
-      apiKey: 'test-key',
-      client: MockClient((request) async {
-        requestBody = jsonDecode(request.body) as Map<String, dynamic>;
-        return http.Response(
-          jsonEncode({
-            'candidates': [
-              {
-                'content': {
-                  'parts': [
-                    {'text': 'A thoughtful Kyoto recap.'},
-                  ],
-                },
-              },
-            ],
-          }),
-          200,
-        );
-      }),
+      invoke: (action, body) async {
+        seenAction = action;
+        seenBody = body;
+        return {'summary': '  A thoughtful Kyoto recap. '};
+      },
     );
 
     final summary = await service.summaryFor(trip: _trip, entries: entries);
 
     expect(summary, 'A thoughtful Kyoto recap.');
-    final prompt =
-        (requestBody!['contents'] as List<dynamic>)[0]['parts'][0]['text']
-            as String;
-    expect(prompt, contains('Kyoto Escape'));
-    expect(prompt, contains('Arrival'));
-    expect(prompt, contains('Temple visit'));
+    expect(seenAction, 'trip_summary');
+    expect((seenBody!['trip'] as Map)['title'], 'Kyoto Escape');
+
+    final sent = seenBody!['entries'] as List;
+    expect(sent.map((e) => (e as Map)['title']), ['Arrival', 'Temple visit']);
+    expect((sent.first as Map)['mood'], 'happy');
+  });
+
+  test('Gemini summary throws when the proxy returns nothing usable', () async {
+    final service = GeminiTripSummaryService(
+      invoke: (_, _) async => const <String, dynamic>{'summary': '  '},
+    );
+
+    await expectLater(
+      service.summaryFor(trip: _trip, entries: entries),
+      throwsA(isA<GeminiProxyException>()),
+    );
   });
 
   test('summary services reject an empty entry list', () async {
@@ -101,5 +101,18 @@ void main() {
       MockTripSummaryService().summaryFor(trip: _trip, entries: const []),
       throwsArgumentError,
     );
+    // The Gemini one rejects it client-side too, without a wasted round trip.
+    var called = false;
+    final service = GeminiTripSummaryService(
+      invoke: (_, _) async {
+        called = true;
+        return {'summary': 'never'};
+      },
+    );
+    await expectLater(
+      service.summaryFor(trip: _trip, entries: const []),
+      throwsArgumentError,
+    );
+    expect(called, isFalse);
   });
 }

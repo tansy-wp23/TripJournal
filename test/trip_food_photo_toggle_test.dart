@@ -70,7 +70,7 @@ class _PhotoSeedJournalRepository implements JournalRepository {
   ];
 
   @override
-  Future<List<JournalEntry>> getEntries(String tripId) async => _entries;
+  Future<List<JournalEntry>> getEntries(String tripId, {bool includeDrafts = false}) async => _entries;
 
   @override
   Future<JournalEntry?> getEntry(String id) async =>

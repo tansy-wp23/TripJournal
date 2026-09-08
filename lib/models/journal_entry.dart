@@ -16,6 +16,14 @@ class JournalEntry {
   final DateTime creationOrderAt;
   final HealthLog? healthLog;
 
+  /// A parked, half-written entry: saved so the work is not lost, but not yet
+  /// a real entry. Drafts show only in the trip timeline (badged) and the
+  /// editor — `JournalRepository.getEntries` filters them out by default, so
+  /// the map, stats, AI summary, PDF export and every public/shared view skip
+  /// them without needing to know drafts exist. Saving normally (which
+  /// enforces the full "title or body" rule) publishes the draft.
+  final bool isDraft;
+
   const JournalEntry({
     required this.id,
     required this.tripId,
@@ -29,6 +37,7 @@ class JournalEntry {
     required this.updatedAt,
     DateTime? creationOrderAt,
     this.healthLog,
+    this.isDraft = false,
   }) : creationOrderAt = creationOrderAt ?? updatedAt;
 
   /// The entry's logical, timezone-independent journal day.
@@ -79,6 +88,9 @@ class JournalEntry {
       healthLog: json['healthLog'] == null
           ? null
           : HealthLog.fromJson(json['healthLog'] as Map<String, dynamic>),
+      // Absent on anything written before drafts existed — those are all
+      // published entries.
+      isDraft: json['isDraft'] as bool? ?? false,
     );
   }
 
@@ -96,6 +108,7 @@ class JournalEntry {
       'updatedAt': updatedAt.toIso8601String(),
       'creationOrderAt': creationOrderAt.toIso8601String(),
       'healthLog': healthLog?.toJson(),
+      'isDraft': isDraft,
     };
   }
 
@@ -113,6 +126,7 @@ class JournalEntry {
     DateTime? updatedAt,
     DateTime? creationOrderAt,
     HealthLog? healthLog,
+    bool? isDraft,
   }) {
     assert(!(clearLocation && location != null));
     return JournalEntry(
@@ -128,6 +142,7 @@ class JournalEntry {
       updatedAt: updatedAt ?? this.updatedAt,
       creationOrderAt: creationOrderAt ?? this.creationOrderAt,
       healthLog: healthLog ?? this.healthLog,
+      isDraft: isDraft ?? this.isDraft,
     );
   }
 }

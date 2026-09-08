@@ -1,167 +1,98 @@
-import 'dart:convert';
-import 'dart:io';
-import 'dart:typed_data';
-
 import 'package:flutter_test/flutter_test.dart';
-import 'package:http/http.dart' as http;
-import 'package:http/testing.dart';
 
 import 'package:tripjournal/features/journal/ai/gemini_food_detection_service.dart';
+import 'package:tripjournal/features/journal/ai/gemini_function_invoker.dart';
 
-http.Response _geminiResponseWithText(String modelText) {
-  return http.Response(
-    jsonEncode({
-      'candidates': [
-        {
-          'content': {
-            'parts': [
-              {'text': modelText},
-            ],
-          },
-        },
-      ],
-    }),
-    200,
-  );
-}
+// The model call, ```json fence stripping and the storage-URL guard all live
+// in the gemini-proxy Edge Function now (covered by its Deno tests). What
+// matters here is the contract this service has always had with its caller:
+// **never throw, never block manual entry** — every failure is a null.
+
+const _imageUrl =
+    'https://project.supabase.co/storage/v1/object/public/journal-photos/'
+    'user-1/trip-1/entry-1.jpg';
 
 void main() {
-  late Directory tempDir;
-  late String imagePath;
+  test('returns the detected food from the proxy', () async {
+    String? seenAction;
+    Map<String, dynamic>? seenBody;
+    final service = GeminiFoodDetectionService(
+      invoke: (action, body) async {
+        seenAction = action;
+        seenBody = body;
+        return {
+          'food': {'name': 'Ramen', 'estimatedCalories': 620},
+        };
+      },
+    );
 
-  setUp(() async {
-    tempDir = await Directory.systemTemp.createTemp('gemini_food_detection_test');
-    final file = File('${tempDir.path}/meal.jpg');
-    await file.writeAsBytes(Uint8List.fromList([1, 2, 3, 4]));
-    imagePath = file.path;
+    final detected = await service.detectFromImage(_imageUrl);
+
+    expect(detected!.name, 'Ramen');
+    expect(detected.estimatedCalories, 620);
+    expect(seenAction, 'food_detection');
+    expect(seenBody, {'imageUrl': _imageUrl});
   });
 
-  tearDown(() async {
-    await tempDir.delete(recursive: true);
+  test('rounds a fractional calorie estimate', () async {
+    final service = GeminiFoodDetectionService(
+      invoke: (_, _) async => {
+        'food': {'name': 'Toast', 'estimatedCalories': 149.6},
+      },
+    );
+
+    expect((await service.detectFromImage(_imageUrl))!.estimatedCalories, 150);
   });
 
-  test('parses a well-formed JSON response into a DetectedFood', () async {
-    final client = MockClient((request) async {
-      return _geminiResponseWithText('{"name": "Chicken rice", "estimatedCalories": 550}');
-    });
-    final service = GeminiFoodDetectionService(apiKey: 'test-key', client: client);
+  test('returns null when the proxy recognised nothing', () async {
+    final service = GeminiFoodDetectionService(
+      invoke: (_, _) async => {'food': null},
+    );
 
-    final detected = await service.detectFromImage(imagePath);
-
-    expect(detected, isNotNull);
-    expect(detected!.name, 'Chicken rice');
-    expect(detected.estimatedCalories, 550);
+    expect(await service.detectFromImage(_imageUrl), isNull);
   });
 
-  test('strips ```json code fences the model sometimes adds despite instructions', () async {
-    final client = MockClient((request) async {
-      return _geminiResponseWithText('```json\n{"name": "Laksa", "estimatedCalories": 480}\n```');
-    });
-    final service = GeminiFoodDetectionService(apiKey: 'test-key', client: client);
-
-    final detected = await service.detectFromImage(imagePath);
-
-    expect(detected!.name, 'Laksa');
-    expect(detected.estimatedCalories, 480);
+  test('returns null on an incomplete or malformed food payload', () async {
+    for (final food in [
+      {'name': '', 'estimatedCalories': 100},
+      {'name': 'Ramen'},
+      {'estimatedCalories': 100},
+      'not a map',
+    ]) {
+      final service = GeminiFoodDetectionService(
+        invoke: (_, _) async => {'food': food},
+      );
+      expect(
+        await service.detectFromImage(_imageUrl),
+        isNull,
+        reason: 'food: $food',
+      );
+    }
   });
 
-  test('returns null (falls back to manual entry) on a non-200 response', () async {
-    final client = MockClient((request) async => http.Response('Server error', 500));
-    final service = GeminiFoodDetectionService(apiKey: 'test-key', client: client);
+  test('returns null rather than throwing when the proxy fails', () async {
+    final service = GeminiFoodDetectionService(
+      invoke: (_, _) async =>
+          throw const GeminiProxyException('down', code: 'provider_error'),
+    );
 
-    final detected = await service.detectFromImage(imagePath);
-
-    expect(detected, isNull);
-  });
-
-  test('returns null on malformed/unparseable JSON rather than throwing', () async {
-    final client = MockClient((request) async => _geminiResponseWithText('not valid json at all'));
-    final service = GeminiFoodDetectionService(apiKey: 'test-key', client: client);
-
-    final detected = await service.detectFromImage(imagePath);
-
-    expect(detected, isNull);
-  });
-
-  test('returns null when the network call throws', () async {
-    final client = MockClient((request) async => throw const SocketException('no connection'));
-    final service = GeminiFoodDetectionService(apiKey: 'test-key', client: client);
-
-    final detected = await service.detectFromImage(imagePath);
-
-    expect(detected, isNull);
-  });
-
-  test('returns null for a missing image file', () async {
-    final client = MockClient((request) async => _geminiResponseWithText('{"name": "x", "estimatedCalories": 1}'));
-    final service = GeminiFoodDetectionService(apiKey: 'test-key', client: client);
-
-    final detected = await service.detectFromImage('${tempDir.path}/does_not_exist.jpg');
-
-    expect(detected, isNull);
+    expect(await service.detectFromImage(_imageUrl), isNull);
   });
 
   test(
-    'fetches the image over HTTP when imagePath is a Supabase Storage URL '
-    '(BACKEND_MODE=supabase), not a local file path',
+    'never calls the proxy for a local file path — those are mock-mode photos '
+    'the function cannot read, and sending one would just waste a round trip',
     () async {
-      const remoteUrl =
-          'https://example.supabase.co/storage/v1/object/public/'
-          'journal-photos/user-1/trip-1/entry-abc.jpg';
-      final requestedUrls = <Uri>[];
-      final client = MockClient((request) async {
-        requestedUrls.add(request.url);
-        if (request.url.toString() == remoteUrl) {
-          return http.Response.bytes([9, 9, 9, 9], 200);
-        }
-        return _geminiResponseWithText(
-          '{"name": "Nasi Lemak", "estimatedCalories": 600}',
-        );
-      });
+      var called = false;
       final service = GeminiFoodDetectionService(
-        apiKey: 'test-key',
-        client: client,
+        invoke: (_, _) async {
+          called = true;
+          return {'food': null};
+        },
       );
 
-      final detected = await service.detectFromImage(remoteUrl);
-
-      expect(detected, isNotNull);
-      expect(detected!.name, 'Nasi Lemak');
-      // Confirms the bytes actually came from the HTTP fetch, not a failed
-      // local File() read silently sending nothing.
-      expect(requestedUrls, contains(Uri.parse(remoteUrl)));
+      expect(await service.detectFromImage('/data/user/0/cache/photo.jpg'), isNull);
+      expect(called, isFalse);
     },
   );
-
-  test(
-    'returns null when the remote image URL itself fails to fetch',
-    () async {
-      const remoteUrl = 'https://example.supabase.co/storage/v1/object/public/journal-photos/missing.jpg';
-      final client = MockClient((request) async => http.Response('Not found', 404));
-      final service = GeminiFoodDetectionService(apiKey: 'test-key', client: client);
-
-      final detected = await service.detectFromImage(remoteUrl);
-
-      expect(detected, isNull);
-    },
-  );
-
-  test('sends the image as base64 inline data with the API key in the URL', () async {
-    Uri? capturedUri;
-    Map<String, dynamic>? capturedBody;
-    final client = MockClient((request) async {
-      capturedUri = request.url;
-      capturedBody = jsonDecode(request.body) as Map<String, dynamic>;
-      return _geminiResponseWithText('{"name": "Test", "estimatedCalories": 100}');
-    });
-    final service = GeminiFoodDetectionService(apiKey: 'my-secret-key', client: client);
-
-    await service.detectFromImage(imagePath);
-
-    expect(capturedUri!.queryParameters['key'], 'my-secret-key');
-    final parts = capturedBody!['contents'][0]['parts'] as List<dynamic>;
-    final inlineData = parts[1]['inline_data'] as Map<String, dynamic>;
-    expect(inlineData['mime_type'], 'image/jpeg');
-    expect(base64Decode(inlineData['data'] as String), [1, 2, 3, 4]);
-  });
 }

@@ -509,7 +509,7 @@ final class _RecordingJournalRepository implements JournalRepository {
   final List<String> deletedEntryIds = [];
 
   @override
-  Future<List<JournalEntry>> getEntries(String tripId) async => [
+  Future<List<JournalEntry>> getEntries(String tripId, {bool includeDrafts = false}) async => [
     JournalEntry(
       id: 'journal-entry',
       tripId: tripId,

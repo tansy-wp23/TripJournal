@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 
+import '../../../data/backend_mode.dart';
+import '../../journal/ai/gemini_function_invoker.dart';
 import '../gemini_reachability.dart';
 import '../supabase_connectivity.dart';
 
@@ -23,7 +24,19 @@ import '../supabase_connectivity.dart';
 /// an admin opens this screen, just to show a status chip, would work
 /// against that lesson rather than respect it.
 class SystemHealthScreen extends StatefulWidget {
-  const SystemHealthScreen({super.key});
+  const SystemHealthScreen({
+    super.key,
+    this.geminiInvoker,
+    this.geminiConfiguredOverride,
+  });
+
+  /// Overrides the production `gemini-proxy` invoker — tests only.
+  final GeminiFunctionInvoker? geminiInvoker;
+
+  /// Overrides the [BackendMode] check — tests only. `backendMode` is a
+  /// compile-time constant, so without this the "Configured" branch and the
+  /// Test Connection flow are unreachable under `flutter test`.
+  final bool? geminiConfiguredOverride;
 
   @override
   State<SystemHealthScreen> createState() => _SystemHealthScreenState();
@@ -35,10 +48,11 @@ class _SystemHealthScreenState extends State<SystemHealthScreen> {
   _CheckState _supabaseState = _CheckState.checking;
   _CheckState _geminiTestState = _CheckState.idle;
 
-  bool get _geminiConfigured {
-    final apiKey = dotenv.isInitialized ? dotenv.env['GEMINI_API_KEY'] : null;
-    return apiKey != null && apiKey.isNotEmpty;
-  }
+  /// The key now lives in Supabase secrets, so the app cannot inspect it —
+  /// only ask the function. Anything short of a real backend means AI is on
+  /// the offline mocks, matching the locators' own rule.
+  bool get _geminiConfigured =>
+      widget.geminiConfiguredOverride ?? backendMode == BackendMode.supabase;
 
   @override
   void initState() {
@@ -54,11 +68,16 @@ class _SystemHealthScreenState extends State<SystemHealthScreen> {
   }
 
   Future<void> _testGemini() async {
-    final apiKey = dotenv.env['GEMINI_API_KEY']!;
     setState(() => _geminiTestState = _CheckState.checking);
-    final ok = await checkGeminiReachability(apiKey);
+    final health = await checkGeminiReachability(
+      invoke: widget.geminiInvoker ?? geminiFunctionInvoker,
+    );
     if (!mounted) return;
-    setState(() => _geminiTestState = ok ? _CheckState.ok : _CheckState.failed);
+    setState(
+      () => _geminiTestState = health.reachable
+          ? _CheckState.ok
+          : _CheckState.failed,
+    );
   }
 
   @override
@@ -77,9 +96,11 @@ class _SystemHealthScreenState extends State<SystemHealthScreen> {
               status: _geminiConfigured ? _CheckState.ok : _CheckState.failed,
               statusText: _geminiConfigured ? 'Configured' : 'Not configured',
               detail: _geminiConfigured
-                  ? 'GEMINI_API_KEY is set — AI features call the real Gemini API.'
-                  : 'GEMINI_API_KEY is not set — AI features fall back to '
-                        'built-in offline mocks.',
+                  ? 'AI features call Gemini through the gemini-proxy Edge '
+                        'Function, which holds the API key as a Supabase secret. '
+                        'Test Connection asks the function whether that key works.'
+                  : 'This build runs on the mock backend — AI features use '
+                        'built-in offline mocks and never call Gemini.',
               trailing: _geminiConfigured ? _buildGeminiTestButton() : null,
             ),
             _HealthIndicatorCard(

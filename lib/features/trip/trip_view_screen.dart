@@ -431,12 +431,21 @@ class _TripViewScreenState extends ConsumerState<TripViewScreen>
       return const Scaffold(body: Center(child: Text('Trip not found.')));
     }
 
+    // Published entries only — everything derived from this (stats, the photo
+    // strip, the map, the AI summary) must ignore drafts.
     final tripEntries = entriesWithinTrip(trip, journalController.entries);
     final stats = computeTripStats(
       entries: tripEntries,
       totalDays: trip.durationDays,
     );
-    final dayGroups = buildDayGroups(trip, tripEntries);
+
+    // The timeline is the one place drafts are visible, so it (and only it)
+    // groups them alongside the published entries, in their own day.
+    final timelineEntries = entriesWithinTrip(trip, [
+      ...journalController.entries,
+      ...journalController.drafts,
+    ]);
+    final dayGroups = buildDayGroups(trip, timelineEntries);
 
     // Deliberately built from the UNFILTERED entries, and built once here so
     // the header and every day tile share one list. A day tile that derived
@@ -447,7 +456,7 @@ class _TripViewScreenState extends ConsumerState<TripViewScreen>
     final tripPhotos = buildTripPhotos(trip, tripEntries);
 
     final filter = journalController.filter;
-    final filteredTripEntries = filterJournalEntries(tripEntries, filter);
+    final filteredTripEntries = filterJournalEntries(timelineEntries, filter);
     final displayDayGroups = filter.isActive
         ? buildDayGroups(
             trip,
@@ -1132,10 +1141,18 @@ class _DayGroupTile extends StatelessWidget {
             for (final entry in group.entries)
               _EntryTile(
                 entry: entry,
+                // A draft resumes straight in the editor — the read-only
+                // detail screen is a dead end for something half-written.
                 onTap: () => Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (_) => EntryDetailScreen(entryId: entry.id),
+                    builder: (_) => entry.isDraft
+                        ? CreateEditEntryScreen(
+                            existingEntry: entry,
+                            tripId: trip.id,
+                            trip: trip,
+                          )
+                        : EntryDetailScreen(entryId: entry.id),
                   ),
                 ),
               ),
@@ -1190,7 +1207,8 @@ class _EntryTile extends StatelessWidget {
       container: true,
       button: true,
       label:
-          'Open entry ${entry.displayTitle}. $quickStats${locationLabel == null ? '' : '. $locationLabel'}',
+          '${entry.isDraft ? 'Resume draft' : 'Open entry'} ${entry.displayTitle}. '
+          '$quickStats${locationLabel == null ? '' : '. $locationLabel'}',
       child: ExcludeSemantics(
         child: Container(
           margin: const EdgeInsets.only(bottom: 8),
@@ -1231,12 +1249,47 @@ class _EntryTile extends StatelessWidget {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            entry.displayTitle,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: Theme.of(context).textTheme.bodyMedium
-                                ?.copyWith(fontWeight: FontWeight.w700),
+                          Row(
+                            children: [
+                              Flexible(
+                                child: Text(
+                                  entry.displayTitle,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: Theme.of(context).textTheme.bodyMedium
+                                      ?.copyWith(fontWeight: FontWeight.w700),
+                                ),
+                              ),
+                              // Same pill treatment as the day header's
+                              // Today/Upcoming chip, so it reads as native to
+                              // this screen rather than a bolted-on label.
+                              if (entry.isDraft) ...[
+                                const SizedBox(width: 8),
+                                Container(
+                                  key: Key('entry-draft-badge-${entry.id}'),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 9,
+                                    vertical: 2,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: colorScheme.tertiary.withValues(
+                                      alpha: 0.14,
+                                    ),
+                                    borderRadius: BorderRadius.circular(999),
+                                  ),
+                                  child: Text(
+                                    'Draft',
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .labelSmall
+                                        ?.copyWith(
+                                          color: colorScheme.tertiary,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                  ),
+                                ),
+                              ],
+                            ],
                           ),
                           const SizedBox(height: 2),
                           Text(

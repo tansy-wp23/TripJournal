@@ -1,15 +1,17 @@
-import 'package:flutter_dotenv/flutter_dotenv.dart';
-
 import '../../../data/ai_request_logging.dart';
+import '../../../data/backend_mode.dart';
 import '../../../models/ai_request_log.dart';
 import '../../../models/journal_entry.dart';
 import '../../../models/trip.dart';
+import '../../journal/ai/gemini_function_invoker.dart';
 import 'gemini_trip_summary_service.dart';
 import 'trip_summary_service.dart';
 
-/// The one place the app resolves its [TripSummaryService]. A configured
-/// Gemini key enables generated AI recaps; the offline service keeps the
-/// feature available for local development and tests.
+/// The one place the app resolves its [TripSummaryService]. Real recaps run
+/// through the `gemini-proxy` Edge Function (which holds `GEMINI_API_KEY` as a
+/// Supabase secret and authenticates the caller's session), so they need
+/// `BackendMode.supabase`; the offline service keeps the feature available for
+/// local development and tests.
 ///
 /// Kept as the raw, unwrapped resolution so nothing else about this
 /// symbol's behavior changes for existing callers/tests. Production call
@@ -26,9 +28,8 @@ final TripSummaryService loggedTripSummaryService =
     _LoggingTripSummaryService(tripSummaryService);
 
 TripSummaryService _resolveTripSummaryService() {
-  final apiKey = dotenv.isInitialized ? dotenv.env['GEMINI_API_KEY'] : null;
-  if (apiKey == null || apiKey.isEmpty) return MockTripSummaryService();
-  return GeminiTripSummaryService(apiKey: apiKey);
+  if (backendMode != BackendMode.supabase) return MockTripSummaryService();
+  return GeminiTripSummaryService(invoke: geminiFunctionInvoker);
 }
 
 class _LoggingTripSummaryService implements TripSummaryService {

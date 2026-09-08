@@ -1,27 +1,42 @@
-import 'package:http/http.dart' as http;
+import '../journal/ai/gemini_function_invoker.dart';
 
 /// PB-14's real Gemini reachability check (Phase 21,
-/// `docs/admin/PROGRESS.md`) — calls the `ListModels` endpoint, not
-/// `generateContent`. Deliberately not the same endpoint the three real AI
-/// services use: this app has already been burned twice by Gemini free-tier
-/// quota exhaustion (see `gemini_model.dart`'s own doc comment), and
-/// `ListModels` is a lightweight metadata call, not a generation request —
-/// checking "is the API reachable and this key valid" shouldn't cost the
-/// same quota a real advice/detection/summary call would.
+/// `docs/admin/PROGRESS.md`), now asked of the `gemini-proxy` Edge Function
+/// rather than of Google directly — the app no longer holds an API key to
+/// check with, which is the point (see `docs/GEMINI_PROXY_SETUP.md`).
 ///
-/// Returns `true` if the API answered with a successful response, `false`
-/// otherwise (bad key, network failure, non-200 status) — this function
-/// never throws.
-Future<bool> checkGeminiReachability(String apiKey, {http.Client? client}) async {
-  final httpClient = client ?? http.Client();
+/// The function answers using `ListModels`, not `generateContent`: this app
+/// has been burned twice by free-tier quota exhaustion, and a health check
+/// must not spend the same quota a real advice/detection/summary call would.
+///
+/// Returns a [GeminiHealth] describing what the *server* found. Never throws —
+/// an unreachable function, an unauthenticated caller or a malformed answer
+/// all read as "not reachable".
+class GeminiHealth {
+  const GeminiHealth({required this.configured, required this.reachable});
+
+  /// Whether the server has a `GEMINI_API_KEY` secret set at all.
+  final bool configured;
+
+  /// Whether that key actually answered.
+  final bool reachable;
+
+  static const unavailable = GeminiHealth(
+    configured: false,
+    reachable: false,
+  );
+}
+
+Future<GeminiHealth> checkGeminiReachability({
+  required GeminiFunctionInvoker invoke,
+}) async {
   try {
-    final response = await httpClient
-        .get(Uri.parse('https://generativelanguage.googleapis.com/v1beta/models?key=$apiKey'))
-        .timeout(const Duration(seconds: 10));
-    return response.statusCode == 200;
+    final payload = await invoke('health', const {});
+    final ok = payload['ok'];
+    final configured = payload['configured'];
+    if (ok is! bool || configured is! bool) return GeminiHealth.unavailable;
+    return GeminiHealth(configured: configured, reachable: ok);
   } catch (_) {
-    return false;
-  } finally {
-    if (client == null) httpClient.close();
+    return GeminiHealth.unavailable;
   }
 }

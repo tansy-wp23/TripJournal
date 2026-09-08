@@ -36,6 +36,8 @@ JournalEntry journalEntryFromSupabaseRow(Map<String, dynamic> row) {
       (row['creation_order_at'] ?? row['updated_at']) as String,
     ),
     healthLog: healthLogFromEmbeddedRows(row['health_logs']),
+    // Rows written before the drafts migration have no column value at all.
+    isDraft: (row['is_draft'] as bool?) ?? false,
   );
 }
 
@@ -129,6 +131,8 @@ Map<String, dynamic> journalEntryEditableFieldsToSupabaseRow(
     // the value is valid whether the column is `date` or `timestamptz`.
     'entry_date': formatDateOnly(entry.calendarDate),
     'updated_at': entry.updatedAt.toIso8601String(),
+    // Editable: a normal save on a parked draft is what publishes it.
+    'is_draft': entry.isDraft,
   };
 }
 

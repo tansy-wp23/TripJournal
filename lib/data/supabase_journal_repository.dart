@@ -34,11 +34,20 @@ class SupabaseJournalRepository implements JournalRepository {
   static const _entrySelect = '*,health_logs(*,meals(*))';
 
   @override
-  Future<List<JournalEntry>> getEntries(String tripId) async {
-    final rows = await _client
+  Future<List<JournalEntry>> getEntries(
+    String tripId, {
+    bool includeDrafts = false,
+  }) async {
+    // Filtered in the query rather than in Dart so a draft never crosses the
+    // wire to a caller that did not ask for one.
+    var query = _client
         .from('journal_entries')
         .select(_entrySelect)
-        .eq('trip_id', tripId)
+        .eq('trip_id', tripId);
+    if (!includeDrafts) {
+      query = query.eq('is_draft', false);
+    }
+    final rows = await query
         // Ascending explicitly: postgrest's `order` defaults to *descending*,
         // which would hand the timeline back newest-first here while
         // MockJournalRepository returns it oldest-first. Same app, same screen,

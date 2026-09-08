@@ -31,6 +31,9 @@ import '../widgets/mood_picker.dart';
 import '../widgets/photo_thumbnail.dart';
 import 'photo_viewer_screen.dart';
 
+/// What the user chose when backing out of an entry with unsaved changes.
+enum _UnsavedChoice { keepEditing, discard, saveDraft }
+
 class CreateEditEntryScreen extends ConsumerStatefulWidget {
   const CreateEditEntryScreen({
     super.key,
@@ -123,6 +126,12 @@ class _CreateEditEntryScreenState extends ConsumerState<CreateEditEntryScreen> {
   bool _dirty = false;
 
   bool get _isEditing => _persistedEntry != null;
+
+  /// Whether this entry is a real, published entry (as opposed to brand-new or
+  /// a parked draft). Backing out only offers "Save draft" while it is NOT
+  /// published — a published entry must never be quietly replaced by
+  /// half-finished edits, so that path keeps the plain discard prompt.
+  bool get _isPublished => _persistedEntry != null && !_persistedEntry!.isDraft;
 
   late final HealthDataSource _healthDataSource;
   late final PhotoStorage _photoStorage;
@@ -404,6 +413,60 @@ class _CreateEditEntryScreenState extends ConsumerState<CreateEditEntryScreen> {
     });
   }
 
+  /// Builds the entry from what is currently on the form.
+  ///
+  /// Shared by the save path and the draft path so the two can never drift
+  /// apart. [isDraft] false is what publishes a reopened draft on a normal
+  /// save.
+  JournalEntry _buildEntry({required bool isDraft}) {
+    final now = DateTime.now();
+    final existing = _persistedEntry;
+    final createdAt =
+        existing?.createdAt ??
+        deriveEntryTimestamp(widget.initialDate ?? now, now: now);
+    final selectedDate = existing?.calendarDate ?? widget.initialDate ?? now;
+    final entryDate = DateTime(
+      selectedDate.year,
+      selectedDate.month,
+      selectedDate.day,
+    );
+    final creationOrderAt = existing?.creationOrderAt ?? now;
+    final entryId = existing?.id ?? _draftEntryId;
+    final healthLogId = existing?.healthLog?.id ?? _draftHealthLogId;
+    final totalCaloriesEaten = _meals.fold<int>(
+      0,
+      (sum, meal) => sum + meal.calories,
+    );
+
+    return JournalEntry(
+      id: entryId,
+      tripId: _tripId,
+      title: _titleController.text.trim(),
+      body: _bodyController.text.trim(),
+      mood: _mood,
+      photoPaths: _photoPaths,
+      location: _location,
+      entryDate: entryDate,
+      createdAt: createdAt,
+      updatedAt: now,
+      creationOrderAt: creationOrderAt,
+      isDraft: isDraft,
+      // Preserve whatever advice already existed - AI advice is only ever
+      // generated/edited from EntryDetailScreen's own explicit button, so a
+      // save here (of the title/mood/meals/location/etc.) must never touch
+      // it, however trivial the edit.
+      healthLog: HealthLog(
+        id: healthLogId,
+        entryId: entryId,
+        steps: _steps,
+        caloriesEaten: totalCaloriesEaten,
+        caloriesBurned: _caloriesBurned,
+        meals: _meals,
+        aiAdvice: existing?.healthLog?.aiAdvice,
+      ),
+    );
+  }
+
   Future<void> _save() async {
     if (_saving) return;
     FocusScope.of(context).unfocus();
@@ -413,54 +476,8 @@ class _CreateEditEntryScreenState extends ConsumerState<CreateEditEntryScreen> {
     });
 
     try {
-      final title = _titleController.text.trim();
-      final body = _bodyController.text.trim();
-
-      final now = DateTime.now();
       final existing = _persistedEntry;
-      final createdAt =
-          existing?.createdAt ??
-          deriveEntryTimestamp(widget.initialDate ?? now, now: now);
-      final selectedDate = existing?.calendarDate ?? widget.initialDate ?? now;
-      final entryDate = DateTime(
-        selectedDate.year,
-        selectedDate.month,
-        selectedDate.day,
-      );
-      final creationOrderAt = existing?.creationOrderAt ?? now;
-      final entryId = existing?.id ?? _draftEntryId;
-      final healthLogId = existing?.healthLog?.id ?? _draftHealthLogId;
-      final totalCaloriesEaten = _meals.fold<int>(
-        0,
-        (sum, meal) => sum + meal.calories,
-      );
-
-      final entry = JournalEntry(
-        id: entryId,
-        tripId: _tripId,
-        title: title,
-        body: body,
-        mood: _mood,
-        photoPaths: _photoPaths,
-        location: _location,
-        entryDate: entryDate,
-        createdAt: createdAt,
-        updatedAt: now,
-        creationOrderAt: creationOrderAt,
-        // Preserve whatever advice already existed - AI advice is only ever
-        // generated/edited from EntryDetailScreen's own explicit button, so a
-        // save here (of the title/mood/meals/location/etc.) must never touch
-        // it, however trivial the edit.
-        healthLog: HealthLog(
-          id: healthLogId,
-          entryId: entryId,
-          steps: _steps,
-          caloriesEaten: totalCaloriesEaten,
-          caloriesBurned: _caloriesBurned,
-          meals: _meals,
-          aiAdvice: existing?.healthLog?.aiAdvice,
-        ),
-      );
+      final entry = _buildEntry(isDraft: false);
 
       // Content-required, length caps, steps/meal invariants, and (for new
       // entries) the date/trip-range rules all live in the controller — see
@@ -546,34 +563,96 @@ class _CreateEditEntryScreenState extends ConsumerState<CreateEditEntryScreen> {
 
   Future<void> _handleBackAttempt(bool didPop, Object? result) async {
     if (didPop || _saving) return;
-    final discard = await _confirmDiscard();
+    final choice = await _confirmDiscard();
+    if (!mounted || choice == _UnsavedChoice.keepEditing) return;
+
+    if (choice == _UnsavedChoice.discard) {
+      Navigator.pop(context);
+      return;
+    }
+
+    // Save draft. A failure keeps the user here with the error rather than
+    // popping — leaving would silently lose exactly the work they asked to
+    // keep. _saving also blocks a second back press from starting a duplicate
+    // insert during the await.
+    setState(() => _saving = true);
+    final entry = _buildEntry(isDraft: true);
+    final error = await ref
+        .read(journalControllerProvider.notifier)
+        .saveDraft(entry, isNew: !_isEditing, trip: widget.trip);
     if (!mounted) return;
-    if (discard) Navigator.pop(context);
+    setState(() {
+      _saving = false;
+      // Whether or not the pop lands, this draft is now the persisted entry,
+      // so a retry updates it instead of inserting a second copy.
+      if (error == null) {
+        _persistedEntry = entry;
+        _dirty = false;
+      }
+    });
+    if (error != null) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error)));
+      return;
+    }
+    Navigator.pop(context);
   }
 
-  /// "Discard changes?" — only ever shown when [_dirty] is true; a clean
-  /// form leaves silently on back, no nagging (IMPLEMENTATION_PLAN_UX_
+  /// The unsaved-work prompt on back — only ever shown when [_dirty] is true;
+  /// a clean form leaves silently, no nagging (IMPLEMENTATION_PLAN_UX_
   /// POLISH.md §6).
-  Future<bool> _confirmDiscard() async {
-    final discard = await showDialog<bool>(
+  ///
+  /// Offers "Save draft" only while the entry is unpublished ([_isPublished]
+  /// false): parking a brand-new or already-draft entry is safe, but a
+  /// published entry must not be replaced by half-finished edits, so that case
+  /// keeps the original two-option prompt.
+  Future<_UnsavedChoice> _confirmDiscard() async {
+    final choice = await showDialog<_UnsavedChoice>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('Discard changes?'),
+        title: Text(_isPublished ? 'Discard changes?' : 'Keep this entry?'),
+        content: _isPublished
+            ? null
+            : const Text(
+                "You haven't saved this entry yet. Save it as a draft to "
+                'finish later, or discard it.',
+              ),
         actions: [
           TextButton(
             key: const Key('discard-keep-editing'),
-            onPressed: () => Navigator.pop(dialogContext, false),
+            onPressed: () =>
+                Navigator.pop(dialogContext, _UnsavedChoice.keepEditing),
             child: const Text('Keep editing'),
           ),
-          FilledButton(
-            key: const Key('discard-confirm'),
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('Discard'),
-          ),
+          // Discard stays the prominent action when there is no draft option,
+          // exactly as it was before drafts existed; when there is one, saving
+          // the work is the safer default to emphasise.
+          if (_isPublished)
+            FilledButton(
+              key: const Key('discard-confirm'),
+              onPressed: () =>
+                  Navigator.pop(dialogContext, _UnsavedChoice.discard),
+              child: const Text('Discard'),
+            )
+          else ...[
+            TextButton(
+              key: const Key('discard-confirm'),
+              onPressed: () =>
+                  Navigator.pop(dialogContext, _UnsavedChoice.discard),
+              child: const Text('Discard'),
+            ),
+            FilledButton(
+              key: const Key('discard-save-draft'),
+              onPressed: () =>
+                  Navigator.pop(dialogContext, _UnsavedChoice.saveDraft),
+              child: const Text('Save draft'),
+            ),
+          ],
         ],
       ),
     );
-    return discard ?? false;
+    return choice ?? _UnsavedChoice.keepEditing;
   }
 
   /// "Save changes to this entry?" — Confirm persists, Cancel dismisses and
