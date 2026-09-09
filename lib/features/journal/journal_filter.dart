@@ -3,6 +3,14 @@ import '../../models/mood.dart';
 
 DateTime _dateOnly(DateTime d) => DateTime(d.year, d.month, d.day);
 
+/// Same cap as an entry title (kEntryTitleMaxLength) — a search phrase has no
+/// reason to run any longer, and this keeps a stray huge paste from sitting
+/// in the field uselessly. Enforced by the search field's own `maxLength`
+/// (see JournalSearchBar); [filterJournalEntries] itself needs no length
+/// guard since a query of any length is just a substring match, never a
+/// crash or injection risk.
+const kJournalSearchQueryMaxLength = 100;
+
 /// Search/filter criteria for a trip's journal entries
 /// (IMPLEMENTATION_PLAN_EXTRA_FEATURES.md #2). An empty/default filter
 /// matches everything — the default (unfiltered) view is never broken.

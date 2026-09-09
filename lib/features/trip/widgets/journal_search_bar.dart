@@ -62,6 +62,7 @@ class _JournalSearchBarState extends State<JournalSearchBar> {
       child: TextField(
         key: const Key('journal-search-field'),
         controller: _textController,
+        maxLength: kJournalSearchQueryMaxLength,
         decoration: InputDecoration(
           labelText: 'Search entries',
           hintText: 'Title or journal text',

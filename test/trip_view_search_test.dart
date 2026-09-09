@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:tripjournal/features/journal/journal_filter.dart';
 import 'package:tripjournal/features/trip/trip_view_screen.dart';
 
 Widget _wrapped(String tripId) {
@@ -137,4 +138,28 @@ void main() {
     expect(find.text('Arrival in Kyoto'), findsNothing);
     expect(find.text('Fushimi Inari hike'), findsOneWidget);
   });
+
+  testWidgets(
+    'the search field refuses to grow past kJournalSearchQueryMaxLength',
+    (tester) async {
+      await setUpScreen(tester);
+
+      await tester.tap(find.byKey(const Key('trip-view-search-toggle')));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(
+        find.byKey(const Key('journal-search-field')),
+        'a' * (kJournalSearchQueryMaxLength + 50),
+      );
+      await tester.pump();
+
+      final field = tester.widget<TextField>(
+        find.byKey(const Key('journal-search-field')),
+      );
+      expect(
+        field.controller!.text.length,
+        kJournalSearchQueryMaxLength,
+      );
+    },
+  );
 }
