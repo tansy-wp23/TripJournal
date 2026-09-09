@@ -45,16 +45,14 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('save-confirm-confirm')));
       await tester.pumpAndSettle();
-      expect(find.text('Saved'), findsOneWidget);
 
-      // Persisted for real, not just shown in the form's local state.
+      // Saving pops back to the trip page — persisted for real, not just
+      // shown in the form's local state.
       final entries = await journalRepository.getEntries('trip-001');
       final saved = entries.firstWhere((e) => e.title == 'Portion round trip test');
       expect(saved.healthLog?.meals.single.portion, PortionSize.large);
 
-      // Shown again on the detail view after leaving and reopening the entry.
-      await tester.pageBack();
-      await tester.pumpAndSettle();
+      // Shown again on the detail view on reopening the entry.
       await tester.tap(find.text('Portion round trip test'));
       await tester.pumpAndSettle();
 

@@ -49,9 +49,9 @@ void main() {
       await tester.tap(find.byKey(const Key('save-confirm-confirm')));
       await tester.pumpAndSettle();
 
-      // Stays on the entry screen after save (IMPLEMENTATION_PLAN_UX_AI.md §3).
-      expect(find.text('Saved'), findsOneWidget);
-      expect(find.text('Edit entry'), findsOneWidget);
+      // Pops back to the trip page after save, where the new entry now shows.
+      expect(find.text('New entry'), findsNothing);
+      expect(find.text('No photo entry'), findsOneWidget);
     },
   );
 }

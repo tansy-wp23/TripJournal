@@ -829,7 +829,16 @@ class _MealDialogState extends State<_MealDialog> {
             key: const Key('meal-portion-selector'),
             segments: [
               for (final size in PortionSize.values)
-                ButtonSegment(value: size, label: Text(portionSizeLabel(size))),
+                ButtonSegment(
+                  value: size,
+                  // 'Regular' is long enough to wrap onto 3 lines in the
+                  // narrow third of a segmented button - scale it down to
+                  // fit one line instead, rather than wrapping.
+                  label: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(portionSizeLabel(size), maxLines: 1),
+                  ),
+                ),
             ],
             selected: {_portion},
             onSelectionChanged: (selected) => _onPortionChanged(selected.first),

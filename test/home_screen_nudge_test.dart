@@ -126,12 +126,8 @@ void main() {
     await tester.tap(find.byKey(const Key('save-confirm-confirm')));
     await tester.pumpAndSettle();
 
-    // The entry screen stays open after save (IMPLEMENTATION_PLAN_UX_AI.md
-    // §3) — leave manually to see the homepage's confirmation state.
-    expect(find.text('Saved'), findsOneWidget);
-    await tester.pageBack();
-    await tester.pumpAndSettle();
-
+    // Saving pops straight back to the homepage now, which already shows
+    // the confirmation state — no manual back needed.
     expect(find.text("Today's entry: Nudge test entry"), findsOneWidget);
     expect(find.byKey(const Key('write-today-entry-button')), findsNothing);
   });

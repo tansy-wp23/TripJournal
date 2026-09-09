@@ -39,7 +39,8 @@ void main() {
     final appBar = tester.widget<AppBar>(find.byType(AppBar));
     expect(appBar.actions, hasLength(1));
     expect(find.byKey(const Key('edit-entry-button')), findsOneWidget);
-    expect(find.text('Edit entry'), findsOneWidget);
+    // Short label so it fits on the same row as the mood chip and date.
+    expect(find.text('Edit'), findsOneWidget);
     expect(find.byKey(const Key('export-entry-pdf-button')), findsNothing);
     expect(find.byKey(const Key('delete-entry-button')), findsNothing);
 

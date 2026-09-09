@@ -64,19 +64,11 @@ void main() {
     await tester.tap(find.byKey(const Key('save-confirm-confirm')));
     await tester.pumpAndSettle();
 
-    // Stays on the entry screen after save (IMPLEMENTATION_PLAN_UX_AI.md §3)
-    // — now titled "Edit entry" since it's persisted, button reads "Saved".
+    // Saving pops straight back to Trip View, where Day 1 now holds both the
+    // seeded entry and the new one (multiple entries per day are allowed).
     // AI advice is a separate, button-triggered feature on Entry Detail now
     // (see entry_detail_ai_advice_test.dart) — this save never touches it.
-    expect(find.text('Edit entry'), findsOneWidget);
-    expect(find.text('Saved'), findsOneWidget);
-
-    // Leave manually — back to Trip View.
-    await tester.pageBack();
-    await tester.pumpAndSettle();
-
-    // Day 1 now holds both the seeded entry and the new one (multiple
-    // entries per day are allowed).
+    expect(find.text('New entry'), findsNothing);
     expect(find.text('Widget test entry'), findsOneWidget);
 
     // Open detail screen.
@@ -98,16 +90,15 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('save-confirm-confirm')));
     await tester.pumpAndSettle();
-    expect(find.text('Saved'), findsOneWidget); // still on the edit screen
 
-    await tester.pageBack();
+    // Saving an edit pops the editor AND the now-stale detail screen
+    // underneath it, landing back on Trip View directly.
+    expect(find.text('Edit entry'), findsNothing);
+    expect(find.text('Widget test entry (edited)'), findsOneWidget);
+
+    // Reopen it to delete, with confirmation dialog.
+    await tester.tap(find.text('Widget test entry (edited)'));
     await tester.pumpAndSettle();
-    expect(
-      find.text('Widget test entry (edited)'),
-      findsOneWidget,
-    ); // back on Entry Detail
-
-    // Delete it, with confirmation dialog.
     await tester.tap(find.byKey(const Key('entry-detail-more-menu')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('delete-entry-button')));

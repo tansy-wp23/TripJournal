@@ -203,14 +203,34 @@ class _EntryDetailScreenState extends ConsumerState<EntryDetailScreen> {
               Text(formatDate(entry.calendarDate)),
               OutlinedButton.icon(
                 key: const Key('edit-entry-button'),
-                icon: const Icon(Icons.edit_outlined),
-                label: const Text('Edit entry'),
-                onPressed: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => CreateEditEntryScreen(existingEntry: entry),
-                  ),
+                style: OutlinedButton.styleFrom(
+                  visualDensity: VisualDensity.compact,
+                  padding: const EdgeInsets.symmetric(horizontal: 10),
                 ),
+                icon: const Icon(Icons.edit_outlined, size: 18),
+                // Short label deliberately: the mood chip, date, and this
+                // button all share one row (AppContentToolbar wraps at its
+                // own discretion, e.g. large text scaling or a very narrow
+                // screen), and "Edit entry" was reliably the thing that
+                // tipped it onto a second line.
+                label: const Text('Edit'),
+                onPressed: () async {
+                  // The editor pops itself with `true` on a successful save,
+                  // to land back on the trip page rather than lingering here
+                  // on what's now a stale view of the entry.
+                  final saved = await Navigator.push<bool>(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) =>
+                          CreateEditEntryScreen(existingEntry: entry),
+                    ),
+                  );
+                  if (saved == true &&
+                      context.mounted &&
+                      Navigator.canPop(context)) {
+                    Navigator.pop(context, true);
+                  }
+                },
               ),
             ],
           ),

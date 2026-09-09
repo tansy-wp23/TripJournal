@@ -273,10 +273,14 @@ void main() {
       repository.addGate.complete();
       await tester.pumpAndSettle();
 
-      expect(find.text('Kiyomizu-dera'), findsOneWidget);
+      // The write completed and the screen popped itself away — the blocked
+      // remove-location tap and back attempt never got through, so the
+      // persisted entry still has the location that was actually confirmed.
+      expect(find.text('Edit entry'), findsNothing);
+      expect(find.text('Open editor'), findsOneWidget);
       expect(find.text('Discard changes?'), findsNothing);
-      expect(find.text('Edit entry'), findsOneWidget);
       expect(repository.addCalls, 1);
+      expect(repository.adds.single.location?.placeName, 'Kiyomizu-dera');
     },
   );
 

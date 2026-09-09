@@ -8,8 +8,8 @@ import 'package:tripjournal/features/trip/trip_view_screen.dart';
 
 void main() {
   testWidgets(
-    'saving a new entry stays on the same screen, shows "Saved", and never '
-    'auto-generates AI advice',
+    'saving a new entry pops back to the trip page and never auto-generates '
+    'AI advice',
     (tester) async {
       tester.view.physicalSize = const Size(1200, 2600);
       tester.view.devicePixelRatio = 1.0;
@@ -37,10 +37,10 @@ void main() {
       await tester.tap(find.byKey(const Key('save-confirm-confirm')));
       await tester.pumpAndSettle();
 
-      // Did not navigate away.
-      expect(find.text('Edit entry'), findsOneWidget);
-      expect(find.text('Saved'), findsOneWidget);
-      expect(find.byKey(const Key('ai-advice-text')), findsNothing);
+      // Landed back on the trip page — TripViewScreen pushed this directly,
+      // so one pop is enough.
+      expect(find.text('New entry'), findsNothing);
+      expect(find.text('Save flow test'), findsOneWidget);
 
       // Persisted for real, and advice was never touched by the save.
       final entries = await journalRepository.getEntries('trip-001');
@@ -48,36 +48,6 @@ void main() {
       expect(saved.healthLog?.aiAdvice, isNull);
     },
   );
-
-  testWidgets('editing a field after a successful save reverts the button back to "Save"', (tester) async {
-    tester.view.physicalSize = const Size(1200, 2600);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
-
-    // Pump the trip view directly (Kyoto = trip-001) rather than the full
-    // app: these tests are about the save flow, not auth routing or Home's
-    // trip list.
-    await tester.pumpWidget(const ProviderScope(child: MaterialApp(home: TripViewScreen(tripId: 'trip-001'))));
-    await tester.pumpAndSettle();
-
-    await tester.tap(find.byKey(const Key('add-entry-day-1')));
-    await tester.pumpAndSettle();
-
-    await tester.enterText(find.byKey(const Key('entry-title-field')), 'Dirty tracking test');
-    await tester.enterText(find.byKey(const Key('entry-body-field')), 'Body.');
-    await tester.tap(find.byKey(const Key('save-entry-button')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('save-confirm-confirm')));
-    await tester.pumpAndSettle();
-    expect(find.text('Saved'), findsOneWidget);
-
-    await tester.enterText(find.byKey(const Key('entry-title-field')), 'Dirty tracking test (changed)');
-    await tester.pump();
-
-    expect(find.text('Saved'), findsNothing);
-    expect(find.widgetWithText(FilledButton, 'Save'), findsOneWidget);
-  });
 
   testWidgets('opening an existing entry with prior advice never shows or touches it on this screen', (
     tester,

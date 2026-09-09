@@ -67,8 +67,7 @@ void main() {
       expect(find.text('New entry'), findsOneWidget);
 
       // A title alone is enough to save — body is not required (title OR body).
-      // The screen stays open after a successful save (IMPLEMENTATION_PLAN_UX_AI.md
-      // §3): the AppBar retitles to "Edit entry" and the button reads "Saved".
+      // Saving pops back to the trip page, where the entry now shows.
       await tester.pumpAndSettle();
       await tester.enterText(
         find.byKey(const Key('entry-title-field')),
@@ -80,8 +79,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('New entry'), findsNothing);
-      expect(find.text('Edit entry'), findsOneWidget);
-      expect(find.text('Saved'), findsOneWidget);
+      expect(find.text('Only a title'), findsOneWidget);
     },
   );
 
@@ -104,9 +102,10 @@ void main() {
     await tester.tap(find.byKey(const Key('save-confirm-confirm')));
     await tester.pumpAndSettle();
 
+    // Saving pops back to the trip page — the tile falls back to the body
+    // text as its display title since none was entered.
     expect(find.text('New entry'), findsNothing);
-    expect(find.text('Edit entry'), findsOneWidget);
-    expect(find.text('Saved'), findsOneWidget);
+    expect(find.text('Body with no title.'), findsOneWidget);
   });
 
   testWidgets('whitespace-only title/body is treated as empty', (

@@ -102,7 +102,7 @@ void main() {
       expect(entries.any((e) => e.title == 'Should be discarded'), isFalse);
     });
 
-    testWidgets('after a successful save the form is clean again — back leaves silently', (tester) async {
+    testWidgets('a successful save leaves the screen with no discard prompt at all', (tester) async {
       tester.view.physicalSize = const Size(1200, 2600);
       tester.view.devicePixelRatio = 1.0;
       addTearDown(tester.view.resetPhysicalSize);
@@ -114,14 +114,13 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('save-confirm-confirm')));
       await tester.pumpAndSettle();
-      expect(find.text('Saved'), findsOneWidget);
 
-      await tester.pageBack();
-      await tester.pumpAndSettle();
-
+      // Saving pops the screen itself now — nothing left to press back on,
+      // and no prompt of any kind on the way out.
       expect(find.text('Discard changes?'), findsNothing);
       expect(find.text('Keep this entry?'), findsNothing);
-      expect(find.text('Edit entry'), findsNothing); // actually left the screen
+      expect(find.text('New entry'), findsNothing);
+      expect(find.text('Edit entry'), findsNothing);
     });
 
     testWidgets(
@@ -143,7 +142,13 @@ void main() {
         await tester.tap(find.byKey(const Key('save-confirm-confirm')));
         await tester.pumpAndSettle();
 
-        // Dirty it again, now that it is a real saved entry.
+        // Saving popped straight back to Trip View — reopen the now-published
+        // entry to dirty it again.
+        await tester.tap(find.text('Published entry'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('edit-entry-button')));
+        await tester.pumpAndSettle();
+
         await tester.enterText(
           find.byKey(const Key('entry-title-field')),
           'Published entry, edited',

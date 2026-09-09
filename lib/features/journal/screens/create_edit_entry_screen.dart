@@ -535,9 +535,11 @@ class _CreateEditEntryScreenState extends ConsumerState<CreateEditEntryScreen> {
       }
       if (!mounted) return;
 
-      // Stay on this screen — do NOT navigate away. This entry is now the
-      // persisted one going forward, so further saves edit it in place rather
-      // than creating a second entry.
+      // Kept even though the screen is about to pop: this entry is now the
+      // persisted one, so if the pop is still mid-transition (or, in a test
+      // harness, a no-op with nothing beneath to land on) the widget's own
+      // state stays correct rather than re-creating a second entry on a
+      // second Save tap.
       setState(() {
         _persistedEntry = entry;
         _justSaved = true;
@@ -552,10 +554,22 @@ class _CreateEditEntryScreenState extends ConsumerState<CreateEditEntryScreen> {
         ),
       );
 
-      // AI advice is no longer generated here — it's a deliberate,
-      // button-triggered action on the entry's detail screen
-      // (EntryDetailScreen), so saving never silently overwrites advice the
-      // user hasn't asked to regenerate.
+      // AI advice is generated separately, button-triggered on the entry's
+      // detail screen (EntryDetailScreen) — saving here never touches it.
+      //
+      // Pop back rather than staying on this screen: TripViewScreen pushes
+      // it directly for a new entry or a resumed draft, so one pop lands on
+      // the trip's day list, where the saved entry already shows via the
+      // shared JournalController state — no return value needed there.
+      // EntryDetailScreen pushes it for an edit and awaits `true` to pop
+      // itself too, so that path also lands back on the trip page instead of
+      // the entry's own now-stale detail view.
+      //
+      // Guarded by canPop(): in production this screen is always pushed onto
+      // something, so it's always true — but a widget test that pumps this
+      // screen directly as the app's only route has nothing to pop to, and an
+      // unguarded pop there would empty the Navigator rather than no-op.
+      if (Navigator.canPop(context)) Navigator.pop(context, true);
     } finally {
       if (mounted) setState(() => _saving = false);
     }
