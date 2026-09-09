@@ -105,7 +105,7 @@ TripMapModel buildTripMapModel({
   final mapped = tripEntries.where((entry) => entry.location != null).toList();
   final availableDays =
       mapped
-          .map((entry) => _dayNumber(entry.calendarDate, tripStartDate))
+          .map((entry) => dayNumberForEntry(entry.calendarDate, tripStartDate))
           .toSet()
           .toList()
         ..sort();
@@ -114,8 +114,8 @@ TripMapModel buildTripMapModel({
   final visibleMapped = [
     for (final entry in orderedTripEntries)
       if ((selectedDay == null ||
-              (_dayNumber(entry.calendarDate, tripStartDate) >= 1 &&
-                  _dayNumber(entry.calendarDate, tripStartDate) <=
+              (dayNumberForEntry(entry.calendarDate, tripStartDate) >= 1 &&
+                  dayNumberForEntry(entry.calendarDate, tripStartDate) <=
                       selectedDay)) &&
           entry.location != null)
         entry,
@@ -139,7 +139,10 @@ TripMapModel buildTripMapModel({
         latitude: firstLocation.latitude,
         longitude: firstLocation.longitude,
         entries: List.unmodifiable(groupEntries),
-        dayNumber: _dayNumber(groupEntries.first.calendarDate, tripStartDate),
+        dayNumber: dayNumberForEntry(
+          groupEntries.first.calendarDate,
+          tripStartDate,
+        ),
       ),
     );
   }
@@ -175,8 +178,8 @@ List<TripMapRouteSegment> _routeSegmentsFor({
       TripMapRouteSegment(
         fromEntryId: from.id,
         toEntryId: to.id,
-        fromDay: _dayNumber(from.calendarDate, tripStartDate),
-        toDay: _dayNumber(to.calendarDate, tripStartDate),
+        fromDay: dayNumberForEntry(from.calendarDate, tripStartDate),
+        toDay: dayNumberForEntry(to.calendarDate, tripStartDate),
         fromLatitude: fromLocation.latitude,
         fromLongitude: fromLocation.longitude,
         toLatitude: toLocation.latitude,
@@ -230,7 +233,10 @@ String _coordinateKey(GeoTag location) =>
     '${location.latitude.toStringAsFixed(6)},'
     '${_normalizedLongitude(location.longitude).toStringAsFixed(6)}';
 
-int _dayNumber(DateTime entryDate, DateTime tripStartDate) {
+/// [entryDate]'s 1-based day number within the trip, matching the day chips'
+/// numbering. Public (not `_`-prefixed) so the map's own entry-preview list
+/// can label each entry with its day without recomputing this logic.
+int dayNumberForEntry(DateTime entryDate, DateTime tripStartDate) {
   final entryDay = _dateOnly(entryDate);
   final startDay = _dateOnly(tripStartDate);
 
@@ -259,10 +265,10 @@ int _compareRouteEntries(
   JournalEntry b,
   DateTime tripStartDate,
 ) {
-  final byDay = _dayNumber(
+  final byDay = dayNumberForEntry(
     a.calendarDate,
     tripStartDate,
-  ).compareTo(_dayNumber(b.calendarDate, tripStartDate));
+  ).compareTo(dayNumberForEntry(b.calendarDate, tripStartDate));
   if (byDay != 0) return byDay;
   final byCreationOrder = a.creationOrderAt.compareTo(b.creationOrderAt);
   if (byCreationOrder != 0) return byCreationOrder;

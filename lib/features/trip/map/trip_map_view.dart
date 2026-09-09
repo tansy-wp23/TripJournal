@@ -169,6 +169,7 @@ class _TripMapViewState extends State<TripMapView> {
                 constraints: const BoxConstraints(maxHeight: 260),
                 child: _EntryPreviewList(
                   group: selectedGroup,
+                  tripStartDate: widget.tripStartDate,
                   onOpenEntry: widget.onOpenEntry,
                 ),
               ),
@@ -287,9 +288,14 @@ class _EmptyMapState extends StatelessWidget {
 }
 
 class _EntryPreviewList extends StatelessWidget {
-  const _EntryPreviewList({required this.group, required this.onOpenEntry});
+  const _EntryPreviewList({
+    required this.group,
+    required this.tripStartDate,
+    required this.onOpenEntry,
+  });
 
   final TripMapMarkerGroup group;
+  final DateTime tripStartDate;
   final ValueChanged<JournalEntry> onOpenEntry;
 
   @override
@@ -303,6 +309,7 @@ class _EntryPreviewList extends StatelessWidget {
         separatorBuilder: (_, _) => const Divider(height: 1),
         itemBuilder: (context, index) => _EntryPreview(
           entry: group.entries[index],
+          tripStartDate: tripStartDate,
           onTap: () => onOpenEntry(group.entries[index]),
         ),
       ),
@@ -311,20 +318,29 @@ class _EntryPreviewList extends StatelessWidget {
 }
 
 class _EntryPreview extends StatelessWidget {
-  const _EntryPreview({required this.entry, required this.onTap});
+  const _EntryPreview({
+    required this.entry,
+    required this.tripStartDate,
+    required this.onTap,
+  });
 
   final JournalEntry entry;
+  final DateTime tripStartDate;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final location = entry.location!;
     final locationLabel = _locationLabel(location);
+    // A marker can group entries from several different days at the same
+    // spot, so each row needs its own day number rather than the group's.
+    final dayNumber = dayNumberForEntry(entry.calendarDate, tripStartDate);
     return Semantics(
       container: true,
       button: true,
       label:
-          'Open map entry ${entry.displayTitle} at $locationLabel. ${formatDate(entry.calendarDate)}. ${moodLabel(entry.mood)}',
+          'Open map entry ${entry.displayTitle} at $locationLabel. '
+          'Day $dayNumber, ${formatDate(entry.calendarDate)}. ${moodLabel(entry.mood)}',
       child: ExcludeSemantics(
         child: Material(
           color: Theme.of(context).colorScheme.surface,
@@ -374,7 +390,7 @@ class _EntryPreview extends StatelessWidget {
                         ),
                         const SizedBox(height: 3),
                         Text(
-                          formatDate(entry.calendarDate),
+                          'Day $dayNumber · ${formatDate(entry.calendarDate)}',
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
                             color: Theme.of(

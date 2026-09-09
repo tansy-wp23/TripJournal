@@ -307,8 +307,14 @@ Widget buildOsmTripMapPlatform({
         urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
         userAgentPackageName: 'com.tripjournal.tripjournal',
       ),
-      PolylineLayer(polylines: polylines),
-      MarkerLayer(markers: arrowMarkers),
+      // No route lines or direction arrows on this map by design — pointers
+      // only, with the entries at each one shown (day included) via the tap
+      // preview below. `polylines`/`arrowMarkers` stay as real parameters
+      // (unused here) rather than being removed from the signature: the
+      // `platformBuilder` test seam and the pure osmTripMapPolylines/
+      // osmTripMapArrowMarkers computations they come from are still real
+      // and tested — see TripMapUnavailableSurface, which still lists route
+      // segments as text for the no-map fallback.
       if (clustered)
         MarkerClusterLayerWidget(
           options: MarkerClusterLayerOptions(
